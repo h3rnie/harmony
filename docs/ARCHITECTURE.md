@@ -73,7 +73,7 @@ flowchart TD
 
 The `all` stage order is `normalize, availability, static_mask, afcd, strata, calibrate, harmonize, tiles, points, overview, watch, verify` (`cli.py`, `STAGES`). `ml` is run by name.
 
-1. **Normalize** (`normalize.py`) reads each sensor-year from its country zip and from API files, maps columns to one schema, drops duplicates, lets standard-quality rows replace near-real-time rows per satellite and UTC month, computes the sub-cell, the L0 cell, the local-solar date and the month index, and writes `work/points/{sensor}/{year}.parquet`. Per-file statistics go to `work/normalize_stats/`. A row is near-real-time when its `version` contains `NRT`; FIRMS `URT` rows (newest day) are not matched, a known fault described in METHOD.md (Known issues).
+1. **Normalize** (`normalize.py`) reads each sensor-year from its country zip and from API files, maps columns to one schema, drops duplicates, lets standard-quality rows replace near-real-time rows per satellite and UTC month where standard inputs cover the month, computes the sub-cell, the L0 cell, the local-solar date and the month index, and writes `work/points/{sensor}/{year}.parquet`. Per-file statistics go to `work/normalize_stats/`. A row is standard only when its `version` is purely numeric; `NRT`, `URT` (ultra-real-time) and `RT` versions are near-real-time (METHOD.md section 2).
 2. **Availability, static mask, cube** compute satellite-day availability, the mask, and the cell-day cube (`afcd.py`) one local-solar year at a time to bound memory.
 3. **Strata and calibration** assign each fire-active cell a stratum and fit the coefficients (`strata.py`, `calibrate.py`), writing `work/coefficients/` and `dist/validation.json`.
 4. **Harmonize** (`harmonize.py`, after `calibrate`) estimates the sensor error model by triple collocation, the MODIS orbit-drift ratios, the conformal multipliers and the validation of the fused record, writes `work/coefficients/harmonize.json` and adds its tables to `dist/validation.json`.
@@ -174,15 +174,15 @@ Update from `data/dist/tiles/index.json`, `points/index.json`, `meta.json` and f
 
 | Item | Value |
 | --- | --- |
-| L0 (0.05 degree, 2.5-degree tiles) | 3,873 tiles, 417.2 MB, 75,075,454 rows; largest tile 1.91 MB |
-| L1 (0.25 degree, 10-degree tiles) | 435 tiles, 128.4 MB, 17,224,525 rows; largest tile 3.56 MB |
-| L2 (1 degree, 30-degree tiles) | 70 tiles, 33.7 MB, 3,945,900 rows; largest tile 3.11 MB |
-| Tiles in all | 579.4 MB |
-| Hotspot archive | 489 tile directories, 8,289 files, 11.34 GB, 656,491,914 rows |
+| L0 (0.05 degree, 2.5-degree tiles) | 3,880 tiles, 418.6 MB, 75,228,941 rows; largest tile 1.90 MB |
+| L1 (0.25 degree, 10-degree tiles) | 435 tiles, 128.8 MB, 17,256,347 rows; largest tile 3.57 MB |
+| L2 (1 degree, 30-degree tiles) | 70 tiles, 33.8 MB, 3,951,906 rows; largest tile 3.12 MB |
+| Tiles in all | 581.2 MB |
+| Hotspot archive | 489 tile directories, 8,290 files, 11.37 GB, 658,009,224 rows |
 | Overview | 7.1 MB (27 yearly atlases, climatology, land mask, fire clock, trend, `meta.json`) |
 | ML model | 33,408 bytes ONNX, 41,991 bytes of JSON |
-| `meta.json`, `validation.json`, `watch.json` | 112 KB, 527 KB, 39 KB |
-| Normalized rows | 656,491,914 (114,530,845 MODIS; 296,606,261 S-NPP; 172,221,067 NOAA-20; 73,133,741 NOAA-21) |
+| `meta.json`, `validation.json`, `watch.json` | 112 KB, 534 KB, 39 KB |
+| Normalized rows | 658,009,224 (114,530,845 MODIS; 296,606,261 S-NPP; 172,990,217 NOAA-20; 73,881,901 NOAA-21) |
 | Strata | 64 |
 
 ## What a production deployment needs

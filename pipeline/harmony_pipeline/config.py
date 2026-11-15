@@ -96,6 +96,8 @@ MASK_PERSIST_YEARS = 3         # ... in >= 3 years
 COV_MIN = 0.5                  # below this month coverage is left uncorrected (flagged via cov)
 COV_MAX_CORR = 2.0             # cap of the 1/cov correction
 K_MIN_SUM = 200                # min sum of the numerator stream to accept a ratio at a level
+NOAA_MAX_MONTH_SHARE = 0.5     # NOAA-20/21 -> S-NPP: max share of either sum from one month at an accepted level
+NOAA_RANGE = (0.5, 2.0)        # NOAA-20/21 -> S-NPP: plausible range of a stratum / biome factor (same VIIRS design)
 TAU_GRID = (5.0, 10.0, 20.0, 50.0, float("inf"))
 LOYO_YEARS = tuple(range(2012, 2022))
 CLIM_BASELINE = (2003, 2022)   # overview climatology years

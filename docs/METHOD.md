@@ -18,7 +18,9 @@ Source: standard-quality FIRMS country-year files and the FIRMS area API (see [R
 - VIIRS: confidence `n` or `h` (nominal or high); `l` is dropped.
 - `type == 0` (presumed vegetation fire) when `type` exists. Rows from the near-real-time API have no `type`.
 - The static-source mask (section 5) is applied to every row, including near-real-time rows.
-- Exact duplicates on (satellite, UTC time, latitude, longitude) are dropped. These arise where country files overlap at borders. Standard-quality rows replace near-real-time rows per (satellite, UTC month): if a month has any standard row for a satellite, that satellite's near-real-time rows for the month are dropped. A row counts as near-real-time when its FIRMS `version` contains `NRT`. FIRMS labels its newest day `URT` (ultra-real-time), which this test does not match, so such rows are currently treated as standard and supersede the rest of their month; see Known issues under Measured values.
+- Quality comes from the FIRMS `version`. A row is standard (`sp`) only if its version is purely numeric (MODIS `6.03`, `6.2`, `61.03`; VIIRS `2`); every version with a letter suffix — `NRT` (`6.1NRT`, `2.0NRT`), `URT` (ultra-real-time, `2.1URT`, FIRMS's first pass of the newest granules) or `RT` — and a missing version count as near-real-time (`nrt`, provisional).
+- Exact duplicates on (satellite, UTC time, latitude, longitude) are dropped. These arise where country files overlap at borders; the standard row is kept over a near-real-time one, and an `NRT` row over a `URT` one. A `URT` row is also dropped when the same satellite has `NRT` rows at the same acquisition time (the same granule, reprocessed). In the 2026-11-15 build the `URT` rows (1,612 NOAA-20 and 249 NOAA-21 rows of 2026-11-15) lie in granules after the last `NRT` granule and match no `NRT` row exactly or within 10 minutes and 0.005 degrees, so all are kept.
+- Standard-quality rows replace near-real-time rows per (satellite, UTC month) only where standard data genuinely cover the month: every day of the month must be covered by a standard input (a bulk country file covers its whole year, an area-API file from an `_SP` source its date span) and the satellite must have standard rows in the month. If standard data covered only part of a month, near-real-time rows would be dropped on the covered days only. `fetch-api` pulls standard data for whole months only, so in practice a month is either all standard or all near-real-time for a satellite; `verify.py` fails if a satellite-month loses more than 2 % of its rows to supersession without whole-month standard coverage, or if any row with a near-real-time version is labelled standard.
 
 A detection that passes these filters is called *accepted* or *used*. The counts of accepted detections (`nmod`, `nvii`) are carried in the tiles as the naive "hotspot count".
 
@@ -40,7 +42,7 @@ What it does not fix. It is not burned area, fire radiative power or fire size. 
 
 Code: `availability.py`.
 
-A satellite-day is *available* if its global detection count exceeds 5 % of the centred 31-day rolling median of that satellite's daily counts (zero-filled within its operating period), and an input file covers the date. This finds outages and partial days without a hand-kept list. Table M5 lists the unavailable days it found; they include the Terra power anomaly of 2001, the Terra safe-hold of 2016 and the S-NPP safe mode of 2022. The count rule also flags the newest days when a feed is incomplete: in the 2026-11-15 build it marks NOAA-20 and NOAA-21 unavailable from 2026-11-01, an artefact of the near-real-time classification fault noted in section 2. A regional run cannot use the count rule (quiet regions legitimately have zero counts) and uses the nominal operating period minus known outages instead.
+A satellite-day is *available* if its global detection count exceeds 5 % of the centred 31-day rolling median of that satellite's daily counts (zero-filled within its operating period), and an input file covers the date. This finds outages and partial days without a hand-kept list. Table M5 lists the unavailable days it found; they include the Terra power anomaly of 2001, the Terra safe-hold of 2016 and the S-NPP safe mode of 2022. The count rule also flags the newest days when a feed is incomplete: in the 2026-11-15 build it marks Aqua unavailable on 2026-11-15, a partial last day. A regional run cannot use the count rule (quiet regions legitimately have zero counts) and uses the nominal operating period minus known outages instead.
 
 Monthly coverage:
 
@@ -53,7 +55,7 @@ cov_viirs = fraction of days with >= 1 VIIRS satellite available
 
 A stream is divided by its coverage, `x / cov`, when `cov >= 0.5`, with the factor capped at 2 (`COV_MIN`, `COV_MAX_CORR`). Below 0.5 the value is left uncorrected (and such months are excluded from the calibration fit); the coverage arrays in `meta.json` record the fraction, and the kernel falls back to the other stream only when a stream's coverage is exactly zero. A month with coverage between 0 and 0.5 is therefore shown uncorrected, which understates it.
 
-The VIIRS stream is a per-day mean over the VIIRS satellites available on that day, never a sum. Each satellite's sub-cell-day carries weight `1 / n`, where `n` is the number of VIIRS satellites available that UTC date, and weight 0 on days the satellite is flagged unavailable. NOAA-20 and NOAA-21 are first scaled to S-NPP units by a factor `c20`, `c21` per stratum and day|night, estimated as `sum(S-NPP) / sum(NOAA-x)` over months where both satellites were available every day. If either sum is below 200 cell-days (`K_MIN_SUM`) the factor falls back to the biome, then the global value; without NOAA-21 overlap, `c21 = c20`. With these, the per-cell-month VIIRS value is
+The VIIRS stream is a per-day mean over the VIIRS satellites available on that day, never a sum. Each satellite's sub-cell-day carries weight `1 / n`, where `n` is the number of VIIRS satellites available that UTC date, and weight 0 on days the satellite is flagged unavailable. NOAA-20 and NOAA-21 are first scaled to S-NPP units by a factor `c20`, `c21` per stratum and day|night, estimated as `sum(S-NPP) / sum(NOAA-x)` over months where both satellites were available every day. A stratum factor is used only if it passes a guard; otherwise the biome factor is used if it passes the same guard, else the global one. The guard: both sums at least 200 cell-days (`K_MIN_SUM`); no single month supplying more than half of either sum (`NOAA_MAX_MONTH_SHARE`), so the factor describes the sensor pair rather than one month; and the factor between 0.5 and 2 (`NOAA_RANGE`; the three VIIRS instruments share one design and the global factors are about 0.95, so a stratum factor outside that range cannot be an instrument difference). The level used and the reason a stratum factor was rejected are in `validation.json` (`noaa_scale`). Without NOAA-21 overlap, `c21 = c20`. With these, the per-cell-month VIIRS value is
 
 ```
 V = ws + c20 * w20 + c21 * w21        (all coverage-corrected by cov_viirs)
@@ -250,7 +252,7 @@ The tests below are in `calibrate.py` and `harmonize.py` and stored in `data/dis
 
 **Out-of-time, 2022 onward.** The frozen fit is applied after the fit window and compared with MODIS, which still operates, by year (Table M2). The bias grows in 2025-2026. Section 10 measures how much of it is MODIS drift: against drift-corrected MODIS the frozen calibration (and NOAA-21 alone, Table M11) stays within about 1 %. That correction is anchored on VIIRS, so this is a consistency check, not independent proof that the calibration did not move.
 
-**Change-point test at the switch and at VIIRS start.** Pettitt's (1979) non-parametric test on the log monthly global total minus its month-of-year mean, in a 72-month window around the event, on two series: harmonized (`meq` before, `kv` after) and naive (`nmod` before, `nvii` after). A significant change at the event month means a seam. Table M4: the naive series has an overwhelmingly significant step (+2.53 in log units, a factor of 12.6, close to the count ratio of 11.7 to 12.9 in 2023-2025, Table M1); the harmonized (switch-rule) series has none at the 5 % level (p = 0.17). Its detected change month is 2025-02, two years after the switch, with a step of -0.12 (a decline), in the period when the MODIS drift is large (Table M8a); it is not significant and was not investigated further. The same tests on the fused record, and the drift-start window, are in Table M4b: there the switch-rule series reaches p = 0.029 around 2020-12 and the fused series p = 0.067, neither a sensor seam but neither a clean pass.
+**Change-point test at the switch and at VIIRS start.** Pettitt's (1979) non-parametric test on the log monthly global total minus its month-of-year mean, in a 72-month window around the event, on the harmonized series (`meq` before the event, `kv` from it) and on two naive raw-count series, named by where they change from MODIS counts (`nmod`) to VIIRS counts (`nvii`): `naive_switch_2023` changes at the 2023-01 switch, `naive_viirs_from_2012` at the VIIRS start (2012-02; the same series as the app's raw "naive" curve). At the VIIRS start the two coincide; in the switch window `naive_switch_2023` is the seam a naive switch would create, while `naive_viirs_from_2012` is VIIRS counts throughout. A significant change at the event month means a seam. Table M4: the `naive_switch_2023` series has an overwhelmingly significant step (+2.53 in log units, a factor of 12.6, close to the count ratio of 11.7 to 12.9 in 2023-2025, Table M1); the harmonized (switch-rule) series has none at the 5 % level (p = 0.17). Its detected change month is 2025-02, two years after the switch, with a step of -0.12 (a decline), in the period when the MODIS drift is large (Table M8a); it is not significant and was not investigated further. The same tests on the fused record, and the drift-start window, are in Table M4b: there the switch-rule series reaches p = 0.029 around 2020-12 and the fused series p = 0.067, neither a sensor seam but neither a clean pass.
 
 **Aqua-only sensitivity.** `k` is refitted against Aqua alone (without the cell multiplier) and the log anomalies of the stratum-month series are correlated with those of the production series. The anomaly series does not depend materially on which MODIS satellite is the reference (Table M2). Aqua's absolute level is about two thirds of Terra+Aqua, as expected from half the overpasses.
 
@@ -258,7 +260,7 @@ The tests below are in `calibrate.py` and `harmonize.py` and stored in `data/dis
 
 **Fusion against an independent reference.** Scoring the fused record against MODIS would be circular, because MODIS is one of its inputs. The test therefore fuses Aqua (rescaled to the Terra∪Aqua scale, with leave-one-year-out factors) with leave-one-year-out calibrated VIIRS, using the Aqua and VIIRS error models, and scores every candidate against Terra (rescaled the same way), which none of them contains: Aqua alone (what the switch shows before 2023), VIIRS alone, the fusion, and an equal-weight mean as a contrast. 2012-2019, 1° cell-months and stratum-months, log1p RMSE. Terra's own noise adds the same floor to every candidate, and Aqua and VIIRS share the afternoon overpass, so neither is favoured against the other by the morning reference. The error-model parameters come from the same years (they are a few numbers per stratum from about a million cell-months; the calibration itself is leave-one-year-out). Table M10.
 
-**MODIS weight by era and change points of the fused record.** The production fusion is run per 1° cell × stratum × day|night (as the kernel would for an area of that size) and per stratum for the globe; Table M10 gives the typical MODIS weight by era. Pettitt's test is repeated on the fused global series around the start of VIIRS, the start of the drift correction (2020-01) and the legacy switch (2023-01), next to the switch and naive series (Table M4).
+**MODIS weight by era and change points of the fused record.** The production fusion is run per 1° cell × stratum × day|night (as the kernel would for an area of that size) and per stratum for the globe; Table M10 gives the typical MODIS weight by era. Pettitt's test is repeated on the fused global series around the start of VIIRS, the start of the drift correction (2020-01) and the legacy switch (2023-01), next to the switch series and both naive series (Table M4b).
 
 **NOAA-21 blind test.** NOAA-21 never enters a VIIRS-to-MODIS fit. Calibrated NOAA-21 alone (`c21` from its overlap with S-NPP, then the 2012-2021 `k`, no per-cell multiplier) is scored by year against MODIS (raw and drift-corrected) and against calibrated NOAA-20 and S-NPP (Table M11). The drift-corrected comparison is not independent: the drift factors use the VIIRS composite, which includes NOAA-21 from 2023-03.
 
@@ -266,9 +268,9 @@ The tests below are in `calibrate.py` and `harmonize.py` and stored in `data/dis
 
 **Activity dependence of the ratio.** Cell-days saturate in busy cells, and MODIS misses more of the small fires than VIIRS, so the ratio could depend on activity (Schroeder et al. 2008 show detection probability rising with fire size). A power law `M = a V^b` (`a` per stratum × day|night × month of year, `b` per biome group × day|night by Poisson deviance on a grid from 0.6 to 1.5) is compared with the proportional model, both without the per-cell multiplier, leave-one-year-out (Table M11). It is a diagnostic, not adopted (section 20).
 
-**Robustness to the end of S-NPP.** S-NPP stopped on 2026-11-02. The VIIRS stream is a per-day mean over the satellites available each day, so later months are NOAA-20 and NOAA-21 only, scaled to S-NPP units by `c20` and `c21` (fitted on the overlap and frozen); the kernel takes the two-satellite error row from the satellite count in `months.viirs_sats`. The build of 2026-11-15 runs through this transition; its last month (2026-11) is partial for both sensors (VIIRS coverage 0.10, MODIS 0.48) and is drawn but excluded from statistics. The VIIRS value is far below the 0.5 expected for 15 days of November because of the near-real-time classification fault (section 2, Known issues).
+**Robustness to the end of S-NPP.** S-NPP stopped on 2026-11-02. The VIIRS stream is a per-day mean over the satellites available each day, so later months are NOAA-20 and NOAA-21 only, scaled to S-NPP units by `c20` and `c21` (fitted on the overlap and frozen); the kernel takes the two-satellite error row from the satellite count in `months.viirs_sats`. The build of 2026-11-15 runs through this transition; its last month (2026-11) holds 15 of 30 days: VIIRS coverage 0.50 (NOAA-20 and NOAA-21 for 15 days, S-NPP for 2), MODIS 0.48. VIIRS reaches the 0.5 threshold, so in fused mode the month is served from coverage-corrected VIIRS and is not flagged partial; MODIS is below it and is dropped for that month. (Before the fix rebuild the near-real-time classification fault left VIIRS coverage at 0.10; Known issues.)
 
-**Reconciliation.** `verify.py` checks that rows are conserved through the pipeline, that standard and near-real-time never overlap, that tile totals equal the count of accepted detections at every level, that levels add exactly, that the points archive holds every normalized row, that sampled official country files have the same row count as the zips, and prints the top anomaly months per realm. In the 2026-11-15 build every check is ok (`data/work/verify.json`; its points-archive sort check still assumes the earlier order by 0.05-degree cell and its count of "violations" is not a failure).
+**Reconciliation.** `verify.py` checks that rows are conserved through the pipeline, that standard and near-real-time never overlap on a satellite-day, that every row's quality label matches its FIRMS version, that no satellite-month loses more than 2 % of its rows to supersession without whole-month standard coverage, that tile totals equal the count of accepted detections at every level, that levels add exactly, that the points archive holds every normalized row in the documented sort order (1-degree block, UTC month, 0.05-degree cell, time; checked on the largest, median and smallest file), that sampled official country files have the same row count as the zips, and prints the top anomaly months per realm. In the 2026-11-15 build every check is ok (`data/work/verify.json`).
 
 ## 14. ML challenger
 
@@ -400,13 +402,14 @@ shows no trend (-0.3 %/yr, n.s.).
 
 Seam test. A splice artefact would appear as a step in 2023: the worldwide trend is -1.16 %/yr over 2001-2025,
 -1.32 %/yr over 2001-2022 (MODIS years only) and -1.18 %/yr for the MODIS-only stream over 2001-2025; the harmonized /
-MODIS-only global annual ratio is 1.015 (2023), 1.000 (2024) and 1.07 (2025, the year the drifting Terra and Aqua
+MODIS-only global annual ratio is 1.015 (2023), 1.001 (2024) and 1.07 (2025, the year the drifting Terra and Aqua
 orbits weaken MODIS). Cell trends agree in sign with the MODIS-only trends over 94 % of the tested area (slope
 correlation 0.98); the agreement is partly by construction, since 22 of the 25 years are identical.
 
 ### Watchlist ("where is fire unusual this month?")
 
-`watch.py` (schema/watch.md): for the latest month whose served-stream coverage is >= 0.5 (2026-10 in this build), and
+`watch.py` (schema/watch.md): for the latest month whose served-stream coverage is >= 0.5 (2026-11 in this build: the
+first 15 days, VIIRS coverage 0.50, exactly at the threshold; 2026-10 before the fix rebuild), and
 for the three months ending there, each 0.5 deg cell is compared with the same calendar month(s) of the 2003-2022
 baseline (target year excluded). Cells with >= 5 AFCD-M, at or above the 90th baseline percentile and >= 2 x the
 baseline median (median floored at 1) form 8-connected clusters (longitude wraps), scored by excess activity (sum of
@@ -415,10 +418,13 @@ percentile (resolution ~5 % with 20 years) and the rank among all years of the r
 for being unusual, their ranks lean to the top by construction. The watchlist reads the same switch-rule grid as the
 overview atlases (no drift correction) and its recent months are provisional.
 
-Current list (`data/dist/watch.json`, written 2026-11-15, target month 2026-10, record 2001-2026): for October the
-first clusters are New Guinea (15 x normal, highest of 26 Octobers), the central African savanna on the CAR-South Sudan
-border (3.6 x, highest) and Borneo (19.6 x, third highest); for August-October Central Siberia comes first (171 x
-normal, highest of 26). These are provisional, near-real-time based and not checked against another source.
+Current list (`data/dist/watch.json`, written 2026-11-15, target month 2026-11, half a month of near-real-time data
+scaled by its coverage; record 2000-2026 for November): for November the first clusters are the southern African miombo
+belt (5.0 x normal, highest of 27 Novembers), the northern Australian savanna (14.9 x, highest), the central African
+savanna on the CAR-South Sudan border (5.3 x, highest), northern South America (8.1 x, highest) and the Amazon basin
+(3.9 x, highest); for September-November New Guinea comes first (10.8 x normal, highest of 26), then Borneo (10.9 x,
+third highest) and Yakutia and East Siberia (121 x, highest, against a near-zero normal). These are provisional,
+near-real-time based and not checked against another source.
 
 Historical checks (`watch --month`; files in `data/work/watch/`, written during the refresh before the final tile
 build, so a rerun can move the figures slightly; their record ranks cover only the years up to the target year,
@@ -441,7 +447,6 @@ arc-of-deforestation cluster only 14th at 4.4 x normal (third highest of 26 Augu
 | Count-based availability | A genuine regional quiet period is not confused with an outage because counts are global, but a small partial outage of one satellite may not be flagged. | Use the satellites' own granule metadata. |
 | Overview, trend map and watchlist use the switch rule | They are built in Python from the 0.25° tiles with MODIS before 2023-01 and calibrated VIIRS after, without drift correction, while the area analysis fuses by default. A place's month on the globe can differ from the same month in the area analysis, most from 2020 on. | Build the overview and watchlist from the fused record (a fused column in the tiles or a Python port of the fusion). |
 | AI dossier unit under the lens | The dossier has no unit field, so under the VIIRS lens the model is still told the values are MODIS-equivalent (its comments in `dossierTypes.ts` say AFCD-M). The rule-based brief handles the lens. | Add the unit to the dossier and the prompt. |
-| Ultra-real-time rows classified as standard | `normalize.py` matches `NRT` only; FIRMS `URT` rows of the newest day count as standard and supersede the rest of their month (2026-11 for NOAA-20 and NOAA-21 in this build). | Treat `URT` as near-real-time and re-normalize. |
 | ML challenger snapshot predates the refresh | Table M6 and the Method lab model were built before NOAA-21 and 2026 were added. | Delete `data/work/ml/snap` and run the `ml` stage. |
 | Coefficients are refitted at every rebuild | They are *frozen* in the sense of a fixed fit window and are not stored between builds, so a rebuild can move them slightly (the mask and the availability table are recomputed over all data). | Store the coefficient files with the release and make the build read them. |
 | Daily time zones | Local-solar date uses longitude / 15 h, not civil time zones. | Intentional; documented here so that day boundaries are not mistaken for civil days. |
@@ -456,46 +461,46 @@ What we did not find elsewhere, in a search of the fire-count literature and of 
 
 ## Measured values (as of the 2026-11-15 build)
 
-Update this section from the files named in each caption after a refresh; apart from the overview and watchlist figures in section 19, nothing else in this document contains data-dependent numbers. The build has global scope and runs to 2026-11-15, with NOAA-21 from 2023-03 and near-real-time data from 2026-08 (VIIRS) and 2026-09 (MODIS); 2026-11 is partial for both sensors. Every table except M6 was recomputed from the files named in its caption after the refresh. Table M6 comes from `data/dist/ml/model.json`, written by the ML stage from a snapshot taken before the refresh (before NOAA-21 and the 2026 backfill), and was not recomputed.
+Update this section from the files named in each caption after a refresh; apart from the overview and watchlist figures in section 19, nothing else in this document contains data-dependent numbers. The build has global scope and runs to 2026-11-15, with NOAA-21 from 2023-03 and near-real-time data from 2026-08 (VIIRS) and 2026-09 (MODIS); 2026-11 is partial for both sensors (VIIRS coverage 0.50, MODIS 0.48). Every table except M6 was recomputed from the files named in its caption after the refresh, and again after the fix rebuild of the same day (near-real-time classification, NOAA scale-factor guard, naive-series names; Known issues). Table M6 comes from `data/dist/ml/model.json`, written by the ML stage from a snapshot taken before the refresh (before NOAA-21 and the 2026 backfill), and was not recomputed.
 
 ### Known issues of the 2026-11-15 build
 
-1. **Ultra-real-time rows.** FIRMS marks the newest day of a near-real-time feed `URT`. `normalize.py` labels a row near-real-time only if its `version` contains `NRT`, so the 1,612 NOAA-20 rows (`2.1URT`) and 249 NOAA-21 rows (`2.0URT`) of 2026-11-15 became "standard" and caused the other near-real-time rows of 2026-11 for those satellites (769,150 NOAA-20 and 748,160 NOAA-21 rows: all of November except the `URT` rows) to be dropped as superseded. Effect: 2026-11 has VIIRS only for 2026-11-01 and 2026-11-02 (S-NPP) and the first part of 2026-11-15 (coverage 0.10); the availability table flags NOAA-20 and NOAA-21 unavailable on those days. 2026-11 is partial and excluded from statistics, so no figure in this document changes, but the drawn month, the provisional flag and the live comparison for it are poor. Fixing the classification and re-normalizing the 2026 files repairs it.
+1. **Ultra-real-time rows (fixed in the fix rebuild).** The first 2026-11-15 build labelled a row near-real-time only if its `version` contained `NRT`, so the 1,612 NOAA-20 rows (`2.1URT`) and 249 NOAA-21 rows (`2.0URT`) of 2026-11-15 counted as standard and the other 769,150 NOAA-20 and 748,160 NOAA-21 near-real-time rows of 2026-11 were dropped as superseded (VIIRS coverage of 2026-11 was 0.10). The rule is now version-based (section 2); the 2026 files were re-normalized and every later stage rebuilt. 2026-11 now has all three VIIRS satellites' near-real-time rows (VIIRS coverage 0.50, the 0.5 threshold of `COV_MIN`), so in fused mode the kernel no longer treats it as partial: its VIIRS stream counts as covered and the month enters statistics, and the watchlist's latest covered month is now 2026-11 (section 19). MODIS coverage of 2026-11 is 0.48, below the threshold.
 2. **ML model snapshot.** See Table M6.
 3. **Switch-rule products.** The overview atlases, the trend map and the watchlist use the switch rule (section 11).
-4. **Naive series in Table M4b.** The `naive` column there is raw VIIRS counts from 2012-02 on (MODIS counts before), not the MODIS-then-VIIRS series switched at 2023-01 of Table M4, so its 2023 step reflects NOAA-21 joining.
+4. **Two naive series (renamed in the fix rebuild).** `validation.json` now names both raw-count records explicitly in Tables M4 and M4b: `naive_switch_2023` (MODIS counts, then VIIRS counts from 2023-01; formerly `pettitt.naive`) and `naive_viirs_from_2012` (VIIRS counts from 2012-02; formerly `pettitt.at_viirs_start.naive` and `fusion.pettitt_fused.*.naive`). The web app's method section still reads the old keys `pettitt.naive` and `pettitt.at_viirs_start.naive` until it is updated.
 
 **Table M1. Raw and harmonized VIIRS-to-MODIS ratios by year** (`validation.json`, `ratio_by_year`). Count ratio = VIIRS detections / MODIS detections; AFCD ratio = sum of uncalibrated `v` / sum of `meq`; harmonized ratio = sum of `kv` / sum of `meq`. 2012 starts in February for VIIRS, so its ratios are not comparable.
 
 | Year | MODIS detections | VIIRS detections | Count ratio | AFCD ratio (raw) | Harmonized ratio |
 | --- | --- | --- | --- | --- | --- |
-| 2012 | 4,516,630 | 17,017,652 | 3.77 | 2.41 | 0.89 |
+| 2012 | 4,516,630 | 17,017,651 | 3.77 | 2.41 | 0.89 |
 | 2013 | 3,828,738 | 15,335,521 | 4.01 | 2.78 | 1.00 |
-| 2014 | 3,997,393 | 16,070,104 | 4.02 | 2.78 | 1.00 |
-| 2015 | 4,284,877 | 17,112,138 | 3.99 | 2.74 | 0.99 |
-| 2016 | 3,992,527 | 16,219,256 | 4.06 | 2.79 | 0.98 |
-| 2017 | 4,019,104 | 15,865,507 | 3.95 | 2.68 | 0.98 |
-| 2018 | 3,749,733 | 26,532,317 | 7.08 | 2.75 | 1.00 |
-| 2019 | 4,107,420 | 33,389,353 | 8.13 | 2.75 | 1.00 |
-| 2020 | 4,004,148 | 33,040,132 | 8.25 | 2.83 | 1.02 |
-| 2021 | 3,933,448 | 32,148,073 | 8.17 | 2.76 | 1.01 |
-| 2022 | 3,397,224 | 27,756,068 | 8.17 | 2.81 | 1.03 |
-| 2023 | 4,167,362 | 48,548,385 | 11.65 | 2.76 | 1.01 |
-| 2024 | 4,351,135 | 52,121,453 | 11.98 | 2.76 | 1.00 |
-| 2025 | 3,268,543 | 42,136,959 | 12.89 | 2.97 | 1.07 |
-| 2026 | 2,730,989 | 37,430,979 | 13.71 | 3.18 | 1.14 |
+| 2014 | 3,997,393 | 16,070,102 | 4.02 | 2.78 | 1.00 |
+| 2015 | 4,284,877 | 17,112,136 | 3.99 | 2.74 | 0.99 |
+| 2016 | 3,992,527 | 16,219,255 | 4.06 | 2.79 | 0.98 |
+| 2017 | 4,019,104 | 15,865,506 | 3.95 | 2.68 | 0.98 |
+| 2018 | 3,749,733 | 26,532,307 | 7.08 | 2.75 | 1.00 |
+| 2019 | 4,107,420 | 33,389,336 | 8.13 | 2.75 | 1.00 |
+| 2020 | 4,004,148 | 33,040,120 | 8.25 | 2.83 | 1.02 |
+| 2021 | 3,933,448 | 32,148,055 | 8.17 | 2.76 | 1.01 |
+| 2022 | 3,397,224 | 27,756,052 | 8.17 | 2.81 | 1.03 |
+| 2023 | 4,167,362 | 48,548,346 | 11.65 | 2.76 | 1.01 |
+| 2024 | 4,351,135 | 52,121,428 | 11.98 | 2.76 | 1.00 |
+| 2025 | 3,268,543 | 42,136,938 | 12.89 | 2.97 | 1.07 |
+| 2026 | 2,730,989 | 38,631,389 | 14.15 | 3.46 | 1.24 |
 
-The count ratio steps up again from 2023, when NOAA-21 joins (each satellite adds its own detections); the harmonized ratio does not, but it rises in 2025-2026 as MODIS drifts (section 10). 2026 runs to mid-November (its 2026-11 VIIRS counts are largely missing; Known issues).
+The count ratio steps up again from 2023, when NOAA-21 joins (each satellite adds its own detections); the harmonized ratio does not, but it rises in 2025-2026 as MODIS drifts (section 10). 2026 runs to mid-November; its 2026-11 MODIS value is left uncorrected (coverage 0.48, below 0.5) while VIIRS is coverage-corrected (0.50), which raises the 2026 AFCD and harmonized ratios.
 
 **Table M2. Validation** (`validation.json`: `loyo`, `loyo_naive_global_ratio`, `out_of_time`, `aqua_only_sensitivity`, `beta_loglog_1deg`).
 
 | Test | Measure | Production | Naive global ratio |
 | --- | --- | --- | --- |
 | LOYO stratum-month (7,281 unit-months) | r of log1p | 0.9884 | 0.9808 |
-| | log-RMSE | 0.4577 | 0.6067 |
+| | log-RMSE | 0.4580 | 0.6069 |
 | | bias | +0.06 % | +0.00 % |
 | | slope | 1.040 | 1.060 |
-| | peak month exact / within one month | 0.854 / 0.936 | 0.813 / 0.916 |
+| | peak month exact / within one month | 0.854 / 0.936 | 0.815 / 0.918 |
 | | anomaly sign agreement | 0.892 | 0.899 |
 | LOYO 1-degree cell-month (938,505 unit-months) | r of log1p | 0.9439 | 0.9278 |
 | | log-RMSE | 0.6006 | 0.6801 |
@@ -504,10 +509,10 @@ The count ratio steps up again from 2023, when NOAA-21 joins (each satellite add
 | | anomaly sign agreement | 0.843 | 0.844 |
 | Out-of-time bias (stratum-month r) | 2022 (11 months) | +1.2 % (0.984) | not computed |
 | | 2023 | +1.5 % (0.988) | |
-| | 2024 | +0.0 % (0.988) | |
-| | 2025 | +7.0 % (0.985) | |
-| | 2026 (10 months) | +19.0 % (0.981) | |
-| Aqua-only sensitivity | correlation of log anomalies, production vs Aqua-only reference | 0.985 (lowest by biome: unclassified 0.935, tropical and subtropical grasslands 0.957, tundra 0.971; others 0.984-0.995) | |
+| | 2024 | +0.1 % (0.988) | |
+| | 2025 | +7.1 % (0.985) | |
+| | 2026 (10 months) | +19.0 % (0.980) | |
+| Aqua-only sensitivity | correlation of log anomalies, production vs Aqua-only reference | 0.985 (lowest by biome: unclassified 0.933, tropical and subtropical grasslands 0.957, tundra 0.971; others 0.984-0.995) | |
 | Log-log slope, 1-degree, by biome | OLS slope of log M on log V | 0.66 (mangroves) to 0.94 (tropical and subtropical grasslands); all below 1 | |
 
 Stratum-month log-RMSE by biome ranges from 0.17 (deserts) to 0.41 (flooded grasslands) for most biomes; it is 1.20 for boreal forest, 1.36 for tundra and 0.66 for the unclassified stratum (`loyo.stratum_month.by_biome`).
@@ -520,36 +525,39 @@ Stratum-month log-RMSE by biome ranges from 0.17 (deserts) to 0.41 (flooded gras
 | `tau` (VIIRS calibration); 1-degree LOYO RMSE for tau = 5 / 10 / 20 / 50 / none | 5; 0.6006 / 0.6091 / 0.6182 / 0.6289 / 0.6451 |
 | `tau_bridge` | 20 |
 | Share of the 1,536 factors (64 strata x 2 x 12 months) by fallback level: stratum x dn x month / stratum x dn / biome x dn / global x dn | 66.9 % / 23.0 % / 8.6 % / 1.6 % |
-| NOAA-20 to S-NPP factor `c20`: median, range across strata and day|night | 0.977; 0.875 to 1.133 across 127 of 128 factors; the unclassified stratum by day has 0.044 (S-NPP counts there are a small fraction of NOAA-20's; not investigated) |
+| NOAA-20 to S-NPP factor `c20`: median, range across strata and day|night | 0.977; 0.875 to 1.133 across all 128 factors. The scale-factor guard (section 4) rejected five stratum factors because one month supplied more than half of a sum, and used the biome or global factor instead: `c20` unclassified by day 0.044 → 0.994 (global; 95 % of its NOAA-20 sum came from 2026-10, offshore near-real-time detections without a `type` to screen them), `c20` stratum 41 at night 1.037 → 0.968, `c21` stratum 1 at night 0.974 → 0.958, stratum 46 by day 0.883 → 0.949 and at night 0.956 → 0.977 |
 | V-weighted `k` by biome (VIIRS to MODIS-equivalent), day | 0.29 (mangroves) to 0.60 (temperate conifer forests) |
 | V-weighted `k` by biome, night | 0.14 (montane grasslands) to 0.36 (tundra) |
 | Bridge LOYO RMSE at tau_bridge (1-degree) | 0.8223 |
 | `ci_scale` (legacy interval only) | 2.2362 |
 | VIIRS-to-MODIS factor refitted on 2012-2019 instead of 2012-2021 | +0.33 % globally (Table M11d) |
 | 80 % interval coverage, unscaled | 0.481 |
-| 80 % / 95 % coverage after scaling, all cells with H >= 5 (372,967 cell-months) | 0.800 / 0.915 |
-| Same by predicted H: 5-20 (177,508), 20-100 (122,637), 100 and above (72,822) | 80 %: 0.822, 0.808, 0.734; 95 %: 0.919, 0.924, 0.889 |
+| 80 % / 95 % coverage after scaling, all cells with H >= 5 (372,968 cell-months) | 0.800 / 0.915 |
+| Same by predicted H: 5-20 (177,509), 20-100 (122,637), 100 and above (72,822) | 80 %: 0.822, 0.808, 0.734; 95 %: 0.919, 0.924, 0.889 |
 
 **Table M4. Change-point tests** (`validation.json`, `pettitt`). Step is in natural-log units of the monthly total after removing the month-of-year mean.
 
 | Event | Window | Series | Detected change month | p | Step |
 | --- | --- | --- | --- | --- | --- |
-| Switch to VIIRS, 2023-01 | 2020-01 to 2025-12 | naive counts (MODIS counts before, VIIRS counts from the switch) | 2023-01 | below 0.0001 | +2.533 |
+| Switch to VIIRS, 2023-01 | 2020-01 to 2025-12 | `naive_switch_2023` (MODIS counts before, VIIRS counts from the switch) | 2023-01 | below 0.0001 | +2.533 |
+| | | `naive_viirs_from_2012` (VIIRS counts throughout this window) | 2023-03 | below 0.0001 | +0.439 |
 | | | harmonized (`meq` before, `kv` from the switch) | 2025-02 | 0.17 | -0.117 |
-| VIIRS start, 2012-02 | 2009-02 to 2015-01 | naive counts | 2012-02 | below 0.0001 | +1.367 |
+| VIIRS start, 2012-02 | 2009-02 to 2015-01 | `naive_viirs_from_2012` (MODIS counts before, VIIRS counts from 2012-02) | 2012-02 | below 0.0001 | +1.367 |
 | | | harmonized | 2013-03 | 0.14 | -0.069 |
+
+The `naive_viirs_from_2012` step at 2023-03 in the switch window is NOAA-21 joining (raw VIIRS counts add each satellite's detections), not the switch.
 
 **Table M5. Availability, mask and strata** (`availability.parquet`, `static_mask.parquet`, `data/work/refresh_run.log`).
 
 | Item | Value |
 | --- | --- |
-| Satellite-days flagged unavailable: Terra / Aqua / S-NPP / NOAA-20 / NOAA-21 (of days in operating period) | 63 of 9,511 / 28 of 8,901 / 51 of 5,401 / 20 of 3,151 / 16 of 1,356 |
+| Satellite-days flagged unavailable: Terra / Aqua / S-NPP / NOAA-20 / NOAA-21 (of days in operating period) | 63 of 9,511 / 28 of 8,901 / 51 of 5,401 / 6 of 3,151 / 2 of 1,356 |
 | Largest unavailable runs | Terra 2001-06-16 to 07-02 (17 days), 2016-02-19 to 02-27, 2022-10-11 to 10-23; S-NPP 2022-07-27 to 08-10; Aqua 2022-04-01 to 04-16 |
-| Flagged because of the 2026-11 classification fault (Known issues) | NOAA-20 and NOAA-21, 2026-11-01 to 11-14 (14 days each); Aqua 2026-11-15 (a partial last day) |
-| Masked sub-cells | 139,457 core (typed or persistent) plus 538,756 by dilation, 678,213 in all (0.16 % of the 414.7 million sub-cells) |
-| Fire-active 0.05 degree cells and stratum assignment | 2,973,053; 2,944,895 inside an ecoregion, 25,119 nearest within 0.25 degrees, 3,039 unclassified |
+| Flagged at the end of the record | Aqua 2026-11-15 (a partial last day). Before the fix rebuild the classification fault (Known issues) also flagged NOAA-20 and NOAA-21 on 2026-11-01 to 11-14 |
+| Masked sub-cells | 139,458 core (typed or persistent) plus 538,764 by dilation, 678,222 in all (0.16 % of the 414.7 million sub-cells) |
+| Fire-active 0.05 degree cells and stratum assignment | 2,973,941; 2,945,715 inside an ecoregion, 25,171 nearest within 0.25 degrees, 3,055 unclassified |
 
-**Table M6. ML challenger** (`data/dist/ml/model.json`). Fixed split: fit 2012-02 to 2018-12, test 2019-2021. Unit-months: 298,217 at 1 degree, 2,215 at stratum scale. Written from a data snapshot taken before the 2026 and NOAA-21 refresh and not recomputed; its out-of-time production bias (2025: +7.3 %) therefore differs slightly from Table M2 (+7.0 %).
+**Table M6. ML challenger** (`data/dist/ml/model.json`). Fixed split: fit 2012-02 to 2018-12, test 2019-2021. Unit-months: 298,217 at 1 degree, 2,215 at stratum scale. Written from a data snapshot taken before the 2026 and NOAA-21 refresh and not recomputed; its out-of-time production bias (2025: +7.3 %) therefore differs slightly from Table M2 (+7.1 %).
 
 | Method | 1-degree r | 1-degree log-RMSE | Stratum r | Stratum log-RMSE | Bias |
 | --- | --- | --- | --- | --- | --- |
@@ -564,13 +572,13 @@ Out-of-time bias in the ML run (its own snapshot), 2022 / 2023 / 2024 / 2025: pr
 
 **Table M4b. Change points of the fused global series** (`validation.json`, `fusion.pettitt_fused`; detected month, p and step for each series).
 
-| Event (window) | Fused | Switch | Naive counts |
-| --- | --- | --- | --- |
-| VIIRS start, 2012-02 (109-180) | 2013-03, p 0.120, step -0.076 | 2013-03, p 0.097, step -0.081 | 2012-02, p below 0.0001, step +1.367 |
-| Drift correction starts, 2020-01 (204-275) | 2020-12, p 0.067, step -0.059 | 2020-12, p 0.029, step -0.078 | 2018-11, p below 0.0001, step +0.496 |
-| Legacy switch, 2023-01 (240-311) | 2025-02, p 0.061, step -0.131 | 2025-02, p 0.169, step -0.117 | 2023-03, p below 0.0001, step +0.439 |
+| Event (window) | Fused | Switch | `naive_viirs_from_2012` | `naive_switch_2023` |
+| --- | --- | --- | --- | --- |
+| VIIRS start, 2012-02 (109-180) | 2013-03, p 0.120, step -0.076 | 2013-03, p 0.097, step -0.081 | 2012-02, p below 0.0001, step +1.367 | 2013-03, p 0.100, step -0.085 (MODIS counts only) |
+| Drift correction starts, 2020-01 (204-275) | 2020-12, p 0.067, step -0.059 | 2020-12, p 0.029, step -0.078 | 2018-11, p below 0.0001, step +0.496 | 2021-09, p 0.008, step -0.151 (MODIS counts only) |
+| Legacy switch, 2023-01 (240-311) | 2025-02, p 0.063, step -0.131 | 2025-02, p 0.169, step -0.117 | 2023-03, p below 0.0001, step +0.439 | 2023-01, p below 0.0001, step +2.533 |
 
-The naive column here is raw VIIRS counts from 2012-02 (MODIS counts before), not the switch-at-2023-01 series of Table M4; its 2023 step reflects NOAA-21 joining. Fused global total over raw MODIS, by year: 2012 0.984, 2013 0.998, 2014 1.003, 2015 0.993, 2016 0.991, 2017 0.991, 2018 1.003, 2019 1.001, 2020 1.027, 2021 1.005, 2022 1.027, 2023 1.014, 2024 1.002, 2025 1.073, 2026 1.146.
+`naive_viirs_from_2012` is raw VIIRS counts from 2012-02 (MODIS counts before); in the two later windows it is VIIRS throughout, so its steps reflect NOAA-20 (2018) and NOAA-21 (2023) joining. `naive_switch_2023` is MODIS counts until 2023-01 and VIIRS counts from it (the series of Table M4); before 2023 it is raw MODIS counts, whose 2021-09 decline is the MODIS drift. Fused global total over raw MODIS, by year: 2012 0.984, 2013 0.998, 2014 1.003, 2015 0.993, 2016 0.991, 2017 0.991, 2018 1.003, 2019 1.001, 2020 1.027, 2021 1.005, 2022 1.027, 2023 1.014, 2024 1.002, 2025 1.073, 2026 1.240 (2026-11 MODIS uncorrected at coverage 0.48).
 
 **Table M7a. Cell-level dispersion `phi`** (`validation.json`, `error_model`; day / night; group values weighted by Terra∪Aqua cell-days; MODIS-equivalent units, 1 = Poisson). TC = triple collocation; split = Poisson split of the VIIRS - Terra∪Aqua difference (section 9d).
 
@@ -596,7 +604,7 @@ The naive column here is raw VIIRS counts from 2012-02 (MODIS counts before), no
 | Boreal forest and tundra | 0.0053 / 0.0265 | 0.0127 / 0.0653 | 0.0024 / 0.0090 | 0.0162 / 0.0649 |
 | Tropical savannas and grasslands | 0.0014 / 0.0015 | 0.0009 / 0.0077 | 0.0004 / 0.0013 | 0.0048 / 0.0034 |
 | Temperate grasslands | 0.0073 / 0.0484 | 0.0086 / 0.0568 | 0.0009 / 0.0984 | 0.0194 / 0.0018 |
-| Flooded and montane grasslands | 0.0043 / 0.0167 | 0.0082 / 0.0155 | 0.0015 / 0.0080 | 0.0159 / 0.0194 |
+| Flooded and montane grasslands | 0.0043 / 0.0167 | 0.0082 / 0.0155 | 0.0015 / 0.0081 | 0.0159 / 0.0194 |
 | Mediterranean | 0.0136 / 0.0230 | 0.0070 / 0.0683 | 0.0026 / 0.3648 | 0.0513 / 0.0422 |
 | Deserts and xeric shrublands | 0.0071 / 0.0132 | 0.0077 / 0.0231 | 0.0017 / 0.1112 | 0.0227 / 0.0279 |
 | Mangroves and unclassified | 0.0123 / 0.0376 | 0.0079 / 0.0822 | 0.0026 / 0.0277 | 0.0494 / 0.0218 |
@@ -608,14 +616,14 @@ Single satellites, all strata, `phi` day / night: S-NPP 1.17 / 1.46, NOAA-20 1.0
 
 | Satellite | | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Terra | day | 1.01 | 1.00 | 0.99 | 0.92 (0.87-0.96) | 0.85 (0.80-0.89) | 0.73 (0.68-0.77) | 0.58 (0.54-0.63) | 0.44 (0.40-0.49) |
-| Terra | night | 1.03 | 1.04 | 1.10 | 1.04 (0.99-1.10) | 1.16 (1.10-1.22) | 1.27 (1.20-1.34) | 1.35 (1.27-1.43) | 1.53 (1.41-1.66) |
-| Aqua | day | 0.99 | 0.95 | 0.99 | 1.00 (0.96-1.03) | 1.02 (0.99-1.06) | 1.06 (1.02-1.10) | 1.01 (0.97-1.05) | 0.90 (0.85-0.95) |
-| Aqua | night | 1.07 | 0.99 | 1.09 | 0.98 (0.88-1.09) | 1.03 (0.93-1.15) | 1.04 (0.92-1.16) | 0.83 (0.74-0.93) | 0.70 (0.60-0.82) |
-| Terra∪Aqua | day | 1.00 | 0.96 | 0.99 | 0.97 (0.95-1.00) | 0.98 (0.95-1.01) | 0.97 (0.94-1.00) | 0.90 (0.87-0.93) | 0.78 (0.74-0.82) |
-| Terra∪Aqua | night | 1.04 | 1.03 | 1.10 | 1.02 (0.97-1.08) | 1.12 (1.06-1.19) | 1.19 (1.12-1.26) | 1.20 (1.13-1.28) | 1.29 (1.19-1.40) |
+| Terra | day | 1.01 | 1.00 | 0.99 | 0.92 (0.87-0.96) | 0.85 (0.80-0.90) | 0.73 (0.68-0.77) | 0.58 (0.54-0.63) | 0.45 (0.40-0.50) |
+| Terra | night | 1.03 | 1.04 | 1.10 | 1.04 (0.99-1.10) | 1.16 (1.10-1.22) | 1.27 (1.21-1.34) | 1.35 (1.28-1.42) | 1.55 (1.44-1.68) |
+| Aqua | day | 0.99 | 0.95 | 0.99 | 1.00 (0.96-1.03) | 1.02 (0.99-1.06) | 1.06 (1.02-1.10) | 1.01 (0.97-1.05) | 0.90 (0.85-0.94) |
+| Aqua | night | 1.07 | 0.99 | 1.09 | 0.98 (0.88-1.09) | 1.03 (0.93-1.15) | 1.04 (0.93-1.16) | 0.83 (0.75-0.93) | 0.70 (0.60-0.82) |
+| Terra∪Aqua | day | 1.00 | 0.96 | 0.99 | 0.97 (0.95-1.00) | 0.98 (0.95-1.01) | 0.97 (0.94-1.00) | 0.90 (0.87-0.93) | 0.78 (0.75-0.82) |
+| Terra∪Aqua | night | 1.04 | 1.03 | 1.10 | 1.02 (0.97-1.08) | 1.12 (1.06-1.19) | 1.19 (1.12-1.26) | 1.20 (1.13-1.27) | 1.29 (1.19-1.40) |
 
-Placebo, 2012-2019, global, RMS of the log ratio (day / night): Terra 0.021 / 0.021, Aqua 0.016 / 0.050, Terra∪Aqua 0.014 / 0.025; largest single-year departure 9.5 %. The jackknife-only 95 % interval covers 1 in 50 % of the years (day) and 88 % (night) of the Terra∪Aqua placebo years: it misses the year-to-year variability, which is why the total interval adds it.
+Placebo, 2012-2019, global, RMS of the log ratio (day / night): Terra 0.021 / 0.021, Aqua 0.016 / 0.050, Terra∪Aqua 0.014 / 0.025; largest single-year departure 9.5 %. The jackknife-only 95 % interval covers 1 in 62 % of the years (day) and 75 % (night) of the Terra∪Aqua placebo years: it misses the year-to-year variability, which is why the total interval adds it.
 
 **Table M8b. Overpass shift** (`drift.overpass`): mean local solar time of detections minus the same satellite's 2012-2019 mean for the same stratum × day|night × month of year, hours.
 
@@ -634,23 +642,23 @@ Placebo, 2012-2019, global, RMS of the log ratio (day / night): Terra 0.021 / 0.
 
 | Biome group | Terra day | Terra night | Aqua day | Aqua night | beta Terra day | beta Terra night | beta Aqua night |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Tropical forests | 0.60 (0.52-0.69) | 1.53 (1.36-1.73) | 1.02 (0.92-1.13) | 0.79 (0.67-0.92) | +0.42 ± 0.02 (98%) | -0.38 ± 0.02 (99%) | -0.06 ± 0.04 (20%) |
-| Temperate forests | 0.73 (0.60-0.90) | 1.30 (0.98-1.73) | 1.00 (0.88-1.13) | 0.95 (0.55-1.63) | +0.27 ± 0.03 (98%) | -0.20 ± 0.05 (93%) | -0.09 ± 0.09 (26%) |
-| Boreal forest and tundra | 0.80 (0.68-0.93) | 1.06 (0.86-1.30) | 1.20 (1.03-1.40) | 0.89 (0.53-1.48) | +0.01 ± 0.07 (0%) | +0.04 ± 0.07 (3%) | -0.48 ± 0.12 (63%) |
-| Tropical savannas and grasslands | 0.52 (0.46-0.57) | 1.40 (1.31-1.50) | 0.99 (0.96-1.04) | 0.82 (0.74-0.90) | +0.66 ± 0.02 (99%) | -0.30 ± 0.01 (99%) | -0.19 ± 0.02 (90%) |
-| Temperate grasslands | 0.70 (0.62-0.78) | 1.05 (0.75-1.47) | 1.00 (0.88-1.13) | 0.55 (0.32-0.92) | +0.32 ± 0.02 (99%) | -0.20 ± 0.06 (61%) | -0.40 ± 0.10 (74%) |
-| Flooded and montane grasslands | 0.51 (0.45-0.59) | 1.55 (1.34-1.80) | 1.06 (0.99-1.13) | 0.77 (0.49-1.21) | +0.58 ± 0.02 (99%) | -0.43 ± 0.03 (94%) | -0.18 ± 0.04 (70%) |
-| Mediterranean | 0.76 (0.58-1.00) | 1.30 (0.83-2.02) | 1.13 (0.95-1.33) | 1.10 (0.62-1.94) | +0.30 ± 0.02 (97%) | -0.15 ± 0.06 (69%) | -0.06 ± 0.09 (10%) |
-| Deserts and xeric shrublands | 0.79 (0.69-0.89) | 1.23 (1.01-1.49) | 1.01 (0.92-1.10) | 0.93 (0.69-1.25) | +0.22 ± 0.02 (94%) | -0.21 ± 0.03 (94%) | -0.15 ± 0.05 (66%) |
-| Mangroves and unclassified | 0.50 (0.38-0.67) | 1.15 (0.70-1.86) | 1.20 (1.05-1.37) | 0.49 (0.23-1.07) | +0.54 ± 0.04 (97%) | -0.26 ± 0.09 (80%) | -0.18 ± 0.15 (18%) |
+| Tropical forests | 0.60 (0.52-0.70) | 1.53 (1.37-1.72) | 1.02 (0.92-1.12) | 0.79 (0.67-0.92) | +0.41 ± 0.02 (98%) | -0.38 ± 0.02 (99%) | -0.06 ± 0.04 (20%) |
+| Temperate forests | 0.73 (0.60-0.90) | 1.30 (0.97-1.75) | 1.00 (0.88-1.13) | 0.95 (0.55-1.64) | +0.28 ± 0.03 (97%) | -0.20 ± 0.05 (93%) | -0.09 ± 0.09 (26%) |
+| Boreal forest and tundra | 0.80 (0.69-0.93) | 1.06 (0.87-1.28) | 1.20 (1.03-1.40) | 0.89 (0.54-1.47) | +0.01 ± 0.07 (0%) | +0.05 ± 0.07 (3%) | -0.48 ± 0.12 (63%) |
+| Tropical savannas and grasslands | 0.52 (0.47-0.57) | 1.40 (1.31-1.50) | 0.99 (0.95-1.04) | 0.82 (0.74-0.90) | +0.64 ± 0.02 (99%) | -0.29 ± 0.01 (99%) | -0.19 ± 0.02 (90%) |
+| Temperate grasslands | 0.70 (0.62-0.78) | 1.05 (0.75-1.48) | 1.00 (0.89-1.12) | 0.55 (0.33-0.91) | +0.32 ± 0.02 (99%) | -0.20 ± 0.06 (61%) | -0.40 ± 0.10 (74%) |
+| Flooded and montane grasslands | 0.51 (0.44-0.59) | 1.55 (1.33-1.81) | 1.06 (0.99-1.13) | 0.77 (0.50-1.19) | +0.60 ± 0.02 (99%) | -0.44 ± 0.03 (94%) | -0.18 ± 0.04 (70%) |
+| Mediterranean | 0.76 (0.61-0.96) | 1.30 (0.88-1.92) | 1.13 (0.95-1.33) | 1.10 (0.63-1.92) | +0.29 ± 0.02 (97%) | -0.14 ± 0.06 (68%) | -0.06 ± 0.09 (10%) |
+| Deserts and xeric shrublands | 0.79 (0.69-0.90) | 1.23 (1.02-1.48) | 1.01 (0.92-1.10) | 0.93 (0.69-1.25) | +0.18 ± 0.02 (94%) | -0.21 ± 0.03 (95%) | -0.15 ± 0.05 (66%) |
+| Mangroves and unclassified | 0.50 (0.37-0.69) | 1.15 (0.71-1.85) | 1.20 (1.05-1.38) | 0.49 (0.22-1.09) | +0.57 ± 0.04 (98%) | -0.25 ± 0.09 (79%) | -0.18 ± 0.15 (18%) |
 
 **Table M9. Conformal intervals** (`validation.json`, `conformal`; `meta.json`, `conformal`). Multipliers of the global row; coverage of observed Terra∪Aqua at 80 % / 95 % by size class of the prediction, all supports pooled. In the calibration years the new interval covers 0.800 / 0.950 in every class by construction. Out of time = frozen calibration, 2022-2024.
 
 | Size class (AFCD) | q80 / q95 | n, 2012-2021 | legacy, 2012-2021 | n, 2022-2024 | conformal vs raw MODIS | conformal vs drift-corrected MODIS | legacy vs raw MODIS |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| H<5 | 1.29 / 3.02 | 791,435 | 0.396 / 0.407 | 270,306 | 0.809 / 0.962 | 0.809 / 0.962 | 0.363 / 0.376 |
-| 5-20 | 1.79 / 3.41 | 233,741 | 0.826 / 0.922 | 69,027 | 0.774 / 0.939 | 0.778 / 0.939 | 0.817 / 0.914 |
-| 20-100 | 1.89 / 3.37 | 164,444 | 0.804 / 0.921 | 47,483 | 0.753 / 0.926 | 0.760 / 0.929 | 0.773 / 0.900 |
+| H<5 | 1.29 / 3.02 | 791,434 | 0.396 / 0.407 | 270,304 | 0.809 / 0.962 | 0.809 / 0.962 | 0.363 / 0.376 |
+| 5-20 | 1.79 / 3.41 | 233,742 | 0.826 / 0.922 | 69,028 | 0.775 / 0.939 | 0.778 / 0.939 | 0.817 / 0.914 |
+| 20-100 | 1.89 / 3.37 | 164,444 | 0.804 / 0.921 | 47,484 | 0.753 / 0.926 | 0.760 / 0.929 | 0.773 / 0.900 |
 | 100-1000 | 2.12 / 3.74 | 93,985 | 0.723 / 0.874 | 27,926 | 0.732 / 0.919 | 0.747 / 0.926 | 0.667 / 0.833 |
 | H>=1000 | 2.19 / 3.98 | 13,746 | 0.636 / 0.807 | 4,284 | 0.712 / 0.908 | 0.736 / 0.914 | 0.556 / 0.726 |
 
@@ -661,7 +669,7 @@ Out of time by biome group (80 %, conformal / legacy): Tropical forests 0.78 / 0
 | Scale | Aqua alone (switch) | VIIRS alone | Fused | Equal weights | Mean Aqua weight |
 | --- | --- | --- | --- | --- | --- |
 | 1° cell-month, all (n 739,773) | 0.949 | 0.932 | 0.898 | 0.888 | 0.35 |
-| stratum-month, all (n 5,800) | 0.464 | 0.570 | 0.511 | 0.502 | 0.58 |
+| stratum-month, all (n 5,800) | 0.464 | 0.571 | 0.512 | 0.502 | 0.58 |
 | 1°, H<5 (n 452,072) | 0.866 | 0.856 | 0.808 | 0.790 | |
 | 1°, 5-20 (n 134,288) | 1.212 | 1.190 | 1.160 | 1.156 | |
 | 1°, 20-100 (n 95,279) | 0.996 | 0.974 | 0.962 | 0.964 | |
@@ -670,10 +678,10 @@ Out of time by biome group (80 %, conformal / legacy): Tropical forests 0.78 / 0
 | stratum, H<5 (n 656) | 0.880 | 0.871 | 0.809 | 0.793 | |
 | stratum, 5-20 (n 345) | 0.899 | 1.447 | 1.273 | 1.231 | |
 | stratum, 20-100 (n 810) | 0.539 | 0.726 | 0.639 | 0.637 | |
-| stratum, 100-1000 (n 1,997) | 0.291 | 0.297 | 0.272 | 0.273 | |
+| stratum, 100-1000 (n 1,997) | 0.291 | 0.297 | 0.273 | 0.273 | |
 | stratum, H>=1000 (n 1,992) | 0.165 | 0.180 | 0.159 | 0.158 | |
 
-Error model alone (no conformal multiplier): the nominal 80 % / 95 % interval of the fused value, widened by Terra's own error, covers Terra (H ≥ 5) 0.59 / 0.70 of the time at 1° and 0.76 / 0.87 at stratum scale. Fused with `kappa` = 0: 0.898 (1°), 0.511 (stratum).
+Error model alone (no conformal multiplier): the nominal 80 % / 95 % interval of the fused value, widened by Terra's own error, covers Terra (H ≥ 5) 0.59 / 0.70 of the time at 1° and 0.76 / 0.87 at stratum scale. Fused with `kappa` = 0: 0.898 (1°), 0.512 (stratum).
 
 (b) MODIS weight of the production fusion (median over 1° cell-months; activity-weighted in brackets): 2012-2019 0.35 (0.39); 2020-2021 0.31 (0.32); 2022-2025 0.25 (0.27); 2026 0.23 (0.18). Global, by year: 2012 0.41, 2013 0.39, 2014 0.40, 2015 0.40, 2016 0.39, 2017 0.40, 2018 0.36, 2019 0.37, 2020 0.31, 2021 0.33, 2022 0.31, 2023 0.28, 2024 0.26, 2025 0.21, 2026 0.18.
 
@@ -681,12 +689,12 @@ Error model alone (no conformal multiplier): the nominal 80 % / 95 % interval of
 
 | Year | bias vs MODIS | log-RMSE vs MODIS | bias vs drift-corrected MODIS | bias vs NOAA-20 | log-RMSE vs NOAA-20 | bias vs S-NPP |
 | --- | --- | --- | --- | --- | --- | --- |
-| 2023 (10 months) | +0.5 % | 0.444 | +0.1 % | +0.2 % | 0.153 | +0.6 % |
-| 2024 (12 months) | +0.4 % | 0.503 | +0.1 % | -0.1 % | 0.181 | +2.5 % |
-| 2025 (12 months) | +6.9 % | 0.560 | -0.6 % | -0.4 % | 0.180 | +0.1 % |
-| 2026 (10 months) | +19.0 % | 0.632 | -0.4 % | -0.4 % | 0.232 | +0.1 % |
+| 2023 (10 months) | +0.5 % | 0.444 | +0.1 % | +0.2 % | 0.152 | +0.7 % |
+| 2024 (12 months) | +0.4 % | 0.504 | +0.1 % | -0.1 % | 0.181 | +2.5 % |
+| 2025 (12 months) | +6.9 % | 0.561 | -0.6 % | -0.4 % | 0.181 | +0.1 % |
+| 2026 (10 months) | +19.0 % | 0.633 | -0.4 % | -0.5 % | 0.175 | +0.1 % |
 
-(b) Closure, NOAA-20 → MODIS, chain over direct: weighted mean log -0.0041, RMS 0.0246; out of sample (2020-2021, 1°) log-RMSE chain 0.6818, direct 0.6824; bias +0.5 % and +1.0 %.
+(b) Closure, NOAA-20 → MODIS, chain over direct: weighted mean log -0.0041, RMS 0.0244; out of sample (2020-2021, 1°) log-RMSE chain 0.6818, direct 0.6824; bias +0.5 % and +1.0 %.
 
 (c) Power law, leave-one-year-out, no per-cell multiplier: 1° log-RMSE proportional 0.6451, power 0.6188; stratum-month 0.5007 and 0.4597. Selected `b` 1.00 to 1.20 (grid 0.6-1.5). For comparison, the per-cell multiplier lowers the proportional model's 1° error from 0.645 to 0.601 (Table M3).
 

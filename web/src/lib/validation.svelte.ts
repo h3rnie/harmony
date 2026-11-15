@@ -24,8 +24,8 @@ export interface Validation {
   loyo?: { cell1deg_month?: { overall?: Record<string, number> }; stratum_month?: { overall?: Record<string, number> } }
   loyo_naive_global_ratio?: { cell1deg_month?: { overall?: Record<string, number> }; stratum_month?: { overall?: Record<string, number> } }
   pettitt?: {
-    harmonized?: { p: number; step_log: number; change_month: string }; naive?: { p: number; step_log: number; change_month: string }
-    at_viirs_start?: { harmonized?: { p: number; step_log: number; change_month: string }; naive?: { p: number; step_log: number; change_month: string } }
+    harmonized?: { p: number; step_log: number; change_month: string }; naive?: { p: number; step_log: number; change_month: string }; naive_switch_2023?: { p: number; step_log: number; change_month: string }
+    at_viirs_start?: { harmonized?: { p: number; step_log: number; change_month: string }; naive?: { p: number; step_log: number; change_month: string }; naive_viirs_from_2012?: { p: number; step_log: number; change_month: string } }
   }
   out_of_time?: { by_year: { year: number; bias_pct: number; months?: number }[] }
   error_model?: {

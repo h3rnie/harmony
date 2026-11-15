@@ -1,10 +1,16 @@
 """Reconciliation checks; prints a report and writes data/work/verify.json.
 
-1. raw CSV lines vs rows read vs normalized rows per sensor-year (rows_out = read - dups - NRT superseded).
-2. SP/NRT overlap per (satellite, UTC month) is zero after normalize.
+1. raw CSV lines vs rows read vs normalized rows per sensor-year
+   (rows_out = read - dups - URT superseded - NRT superseded).
+2. Quality and supersession: no (satellite, UTC date) holds both SP and NRT rows; no row whose FIRMS version
+   is not purely numeric (NRT / URT / RT suffix) is labelled sp, and no numeric version is labelled nrt; no
+   satellite-month loses more than SUPERSEDE_MAX_SHARE of its rows to supersession unless SP covers the whole
+   month.
 3. Sum of nmod / nvii in L0 tiles equals the count of `used` MODIS / VIIRS rows in [m_first, m_last].
 4. L0, L1, L2 totals of meq, kv, v, nmod, nvii are identical (levels are additive); kvsq within 1e-4.
-5. Points archive rows equal normalized rows; row groups <= 50 000; files sorted.
+5. Points archive rows equal normalized rows; row groups <= 50 000; files sorted by the documented order
+   (1-degree block = floor(lat), floor(lon); UTC month; L0 cell; acq_time_utc), checked on the largest,
+   median and smallest file.
 6. Official per-country CSVs (fresh download) match the rows read from the zip and the rows kept.
 7. Top harmonized anomaly months per realm (H / median of the same month-of-year, 2003-2022).
 """
@@ -17,7 +23,7 @@ from .build_points import INDEX as POINTS_INDEX, OUT_DIR as POINTS_OUT
 from .build_tiles import META, TILES
 from .common import connect, posix, run_info, timed, write_json
 from .config import COUNTRY_CSV_DIR, FIRMS_COUNTRY_BASE, POINTS_DIR, RAW, WORK
-from .normalize import STATS_DIR
+from .normalize import SP_VERSION_RE, STATS_DIR
 from .static_mask import used_sql
 
 OUT = WORK / "verify.json"
@@ -25,6 +31,7 @@ SAMPLES = [("modis", 2019, "Bolivia"), ("viirs-snpp", 2020, "Zambia"), ("viirs-j
            ("modis", 2005, "Angola"), ("viirs-snpp", 2024, "Argentina")]
 GLOBAL_SAMPLES = [("modis", 2019, "Brazil"), ("viirs-snpp", 2020, "Australia"), ("viirs-jpss1", 2023, "Canada")]
 SENSOR_OF_PREFIX = {"modis": "modis", "viirs-snpp": "viirs-snpp", "viirs-jpss1": "viirs-noaa20"}
+SUPERSEDE_MAX_SHARE = 0.02    # max share of a satellite-month's rows lost to supersession without whole-month SP
 
 
 def main(force: bool = False) -> None:
@@ -46,8 +53,10 @@ def main(force: bool = False) -> None:
         for f in sorted(STATS_DIR.glob("*.json")):
             s = json.loads(f.read_text())
             r = {k: s.get(k) for k in ("sensor", "year", "raw_lines", "rows_read_bulk", "rows_read_api", "rows_read",
-                                       "dup_rows", "cross_country_dup_rows", "nrt_superseded", "rows_out")}
-            consistent = (s["rows_read"] - s["dup_rows"] - s["nrt_superseded"] == s["rows_out"]
+                                       "dup_rows", "cross_country_dup_rows", "urt_superseded", "nrt_superseded",
+                                       "rows_out")}
+            consistent = (s["rows_read"] - s["dup_rows"] - s.get("urt_superseded", 0) - s["nrt_superseded"]
+                          == s["rows_out"]
                           and s.get("rows_read_bulk", 0) == s["raw_lines"])
             r["ok"] = consistent
             rows.append(r)
@@ -61,10 +70,33 @@ def main(force: bool = False) -> None:
         res["per_sensor_year"] = rows
 
         pts = f"read_parquet('{posix(POINTS_DIR)}/*/*.parquet', union_by_name=true)"
-        # 2. SP/NRT overlap
-        ov = con.execute(f"""SELECT count(*) FROM (SELECT satellite, date_trunc('month', acq_time_utc) mo FROM {pts}
+        # 2. quality labels and SP/NRT supersession
+        ov = con.execute(f"""SELECT count(*) FROM (SELECT satellite, CAST(acq_time_utc AS DATE) d FROM {pts}
                              GROUP BY ALL HAVING count(DISTINCT quality) > 1)""").fetchone()[0]
-        check("sp_nrt_overlap_zero", ov == 0, {"satellite_months_with_both": ov})
+        check("sp_nrt_overlap_zero", ov == 0, {"satellite_days_with_both": ov})
+        lab = con.execute(f"""SELECT quality, coalesce(version, 'NULL') version, count(*) n,
+                regexp_full_match(trim(coalesce(version, '')), '{SP_VERSION_RE}') numeric
+            FROM {pts} GROUP BY ALL ORDER BY 1, 2""").fetchall()
+        wrong = [{"quality": q, "version": v, "rows": n} for q, v, n, num in lab if (q == "sp") != bool(num)]
+        check("quality_label", not wrong, {"mislabelled": wrong,
+              "versions": {f"{q}|{v}": n for q, v, n, _ in lab}})
+        sup_bad, sup_rows, no_detail = [], [], []
+        for r in rows:
+            st = json.loads((STATS_DIR / f"{r['sensor']}_{r['year']}.json").read_text())
+            if "supersession" not in st:
+                if st.get("nrt_superseded", 0):
+                    no_detail.append(f"{r['sensor']}_{r['year']}")
+                continue
+            for e in st["supersession"]:
+                share = e["superseded"] / max(e["nrt_rows"] + e["sp_rows"], 1)
+                row = {**e, "sensor": r["sensor"], "share_lost": round(share, 4)}
+                if e["superseded"]:
+                    sup_rows.append(row)
+                if share > SUPERSEDE_MAX_SHARE and not e["sp_covers_month"]:
+                    sup_bad.append(row)
+        check("supersession_bounded", not sup_bad and not no_detail,
+              {"max_share_without_whole_month_sp": SUPERSEDE_MAX_SHARE, "violations": sup_bad,
+               "stats_without_detail": no_detail, "superseded_satellite_months": sup_rows})
 
         # 3. used rows vs tile detection counts
         used = con.execute(f"""SELECT count(*) FILTER (instrument = 'MODIS'), count(*) FILTER (instrument = 'VIIRS')
@@ -89,16 +121,27 @@ def main(force: bool = False) -> None:
         prow = sum(r for t in pidx.values() for _, r in t.values())
         nrow = con.execute(f"SELECT count(*) FROM {pts}").fetchone()[0]
         rg = con.execute(f"SELECT max(row_group_num_rows) FROM parquet_metadata('{posix(POINTS_OUT)}/*/*.parquet')").fetchone()[0]
-        sample = sorted(POINTS_OUT.glob("*/*.parquet"), key=lambda p: p.stat().st_size)[-1]
-        unsorted = con.execute(f"""SELECT count(*) FROM (SELECT
-              (floor((latitude + 90) * 20) * 7200 + floor((longitude + 180) * 20)) AS c, acq_time_utc t,
-              lag(c) OVER () pc, lag(t) OVER () pt FROM read_parquet('{posix(sample)}'))
-            WHERE c < pc OR (c = pc AND t < pt)""").fetchone()[0]
-        check("points_archive", prow == nrow and rg <= 50000,
+        by_size = sorted(POINTS_OUT.glob("*/*.parquet"), key=lambda p: p.stat().st_size)
+        samples_sort = list(dict.fromkeys([by_size[-1], by_size[len(by_size) // 2], by_size[0]]))
+        # documented order (build_points.py): floor(lat), floor(lon), UTC month, L0 cell (normalize's grid), time;
+        # rows are compared with their predecessor in file order (file_row_number), so the result is exact
+        key = """floor(latitude) AS k1, floor(longitude) AS k2, month(acq_time_utc) AS k3,
+              (least(greatest(floor((latitude + 90) * 80), 0), 14399)::BIGINT // 4) * 7200
+                + least(greatest(floor((longitude + 180) * 80), 0), 28799)::BIGINT // 4 AS k4, acq_time_utc AS k5"""
+        unsorted = {}
+        for f in samples_sort:
+            unsorted[f"{f.parent.name}/{f.name}"] = con.execute(f"""
+                WITH r AS (SELECT {key}, file_row_number fr FROM read_parquet('{posix(f)}', file_row_number=true)),
+                l AS (SELECT *, lag(k1) OVER w p1, lag(k2) OVER w p2, lag(k3) OVER w p3, lag(k4) OVER w p4,
+                             lag(k5) OVER w p5 FROM r WINDOW w AS (ORDER BY fr))
+                SELECT count(*) FROM l WHERE p1 IS NOT NULL AND (k1 < p1 OR (k1 = p1 AND (k2 < p2 OR (k2 = p2 AND
+                  (k3 < p3 OR (k3 = p3 AND (k4 < p4 OR (k4 = p4 AND k5 < p5))))))))""").fetchone()[0]
+        check("points_archive", prow == nrow and rg <= 50000 and not any(unsorted.values()),
               {"rows": prow, "normalized_rows": nrow, "max_row_group": rg,
                "bytes": sum(b for t in pidx.values() for b, _ in t.values()),
                "files": sum(len(t) for t in pidx.values()),
-               "sort_violations_in_largest_file": unsorted, "largest_file": sample.name})
+               "sort_order": "floor(lat), floor(lon), UTC month, L0 cell, acq_time_utc",
+               "sort_violations": unsorted})
 
         # 6. official per-country CSVs
         countries = run_info().get("countries")

@@ -4,9 +4,22 @@ Parquet per sensor-year: data/work/points/{sensor}/{year}.parquet.
 Method choices (auditable):
 - acq_time and confidence are read as text (acq_time loses leading zeros as int; VIIRS confidence
   is l/n/h). acq_time_utc = acq_date + HHMM.
+- Quality from the FIRMS `version`: "sp" (standard, science quality) only for a purely numeric version
+  (MODIS `6.03`, `6.2`, `61.03`; VIIRS `2`, `2.0`); every other value, including the near-real-time
+  suffixes `NRT` (`6.1NRT`, `2.0NRT`), `URT` (ultra real-time, `2.1URT`), `RT` and a missing version, is
+  "nrt" (provisional). `rt_kind` keeps the suffix family (NRT / URT / RT) for de-duplication and stats.
 - Exact duplicates on (satellite, acq_time_utc, latitude, longitude) are dropped (neighbouring
-  country files overlap along borders); SP is kept over NRT, then the alphabetically first country.
-- SP supersedes NRT per (satellite, UTC month): NRT rows of a month that has any SP row are dropped.
+  country files overlap along borders); SP is kept over NRT, NRT over URT/RT, then the alphabetically
+  first country.
+- NRT supersedes URT/RT per granule: an ultra-real-time row is dropped when the same satellite has NRT rows
+  at the same acq_time_utc (URT is the provisional first pass of a granule that NRT later reprocesses). In
+  the 2026-11 pulls URT rows cover only granules after the last NRT granule and match no NRT row exactly or
+  within 10 min / 0.005 deg, so none is dropped; `urt_superseded` counts them.
+- SP supersedes NRT per (satellite, UTC month) only where SP genuinely covers the month: the month must be
+  covered day by day by the SP inputs (bulk country files = the whole year; API files from an `*_SP`
+  source = their date span) and the satellite must have SP rows in it. Where SP covers only some days of a
+  month, NRT rows are dropped on those days only (never happens with fetch_api, which pulls SP for whole
+  months). `supersession` in the stats lists every satellite-month that lost rows.
 - Grid: sub-cell (0.0125 deg) sx = floor((lon+180)*80), sy = floor((lat+90)*80), sub = sy*28800+sx;
   L0 (0.05 deg) = (sy//4)*7200 + sx//4, so sub-cells nest exactly in L0 cells.
 - Local-solar date lsd = date(acq_time_utc + lon/15 h); month index m is taken from lsd.
@@ -31,6 +44,13 @@ from .config import (API_DIR, API_SOURCES, COUNTRY_CSV_DIR, FIRMS_COUNTRY_BASE,
 
 STATS_DIR = WORK / "normalize_stats"
 API_FILE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})_(\d+)\.csv$")     # {start}_{days}.csv from fetch_api
+# Standard (science-quality) FIRMS versions are purely numeric (6.03, 6.2, 61.03, 2, 2.0); anything with a
+# letter suffix (NRT, URT, RT, ...) or no version is near-real-time / provisional.
+SP_VERSION_RE = r"^[0-9]+(\.[0-9]+)*$"
+QUALITY_SQL = f"CASE WHEN regexp_full_match(trim(CAST(version AS VARCHAR)), '{SP_VERSION_RE}') THEN 'sp' ELSE 'nrt' END"
+RT_KIND_SQL = (f"CASE WHEN regexp_full_match(trim(CAST(version AS VARCHAR)), '{SP_VERSION_RE}') THEN NULL "
+               "WHEN upper(CAST(version AS VARCHAR)) LIKE '%NRT%' THEN 'NRT' "
+               "WHEN upper(CAST(version AS VARCHAR)) LIKE '%URT%' THEN 'URT' ELSE 'RT' END")
 
 
 def api_span(p: Path) -> tuple[date, date] | None:
@@ -156,7 +176,8 @@ def normalized_select(con, files: list[Path], sensor: str, from_api: bool) -> st
         CAST(trim(confidence) AS VARCHAR) AS confidence,
         CAST(frp AS FLOAT) AS frp, CAST(daynight AS VARCHAR) AS daynight,
         {typ} AS type,
-        CASE WHEN CAST(version AS VARCHAR) ILIKE '%NRT%' THEN 'nrt' ELSE 'sp' END AS quality,
+        {QUALITY_SQL} AS quality,
+        {RT_KIND_SQL} AS rt_kind,
         CAST({b1} AS FLOAT) AS brightness, CAST({b2} AS FLOAT) AS bright_2,
         CAST(scan AS FLOAT) AS scan, CAST(track AS FLOAT) AS track,
         CAST(version AS VARCHAR) AS version,
@@ -232,13 +253,48 @@ def normalize_one(sensor: str, year: int, countries: list[str] | None, idx: dict
         stats["cross_country_dup_rows"] = con.execute(f"""
             SELECT coalesce(sum(n - 1), 0) FROM (SELECT count(*) n FROM u GROUP BY {key}
             HAVING count(DISTINCT country) > 1)""").fetchone()[0]
+        stats["rows_read_by_version"] = {f"{q}|{v}": n for q, v, n in con.execute(
+            "SELECT quality, coalesce(version, 'NULL'), count(*) FROM u GROUP BY ALL ORDER BY 1, 2").fetchall()}
         con.execute(f"""CREATE TEMP TABLE d AS SELECT * FROM u QUALIFY row_number() OVER (
-            PARTITION BY {key} ORDER BY quality = 'nrt', country NULLS LAST) = 1""")
+            PARTITION BY {key} ORDER BY quality = 'nrt', coalesce(rt_kind, '') <> 'NRT' AND quality = 'nrt',
+                                        country NULLS LAST) = 1""")
         stats["dup_rows"] = stats["rows_read"] - con.execute("SELECT count(*) FROM d").fetchone()[0]
+        # URT / RT rows of a granule (satellite, acq_time_utc) that NRT also delivers: keep the NRT pass
+        stats["urt_rows"] = con.execute("SELECT count(*) FROM d WHERE rt_kind IN ('URT', 'RT')").fetchone()[0]
+        stats["urt_superseded"] = con.execute("""
+            DELETE FROM d WHERE rt_kind IN ('URT', 'RT') AND (satellite, acq_time_utc) IN
+              (SELECT DISTINCT satellite, acq_time_utc FROM d WHERE rt_kind = 'NRT')""").fetchone()[0]
+        # days covered by SP inputs: bulk files = whole year, SP API files = their span
+        sp_spans = [(date(year, 1, 1), date(year, 12, 31))] if bfiles else []
+        for f in afiles:
+            if f.parent.name.endswith("_SP"):
+                a, b = api_span(f)
+                sp_spans.append((max(a, date(year, 1, 1)), min(b, date(year, 12, 31))))
+        sp_days = sorted({a + timedelta(days=i) for a, b in sp_spans for i in range((b - a).days + 1)})
+        con.execute("CREATE TEMP TABLE spd (d DATE)")
+        if sp_days:
+            con.executemany("INSERT INTO spd VALUES (?)", [(x,) for x in sp_days])
+        con.execute(f"""CREATE TEMP TABLE spm AS
+            SELECT mo, count(*) = day(last_day(mo)) AS whole FROM (SELECT date_trunc('month', d)::DATE mo FROM spd)
+            GROUP BY mo""")
+        # satellite-months with SP rows; NRT rows are dropped on SP-covered days of those months only
+        con.execute("""CREATE TEMP TABLE sup AS
+            SELECT satellite, date_trunc('month', acq_time_utc)::DATE mo,
+                   count(*) FILTER (quality = 'nrt') nrt_rows, count(*) FILTER (quality = 'sp') sp_rows
+            FROM d GROUP BY ALL HAVING count(*) FILTER (quality = 'sp') > 0 AND count(*) FILTER (quality = 'nrt') > 0""")
         stats["nrt_superseded"] = con.execute("""
-            DELETE FROM d WHERE quality = 'nrt' AND (satellite, date_trunc('month', acq_time_utc)) IN
-              (SELECT DISTINCT satellite, date_trunc('month', acq_time_utc) FROM d WHERE quality = 'sp')
-        """).fetchone()[0]
+            DELETE FROM d WHERE quality = 'nrt'
+              AND (satellite, date_trunc('month', acq_time_utc)::DATE) IN (SELECT satellite, mo FROM sup)
+              AND CAST(acq_time_utc AS DATE) IN (SELECT d FROM spd)""").fetchone()[0]
+        stats["supersession"] = [
+            {"satellite": sat, "month": str(mo)[:7], "nrt_rows": int(n), "sp_rows": int(sp),
+             "superseded": int(n - left), "sp_covers_month": bool(whole)}
+            for sat, mo, n, sp, left, whole in con.execute("""
+                SELECT sup.satellite, sup.mo, sup.nrt_rows, sup.sp_rows,
+                       (SELECT count(*) FROM d WHERE d.quality = 'nrt' AND d.satellite = sup.satellite
+                          AND date_trunc('month', d.acq_time_utc)::DATE = sup.mo),
+                       coalesce(spm.whole, false)
+                FROM sup LEFT JOIN spm ON spm.mo = sup.mo ORDER BY 1, 2""").fetchall()]
         out.parent.mkdir(parents=True, exist_ok=True)
         tmp = out.with_suffix(".tmp.parquet")
         con.execute(f"""COPY ({DERIVED} FROM d ORDER BY acq_time_utc) TO '{posix(tmp)}'
@@ -282,4 +338,4 @@ def main(countries: list[str] | None = None, force: bool = False,
         if st:
             print(f"  rows_read={st['rows_read']:,} dup={st['dup_rows']:,} "
                   f"(cross-country {st['cross_country_dup_rows']:,}) nrt_superseded={st['nrt_superseded']:,} "
-                  f"rows_out={st['rows_out']:,}", flush=True)
+                  f"urt_superseded={st.get('urt_superseded', 0):,} rows_out={st['rows_out']:,}", flush=True)

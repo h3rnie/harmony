@@ -31,8 +31,8 @@
     const p = v?.pettitt
     if (!p) return []
     return [
-      { label: 'VIIRS starts, 2012', h: p.at_viirs_start?.harmonized, n: p.at_viirs_start?.naive },
-      { label: 'Old switch to VIIRS, 2023', h: p.harmonized, n: p.naive },
+      { label: 'VIIRS starts, 2012', h: p.at_viirs_start?.harmonized, n: p.at_viirs_start?.naive_viirs_from_2012 ?? p.at_viirs_start?.naive },
+      { label: 'Old switch to VIIRS, 2023', h: p.harmonized, n: p.naive_switch_2023 ?? p.naive },
     ].filter((r) => r.h && r.n)
   })
   const fmtP = (p: number) => (p < 0.0001 ? '< 0.0001' : p.toFixed(2))

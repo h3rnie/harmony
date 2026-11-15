@@ -27,26 +27,26 @@ Not part of `all`: `fetch-country`, `fetch-api` (downloads) and `ml` (the ML cha
 
 ## Table O1. Measured figures (as of the 2026-11-15 build)
 
-Update from `data/work/refresh_run.log`, `data/work/global_run.log`, the logs in `data/work/logs/` and file sizes after a refresh. Seconds are summed over years.
+Update from `data/work/refresh_run.log`, `data/work/global_run.log`, the logs in `data/work/logs/` (the fix rebuild: `fix_normalize.log`, `fix_all.log`) and file sizes after a refresh. Seconds are summed over years.
 
-| Item | First full run (all years) | Refresh run (2026 and NOAA-21 added) |
-| --- | --- | --- |
-| normalize | 4,933 s | 295 s (only changed sensor-years re-read) |
-| availability / static_mask / afcd | 8 s / 111 s / 764 s | 3 s / 24 s / 217 s |
-| strata / calibrate | 268 s / 104 s | 45 s / 87 s |
-| harmonize | not in that run | 29 s |
-| tiles | 422 s | 69 s |
-| points archive | 3,286 s | 1,701 s |
-| overview / watch | 0 s / not in that run | 10 s / 2 s |
-| verify | 137 s | 10 s |
-| ML stage | 207 s | not re-run |
+| Item | First full run (all years) | Refresh run (2026 and NOAA-21 added) | Fix rebuild (2026 re-normalized, then `all --from availability --force`) |
+| --- | --- | --- | --- |
+| normalize | 4,933 s | 295 s (only changed sensor-years re-read) | 96 s (four sensors, 2026 only) |
+| availability / static_mask / afcd | 8 s / 111 s / 764 s | 3 s / 24 s / 217 s | 2 s / 25 s / 239 s |
+| strata / calibrate | 268 s / 104 s | 45 s / 87 s | 119 s / 83 s |
+| harmonize | not in that run | 29 s | 47 s |
+| tiles | 422 s | 69 s | 149 s |
+| points archive | 3,286 s | 1,701 s | 2,244 s |
+| overview / watch | 0 s / not in that run | 10 s / 2 s | 11 s / 2 s |
+| verify | 137 s | 10 s | 16 s |
+| ML stage | 207 s | not re-run | not re-run |
 
 | Item | Value |
 | --- | --- |
 | Raw downloads | 19.4 GB: country zips 9.8 GB (48 files), API CSVs 8.9 GB (498 files), RESOLVE 0.4 GB, per-country CSVs 0.4 GB |
-| Normalized points (`work/points`) | 14.7 GB |
+| Normalized points (`work/points`) | 14.8 GB |
 | Cube | 0.7 GB (`work/cube` and `work/cube.parquet`) |
-| Output | tiles 0.58 GB, points archive 11.34 GB, overview 7 MB |
+| Output | tiles 0.58 GB, points archive 11.37 GB, overview 7 MB |
 | FIRMS standard (SP) data available through, on 2026-11-15 | MODIS 2026-08-31; VIIRS S-NPP, NOAA-20, NOAA-21 2026-07-31 |
 | FIRMS near-real-time data available through | MODIS, NOAA-20 and NOAA-21 2026-11-15; S-NPP 2026-11-02 (its last) |
 | NOAA-21 near-real-time starts / standard starts | 2024-01-17 / 2023-03-01 |
@@ -99,9 +99,9 @@ The calibration is refitted at every rebuild on the fixed 2012-02 to 2021-12 win
 
 ### What "provisional" means, and when a month becomes final
 
-A month is flagged provisional (`meta.months.provisional`, and a marker in the app) if any NRT row remains in it after standard rows have replaced NRT rows. The month is the local-solar month, so a UTC date at the start of a month can flag the month before it for western longitudes (in the 2026-11-15 build July 2026 is flagged although its VIIRS rows are all standard; inferred from the month definition, not separately tested). The replacement rule is per satellite and UTC month: once FIRMS publishes standard data for a satellite-month, `fetch-api` fetches that month from the SP source on its next run and `normalize` drops the NRT rows for that satellite-month. A month is final when all its satellites are standard.
+A month is flagged provisional (`meta.months.provisional`, and a marker in the app) if any NRT row remains in it after standard rows have replaced NRT rows. The month is the local-solar month, so a UTC date at the start of a month can flag the month before it for western longitudes (in the 2026-11-15 build July 2026 is flagged although its VIIRS rows are all standard; inferred from the month definition, not separately tested). The replacement rule is per satellite and UTC month: once FIRMS publishes standard data for a whole satellite-month, `fetch-api` fetches that month from the SP source on its next run and `normalize` drops the NRT rows for that satellite-month. A month is final when all its satellites are standard.
 
-A row counts as NRT only if its FIRMS `version` contains `NRT`. FIRMS labels the newest day `URT` (for example `2.1URT`); such rows are treated as standard today, which makes them supersede every other NRT row of their month. See Troubleshooting for how to spot and repair it.
+A row counts as standard only if its FIRMS `version` is purely numeric (`2`, `61.03`); any suffix (`NRT`, `URT` for the ultra-real-time first pass of the newest granules, `RT`) makes it NRT. A `URT` row is dropped when an `NRT` row of the same satellite has the same acquisition time (the reprocessed granule), and standard rows replace NRT rows only on days a standard input covers (`normalize_stats/*.json`, `supersession`, lists every satellite-month that lost rows and whether standard data cover the whole month). `verify` fails if a satellite-month loses more than 2 % of its rows without whole-month standard coverage, or if an NRT-type version is labelled standard.
 
 Standard data lag the present by months (Table O1: on 2026-11-15, about 2.5 months for MODIS and 3.5 for VIIRS), so the latest three to four months stay provisional. Standard processing also adds the `type` field that NRT lacks; the static mask is the only static-source screen NRT rows get.
 
@@ -194,9 +194,9 @@ pnpm --dir web check                # svelte-check and the Node type check
 | `fetch-api` prints `unexpected response: ...` and retries | FIRMS answered 200 with an error text, usually an invalid key or an exhausted budget; the run backs off and retries. "availability endpoint returned no rows (invalid key?)" means the key is wrong. |
 | `fetch-country` prints `SIZE MISMATCH` | A download is incomplete; run it again, it resumes. |
 | `normalize` stops with "zip is missing or incomplete; run fetch_country first" | The zip for that year is not complete; run `fetch-country`. |
-| The newest month has little or no VIIRS (`cov_viirs` near 0 in `meta.json`), the availability table lists NOAA-20 or NOAA-21 as unavailable for the last days, and `nrt_superseded` in `normalize_stats/viirs-noaa20_2026.json` is about the size of the missing days | The FIRMS `URT` classification fault: rows labelled `URT` on the newest day are counted as standard and supersede the other NRT rows of that month. Check: `select version, count(*) from read_parquet('data/work/points/viirs-noaa20/2026.parquet') where quality = 'sp' and utc_date >= '2026-08-01' group by 1` shows a `URT` version. Repair needs a code change in `normalize.py` (treat `URT` as near-real-time), then `normalize --force --sensors viirs-noaa20 viirs-noaa21 --years 2026` and `all --from availability`. The 2026-11-15 build still has it. |
+| The newest month has little or no VIIRS (`cov_viirs` near 0 in `meta.json`), the availability table lists NOAA-20 or NOAA-21 as unavailable for the last days, or `verify` fails `quality_label` or `supersession_bounded` | FIRMS has introduced a version string the quality rule does not expect, or standard data cover only part of a month. Check `rows_read_by_version` and `supersession` in `normalize_stats/<sensor>_<year>.json`, and `select quality, version, count(*) from read_parquet('data/work/points/viirs-noaa20/2026.parquet') group by all`. A standard version must be purely numeric (`SP_VERSION_RE` in `normalize.py`). After a fix, `normalize --force --sensors ... --years ...` for the affected sensor-years and `all --from availability`. (The `URT` fault of the first 2026-11-15 build, which dropped all NOAA-20 and NOAA-21 NRT rows of 2026-11, is fixed.) |
 | Months in 2026 look empty or fall back to MODIS | VIIRS API files for the year were not normalized yet; run `fetch-api` and then `all`. |
-| `verify.json` reports `sort_violations_in_largest_file` greater than zero | The check compares consecutive rows by 0.05-degree cell, but the archive is sorted by 1-degree block, UTC month, cell and time, so it counts the order changes at block and month boundaries (1,055 in the 2026-11-15 build). It does not affect `ok`; ignore it until the check is updated. |
+| `verify.json` reports `sort_violations` greater than zero for a points file | The archive is not in the documented order (1-degree block = floor(lat), floor(lon); UTC month; 0.05-degree cell; time; `build_points.py`), which weakens row-group pruning in the CSV export. Rebuild with `points --force`. (Before the fix rebuild of 2026-11-15 the check compared rows by 0.05-degree cell only and reported 1,055 false violations in the largest file.) |
 | A step is slow or runs out of memory | Lower the thread and memory limits in `common.connect`; keep 60 GB free in `data/`. `data/work/tmp` is DuckDB's spill directory. |
 | `live-smoke` or `brief-smoke` cannot connect | Start the dev server with `--strictPort` on the port you pass, and run the script from the repository root. |
 | The live view says it is unavailable | No `FIRMS_MAP_KEY` on the server, or a static host without the route. `GET /api/live/status` shows `available`. |

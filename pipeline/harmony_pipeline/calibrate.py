@@ -5,8 +5,13 @@ whose estimate is the ratio of sums k = sum M / sum V. Streams are coverage-corr
 (value / cov, months with cov < 0.5 excluded), the same correction applied when tiles are built.
 
 1. NOAA-20 / NOAA-21 -> S-NPP: c = sum vs / sum v20 (resp. v21) per stratum x dn over months in which
-   both satellites were available every day; fallback biome x dn, then global x dn, when either sum
-   < K_MIN_SUM. Without NOAA-21 data, c21 = c20 (same JPSS VIIRS design). Then the S-NPP-equivalent
+   both satellites were available every day; fallback biome x dn, then global x dn, when the level fails
+   the guard: (a) either sum < K_MIN_SUM, (b) one month supplies more than NOAA_MAX_MONTH_SHARE of either
+   sum (the factor would describe that month, e.g. an NRT artefact, not the sensor pair), or (c) the ratio
+   lies outside NOAA_RANGE (the three VIIRS instruments share one design and the global factors are ~0.95,
+   so a stratum factor outside 0.5..2 cannot be an instrument difference). The level used and the reason
+   the stratum level was rejected are written to noaa.parquet and validation.json noaa_scale.
+   Without NOAA-21 data, c21 = c20 (same JPSS VIIRS design). Then the S-NPP-equivalent
    per-day mean is V = ws + c20*w20 + c21*w21.
 2. k[s, dn, month-of-year] = sum M / sum V over FIT_START..FIT_END (M = Terra+Aqua AFCD), fallback
    chain stratum x dn x moy -> stratum x dn -> biome x dn -> global x dn (first level whose sum M >=
@@ -37,7 +42,8 @@ from .afcd import OUT as CUBE, month_last
 from .availability import OUT_M as AVAIL_M
 from .common import connect, fresh, is_regional, posix, timed, write_json
 from .config import (AQUA_START, BRIDGE_END, BRIDGE_START, COV_MAX_CORR, COV_MIN, DEFAULT_SWITCH, DIST,
-                     FIT_END, FIT_START, K_MIN_SUM, L0_NX, TAU_GRID, WORK, ym_index)
+                     FIT_END, FIT_START, K_MIN_SUM, L0_NX, NOAA_MAX_MONTH_SHARE, NOAA_RANGE, TAU_GRID, WORK,
+                     ym_index)
 from .strata import OUT_CELLS, OUT_STRATA
 
 COEF = WORK / "coefficients"
@@ -75,17 +81,36 @@ def fit_k(num: np.ndarray, den: np.ndarray, biome: np.ndarray, n_biome: int):
     return k, level
 
 
-def ratio2d(A: np.ndarray, B: np.ndarray, biome: np.ndarray, n_biome: int):
-    """Ratio A/B per (stratum, dn) with fallback biome -> global when min(sum A, sum B) < K_MIN_SUM.
-    Returns (ratio with NaN where no data at any level, level index into LEVELS)."""
-    bA, bB = np.zeros((n_biome, 2)), np.zeros((n_biome, 2))
-    np.add.at(bA, biome, A)
-    np.add.at(bB, biome, B)
+RATIO_REJECT = ("", "min_sum", "month_share", "range")
+
+
+def ratio_guard(A, B, Amax, Bmax, rng) -> tuple[np.ndarray, np.ndarray]:
+    """Guard for a ratio of sums A/B at one level. A, B: sums; Amax, Bmax: largest single-month contribution.
+    Returns (accepted, reason index into RATIO_REJECT; 0 = accepted)."""
+    r = sdiv(A, B)
+    short = (np.minimum(A, B) < K_MIN_SUM) | (B <= 0)
+    share = (sdiv(Amax, A) > NOAA_MAX_MONTH_SHARE) | (sdiv(Bmax, B) > NOAA_MAX_MONTH_SHARE)
+    out = (r < rng[0]) | (r > rng[1])
+    reason = np.select([short, share, out], [1, 2, 3], 0)
+    return reason == 0, reason
+
+
+def ratio2d(Am: np.ndarray, Bm: np.ndarray, biome: np.ndarray, n_biome: int, rng=NOAA_RANGE):
+    """Ratio sum A / sum B per (stratum, dn) from monthly sums Am, Bm (nS, 2, nM), with fallback
+    stratum -> biome -> global when a level fails `ratio_guard` (min sum, single-month share, range).
+    Returns (ratio, NaN where no data at any level; level index into LEVELS; reason the stratum level was
+    rejected, index into RATIO_REJECT)."""
+    A, B = Am.sum(2), Bm.sum(2)
+    bAm, bBm = np.zeros((n_biome, 2, Am.shape[2])), np.zeros((n_biome, 2, Am.shape[2]))
+    np.add.at(bAm, biome, Am)
+    np.add.at(bBm, biome, Bm)
+    bA, bB = bAm.sum(2)[biome], bBm.sum(2)[biome]
     gA, gB = np.broadcast_to(A.sum(0), A.shape), np.broadcast_to(B.sum(0), A.shape)
-    ok = [(np.minimum(A, B) >= K_MIN_SUM) & (B > 0),
-          (np.minimum(bA, bB)[biome] >= K_MIN_SUM) & (bB[biome] > 0), gB > 0]
-    c = np.select(ok, [sdiv(A, B), sdiv(bA, bB)[biome], sdiv(gA, gB)], np.nan)
-    return c, np.select(ok, [1, 2, 3], 4)
+    ok_s, why = ratio_guard(A, B, Am.max(2), Bm.max(2), rng)
+    ok_b, _ = ratio_guard(bA, bB, bAm.max(2)[biome], bBm.max(2)[biome], rng)
+    ok = [ok_s, ok_b, gB > 0]
+    c = np.select(ok, [sdiv(A, B), sdiv(bA, bB), sdiv(gA, gB)], np.nan)
+    return c, np.select(ok, [1, 2, 3], 4), why
 
 
 @dataclass
@@ -324,28 +349,32 @@ def main(force: bool = False) -> None:
 
     # 1. NOAA-20 / NOAA-21 -> S-NPP ------------------------------------------------------
     with timed("calibrate noaa factors"):
-        ov = con.execute(f"""SELECT sc.stratum s, c.dn,
+        ov = con.execute(f"""SELECT sc.stratum s, c.dn, c.m,
               coalesce(sum(vs) FILTER (am.f_snpp = 1 AND am.f_noaa20 = 1), 0) AS a20,
               coalesce(sum(v20) FILTER (am.f_snpp = 1 AND am.f_noaa20 = 1), 0) AS b20,
               coalesce(sum(vs) FILTER (am.f_snpp = 1 AND am.f_noaa21 = 1), 0) AS a21,
               coalesce(sum(v21) FILTER (am.f_snpp = 1 AND am.f_noaa21 = 1), 0) AS b21
-            FROM {cube} GROUP BY ALL""").df()
+            FROM {cube} WHERE am.f_snpp = 1 AND (am.f_noaa20 = 1 OR am.f_noaa21 = 1) GROUP BY ALL""").df()
+        months = np.unique(ov.m.to_numpy()) if len(ov) else np.zeros(1, int)
+        mi = np.searchsorted(months, ov.m.to_numpy())
         noaa = {}
         for sat in ("20", "21"):
-            A, Bv = np.zeros((nS, 2)), np.zeros((nS, 2))
-            A[ov.s, ov.dn] = ov[f"a{sat}"]
-            Bv[ov.s, ov.dn] = ov[f"b{sat}"]
+            A, Bv = np.zeros((nS, 2, len(months))), np.zeros((nS, 2, len(months)))
+            A[ov.s, ov.dn, mi] = ov[f"a{sat}"]
+            Bv[ov.s, ov.dn, mi] = ov[f"b{sat}"]
             noaa[sat] = ratio2d(A, Bv, biome, nB)
-        (c20, l20), (c21, l21) = noaa["20"], noaa["21"]
+        (c20, l20, w20), (c21, l21, w21) = noaa["20"], noaa["21"]
         c20 = np.where(np.isnan(c20), 1.0, c20)
         c21 = np.where(np.isnan(c21), c20, c21)     # no NOAA-21 overlap -> same as NOAA-20
         nrows = [(s, d, float(c20[s, d]), float(c21[s, d]), LEVELS[l20[s, d]],
-                  LEVELS[l21[s, d]] if l21[s, d] < 4 else "as_noaa20")
+                  LEVELS[l21[s, d]] if l21[s, d] < 4 else "as_noaa20",
+                  RATIO_REJECT[w20[s, d]] or None, RATIO_REJECT[w21[s, d]] or None)
                  for s in range(nS) for d in (0, 1)]
-        ndf = pd.DataFrame(nrows, columns=["s", "dn", "c20", "c21", "level20", "level21"])
+        ndf = pd.DataFrame(nrows, columns=["s", "dn", "c20", "c21", "level20", "level21", "reject20", "reject21"])
         ndf.s, ndf.dn = ndf.s.astype("uint16"), ndf.dn.astype("uint8")
         con.register("ndf", ndf)
-        con.execute(f"COPY ndf TO '{posix(COEF / 'noaa.parquet')}' (FORMAT parquet)")
+        con.execute(f"""COPY (SELECT * REPLACE (CAST(reject20 AS VARCHAR) AS reject20, CAST(reject21 AS VARCHAR)
+                        AS reject21) FROM ndf) TO '{posix(COEF / 'noaa.parquet')}' (FORMAT parquet)""")
 
     vexpr = "(c.ws + nf.c20 * c.w20 + nf.c21 * c.w21)"
     base = f"{cube} JOIN read_parquet('{posix(COEF / 'noaa.parquet')}') nf ON nf.s = sc.stratum AND nf.dn = c.dn"
@@ -552,17 +581,25 @@ def build_validation(con, strata, biome, biome_codes, nS, nB, A: Rows, F: Rows, 
         return {"change_m": cm, "change_month": f"{2000 + cm // 12}-{cm % 12 + 1:02d}", "K": K, "p": p,
                 "step_log": float(np.mean((lg - clim)[t + 1:]) - np.mean((lg - clim)[:t + 1]))}
 
+    # Two naive (raw count) records, named by where they switch from MODIS to VIIRS counts:
+    #   naive_switch_2023     = nmod before default_switch_m (2023-01), nvii from it (the record a naive switch at
+    #                           the production switch month would give; the series Table M4 tests at the switch)
+    #   naive_viirs_from_2012 = nmod before viirs_start_m (2012-02), nvii from it (raw VIIRS counts as soon as they
+    #                           exist; the same definition as the tiles' / kernel's `naive` series and
+    #                           fusion.pettitt_fused in harmonize.py)
     lo, hi = switch - 36, min(switch + 35, m_last)
-    harm = pd.Series(np.where(yearly.index < switch, yearly.meq, yearly.kv), index=yearly.index)
-    naive_s = pd.Series(np.where(yearly.index < switch, yearly.nmod, yearly.nvii), index=yearly.index)
     v0 = calib["viirs_start_m"]
+    harm = pd.Series(np.where(yearly.index < switch, yearly.meq, yearly.kv), index=yearly.index)
     harm12 = pd.Series(np.where(yearly.index < v0, yearly.meq, yearly.kv), index=yearly.index)
+    naive_sw = pd.Series(np.where(yearly.index < switch, yearly.nmod, yearly.nvii), index=yearly.index)
     naive12 = pd.Series(np.where(yearly.index < v0, yearly.nmod, yearly.nvii), index=yearly.index)
-    pett = {"window_m": [lo, hi], "switch_m": switch,
-            "harmonized": deseason_test(harm, lo, hi), "naive": deseason_test(naive_s, lo, hi),
+    pett = {"window_m": [lo, hi], "switch_m": switch, "viirs_start_m": v0,
+            "harmonized": deseason_test(harm, lo, hi),
+            "naive_switch_2023": deseason_test(naive_sw, lo, hi),
+            "naive_viirs_from_2012": deseason_test(naive12, lo, hi),
             "at_viirs_start": {"window_m": [v0 - 36, v0 + 35],
                                "harmonized": deseason_test(harm12, v0 - 36, v0 + 35),
-                               "naive": deseason_test(naive12, v0 - 36, v0 + 35)}}
+                               "naive_viirs_from_2012": deseason_test(naive12, v0 - 36, v0 + 35)}}
 
     # k summary by biome x dn (V-weighted over strata and months of year)
     Td = np.bincount(F.key, F.den, minlength=nS * 24).reshape(nS, 2, 12)
@@ -596,5 +633,14 @@ def build_validation(con, strata, biome, biome_codes, nS, nB, A: Rows, F: Rows, 
         "beta_loglog_1deg": beta,
         "k_by_biome": k_biome,
         "noaa_scale": [{"s": int(r.s), "dn": int(r.dn), "c20": float(r.c20), "c21": float(r.c21),
-                        "level20": r.level20, "level21": r.level21} for r in noaa.itertuples()],
+                        "level20": r.level20, "level21": r.level21,
+                        "reject20": r.reject20 if isinstance(r.reject20, str) else None,
+                        "reject21": r.reject21 if isinstance(r.reject21, str) else None} for r in noaa.itertuples()],
+        "noaa_scale_guard": {"min_sum": K_MIN_SUM, "max_month_share": NOAA_MAX_MONTH_SHARE,
+                             "range": list(NOAA_RANGE),
+                             "note": "a stratum or biome factor is used only if both sums >= min_sum, no single "
+                                     "month supplies more than max_month_share of either sum, and the ratio lies "
+                                     "in range; otherwise the next level (stratum -> biome -> global) is used. "
+                                     "reject20/reject21 give the reason the stratum level was rejected "
+                                     "(min_sum, month_share, range), null if it was used."},
     }

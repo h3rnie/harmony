@@ -17,11 +17,12 @@ the contract's index `m = (year-2000)*12 + month-1`. Floats are rounded to 4 dec
 | `interval_coverage_loyo_1deg` | {bin: Coverage} | empirical coverage of the contract interval on LOYO 1° cell-months, bins of predicted H: `H_5_20`, `H_20_100`, `H_100_inf`, `H_5_inf` |
 | `ratio_by_year` | [YearRatio] | the "seam": naive count ratio vs harmonized ratio, 2012 → latest |
 | `out_of_time` | {note, by_year: [OOT]} | frozen fit applied after the fit window, vs still-observed MODIS |
-| `pettitt` | Pettitt | change-point tests on the deseasonalised series around the switch |
+| `pettitt` | Pettitt | change-point tests on the deseasonalised series around the switch and the VIIRS start |
 | `aqua_only_sensitivity` | object | `anomaly_corr_stratum_month`, `aqua_to_main_ratio`, `by_biome` {biome: corr} |
 | `beta_loglog_1deg` | {biome: {beta, n}} | OLS slope of log M on log V at 1° cell-month in the fit window (diagnostic; 1 = proportional) |
 | `k_by_biome` | {biome: {name, k_day, k_night}} | V-weighted mean VIIRS→MODIS factor |
-| `noaa_scale` | [{s, dn, c20, c21, level20, level21}] | NOAA-20 / NOAA-21 → S-NPP factors per stratum × dn (`as_noaa20` = no NOAA-21 overlap, c20 reused) |
+| `noaa_scale` | [{s, dn, c20, c21, level20, level21, reject20, reject21}] | NOAA-20 / NOAA-21 → S-NPP factors per stratum × dn; `level*` = level used (`stratum_dn`, `biome_dn`, `global_dn`; `as_noaa20` = no NOAA-21 overlap, c20 reused); `reject*` = why the stratum level was not used (`min_sum`, `month_share`, `range`; null if it was) |
+| `noaa_scale_guard` | {min_sum, max_month_share, range, note} | the guard a stratum or biome NOAA factor must pass: both sums ≥ `min_sum`, no single month > `max_month_share` of either sum, factor inside `range` (else the next level is used) |
 
 ## Types
 **Scales** = `{ "stratum_month": Block, "cell1deg_month": Block }`. A unit is one stratum (stratum scale) or one
@@ -45,14 +46,24 @@ the contract's index `m = (year-2000)*12 + month-1`. Floats are rounded to 4 dec
 80 % / 95 % interval `H·exp(∓z·ci_scale·σ_log)`, and the 80 % share before `ci_scale`.
 
 **YearRatio** = `{ year, nmod, nvii, count_ratio = nvii/nmod, afcd_ratio_raw = Σv/Σmeq, harmonized_ratio = Σkv/Σmeq }`
-(from the tiles' own values; `count_ratio` rises from about 4 to about 7-8 in 2018-2019 as NOAA-20 joins S-NPP, `harmonized_ratio` should stay ≈ 1). The first year (2012, VIIRS starts in February) and the last year (incomplete: 2026 runs to mid-November, and in the 2026-11-15 build its November VIIRS rows are largely missing, see docs/METHOD.md Known issues) are not comparable with the full years. From 2025 `harmonized_ratio` rises above 1 because MODIS drifts, not because the calibration moves (docs/METHOD.md section 10).
+(from the tiles' own values; `count_ratio` rises from about 4 to about 7-8 in 2018-2019 as NOAA-20 joins S-NPP, `harmonized_ratio` should stay ≈ 1). The first year (2012, VIIRS starts in February) and the last year (incomplete: 2026 runs to mid-November) are not comparable with the full years. From 2025 `harmonized_ratio` rises above 1 because MODIS drifts, not because the calibration moves (docs/METHOD.md section 10).
 
 **OOT** = `{ year, pred, obs, bias_pct, r_log1p_stratum_month, months }`.
 
-**Pettitt** = `{ window_m, switch_m, harmonized: Test, naive: Test, at_viirs_start: { window_m, harmonized, naive } }`
-where the harmonized series is MODIS `meq` before the switch and `kv` after, the naive series is `nmod` then `nvii`, and
+**Pettitt** = `{ window_m, switch_m, viirs_start_m, harmonized, naive_switch_2023, naive_viirs_from_2012: Test,
+at_viirs_start: { window_m, harmonized, naive_viirs_from_2012: Test } }` (`window_m` = `switch_m` − 36 … `switch_m` + 35).
+The harmonized series is MODIS `meq` before the event month and `kv` from it. Two naive (raw count) records, named by the
+month at which they change from MODIS counts `nmod` to VIIRS counts `nvii`:
+- `naive_switch_2023`: `nmod` before `switch_m` (2023-01), `nvii` from it: what a naive switch at the production
+  switch month would show (the step tested at the switch).
+- `naive_viirs_from_2012`: `nmod` before `viirs_start_m` (2012-02), `nvii` from it: raw VIIRS counts as soon as they
+  exist. This is the definition of the tiles' and the kernel's `naive` series and of `fusion.pettitt_fused`; in the
+  switch window it is VIIRS counts throughout, so a step there is a change within VIIRS (NOAA-21 joining in 2023).
+At the VIIRS start both definitions coincide, so `at_viirs_start` carries only `naive_viirs_from_2012`.
 **Test** = `{ change_m, change_month, K, p, step_log }` (Pettitt 1979 on log monthly totals minus month-of-year mean;
 `step_log` = mean after − mean before the detected change). A small `p` at `change_m == switch_m` means a seam.
+(Before the 2026-11-15 fix rebuild the keys were `naive` and `at_viirs_start.naive`, with the same content as
+`naive_switch_2023` and `at_viirs_start.naive_viirs_from_2012`.)
 
 ## Chart hints
 - Seam chart: `ratio_by_year[].count_ratio` vs `.harmonized_ratio` by year.
@@ -100,8 +111,9 @@ model_cov80_vs_terra_H5, model_cov95_vs_terra_H5, n }`: candidates scored agains
 
 `fusion.modis_weight_by_era` = {era: { cell1deg_median, cell1deg_activity_weighted, cell1deg_median_H20, n_cell_months },
 `global_by_year`: {year: weight}}. `fusion.pettitt_fused` = {viirs_start \| drift_start \| legacy_switch:
-{ window_m, event_m, fused, switch, naive: Test }, `fused_to_modis_by_year`}.
-Here `naive` is raw VIIRS counts from the VIIRS start (MODIS counts before), unlike `pettitt.naive`, which switches from MODIS to VIIRS counts at `switch_m`; `switch` is the MODIS-then-calibrated-VIIRS series at `default_switch_m`.
+{ window_m, event_m, fused, switch, naive_switch_2023, naive_viirs_from_2012: Test }, `fused_to_modis_by_year`}.
+The two naive series are defined as in **Pettitt** (`naive_viirs_from_2012` was called `naive` before the fix rebuild);
+`switch` is the MODIS-then-calibrated-VIIRS series at `default_switch_m`.
 
 More chart hints: drift fingerprint from `drift.table` (scope `global`, then `group_*`); diurnal sensitivity as
 `beta_per_hour` per group with ±2 `se`; conformal coverage `conformal.out_of_time.vs_modis_raw.all.*.cov80` next to

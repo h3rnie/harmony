@@ -1182,8 +1182,12 @@ def fused_changepoints(sf: pd.DataFrame, em, dr, ctx) -> dict:
     sf["fused"] = H
     switch = ctx.cal["default_switch_m"]
     sf["switch"] = np.where((m < switch) & hasM | ~hasV, sf.meq, sf.kv)
-    sf["naive"] = np.where(m < vs, sf.nmod, sf.nvii)
-    tot = sf.groupby("m")[["fused", "switch", "naive", "meq", "kv"]].sum()
+    # naive raw-count records, named as in calibrate.py `pettitt`: MODIS counts, then VIIRS counts from the VIIRS
+    # start (naive_viirs_from_2012, the tiles' / kernel's `naive`) or from the switch month (naive_switch_2023)
+    sf["naive_viirs_from_2012"] = np.where(m < vs, sf.nmod, sf.nvii)
+    sf["naive_switch_2023"] = np.where(m < switch, sf.nmod, sf.nvii)
+    cols = ("fused", "switch", "naive_switch_2023", "naive_viirs_from_2012")
+    tot = sf.groupby("m")[[*cols, "meq", "kv"]].sum()
     tot = tot.reindex(range(ctx.cal["m_first"], ctx.cal["m_last"] + 1), fill_value=0)
 
     def test(col, lo, hi):
@@ -1202,7 +1206,7 @@ def fused_changepoints(sf: pd.DataFrame, em, dr, ctx) -> dict:
     for ev, c in events.items():
         lo, hi = max(c - 36, ctx.cal["m_first"]), min(c + 35, last_full)
         out[ev] = {"window_m": [lo, hi], "event_m": c,
-                   **{col: test(col, lo, hi) for col in ("fused", "switch", "naive")}}
+                   **{col: test(col, lo, hi) for col in cols}}
     gy = tot.assign(year=2000 + tot.index // 12).groupby("year")[["fused", "meq", "kv"]].sum()
     out["fused_to_modis_by_year"] = {int(y): float(r.fused / r.meq) if r.meq > 0 else None for y, r in gy.iterrows()
                                      if y >= 2012}
