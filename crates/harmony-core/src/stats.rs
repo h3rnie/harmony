@@ -3,6 +3,10 @@
 //!
 //! The baseline for a calendar month is the set of harmonized values of that month in the
 //! baseline years (months without coverage are left out, true zeros are kept).
+//!
+//! Every statistic uses complete-enough months only ([`Monthly::stat`]): a partial month (its
+//! serving stream covers < 50 % of it, e.g. the month in progress) keeps its calendar value so
+//! it can be drawn, but never enters a baseline, rank, total, YTD, record or the seam.
 
 use serde::Serialize;
 
@@ -23,10 +27,10 @@ impl Baseline {
     pub fn new(mo: &Monthly, years: [i32; 2]) -> Self {
         let years = (years[0].min(years[1]), years[0].max(years[1]));
         let mut samples: [Vec<f64>; 12] = Default::default();
-        for (i, v) in mo.h.iter().enumerate() {
+        for i in 0..mo.len() {
             let m = mo.m_first + i as i32;
-            if let (Some(v), true) = (v, (years.0..=years.1).contains(&year_of(m))) {
-                samples[moy(m)].push(*v);
+            if let (Some(v), true) = (mo.stat(i), (years.0..=years.1).contains(&year_of(m))) {
+                samples[moy(m)].push(v);
             }
         }
         let samples = samples.map(sorted);
@@ -64,8 +68,14 @@ fn record_years(mo: &Monthly) -> std::ops::RangeInclusive<i32> {
     year_of(mo.m_first)..=year_of(mo.m_last())
 }
 
+/// All values of a year, partial months included (for drawing).
 fn year_values(mo: &Monthly, year: i32) -> [Option<f64>; 12] {
     std::array::from_fn(|k| mo.h_at(month_index(year, k)))
+}
+
+/// Complete-enough values of a year (for statistics).
+fn year_stats(mo: &Monthly, year: i32) -> [Option<f64>; 12] {
+    std::array::from_fn(|k| mo.stat_at(month_index(year, k)))
 }
 
 /// Rank (1 = largest) of `x` among `others` plus itself.
@@ -134,8 +144,9 @@ pub fn climatology(base: &Baseline) -> Climatology {
 #[derive(Debug, Clone, Serialize)]
 pub struct Annual {
     pub years: Vec<i32>,
+    /// Sum of the complete-enough months.
     pub total: Vec<Option<f64>>,
-    /// All 12 months have a value.
+    /// All 12 months have a complete-enough value.
     pub complete: Vec<bool>,
     /// 1 = most active complete year; null for incomplete years.
     pub rank: Vec<Option<u32>>,
@@ -156,7 +167,7 @@ impl Annual {
 pub fn annual(mo: &Monthly) -> Annual {
     let mut a = Annual { years: vec![], total: vec![], complete: vec![], rank: vec![] };
     for y in record_years(mo) {
-        let vals = year_values(mo, y);
+        let vals = year_stats(mo, y);
         let any = vals.iter().any(Option::is_some);
         a.years.push(y);
         a.total.push(any.then(|| vals.iter().flatten().sum()));
@@ -201,14 +212,14 @@ fn cumulative(vals: &[Option<f64>; 12]) -> [Option<f64>; 12] {
     })
 }
 
-/// Year-to-date for the year of the latest month with data, against baseline envelopes built
+/// Year-to-date through the latest complete-enough month, against baseline envelopes built
 /// from years with complete data through each month. Missing months of the current year count
 /// as 0 (e.g. a record starting mid-year).
 pub fn ytd(mo: &Monthly, base: &Baseline) -> Ytd {
     let latest = mo.latest().map_or(mo.m_last(), |i| mo.m_first + i as i32);
     let (year, through) = (year_of(latest), moy(latest) + 1);
     let mut acc = 0.0;
-    let cur_vals = year_values(mo, year);
+    let cur_vals = year_stats(mo, year);
     let current: Vec<f64> = cur_vals[..through]
         .iter()
         .map(|v| {
@@ -217,7 +228,7 @@ pub fn ytd(mo: &Monthly, base: &Baseline) -> Ytd {
         })
         .collect();
     let cum: Vec<(i32, [Option<f64>; 12])> =
-        record_years(mo).map(|y| (y, cumulative(&year_values(mo, y)))).collect();
+        record_years(mo).map(|y| (y, cumulative(&year_stats(mo, y)))).collect();
     let env: Vec<Vec<f64>> = (0..12)
         .map(|k| sorted(cum.iter().filter(|(y, _)| base.contains(*y)).filter_map(|(_, c)| c[k])))
         .collect();
@@ -274,7 +285,7 @@ pub fn level_label(p: Option<f64>) -> &'static str {
     }
 }
 
-/// The latest month with data versus its calendar-month baseline.
+/// The latest complete-enough month versus its calendar-month baseline.
 pub fn current(mo: &Monthly, base: &Baseline) -> Current {
     let i = mo.latest();
     let m = i.map_or(mo.m_last(), |i| mo.m_first + i as i32);
@@ -285,7 +296,7 @@ pub fn current(mo: &Monthly, base: &Baseline) -> Current {
     let percentile = base.percentile(k, value).filter(|_| has);
     let same_month = record_years(mo)
         .filter(|&y| y != year_of(m))
-        .filter_map(|y| mo.h_at(month_index(y, k)));
+        .filter_map(|y| mo.stat_at(month_index(y, k)));
     let (rank, of) = if has { rank_desc(value, same_month) } else { (1, 0) };
     Current {
         m,
@@ -327,11 +338,8 @@ pub struct Records {
 
 /// Five most active months (any) and complete years; zero activity is not a record.
 pub fn records(mo: &Monthly, base: &Baseline, annual: &Annual) -> Records {
-    let mut months: Vec<(i32, f64)> = mo
-        .h
-        .iter()
-        .enumerate()
-        .filter_map(|(i, v)| v.filter(|&v| v > 0.0).map(|v| (mo.m_first + i as i32, v)))
+    let mut months: Vec<(i32, f64)> = (0..mo.len())
+        .filter_map(|i| mo.stat(i).filter(|&v| v > 0.0).map(|v| (mo.m_first + i as i32, v)))
         .collect();
     months.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
     let mut years: Vec<(i32, f64)> = annual.complete_years().into_iter().filter(|p| p.1 > 0.0).collect();
@@ -357,10 +365,11 @@ pub struct Seam {
     pub bias_pct: Option<f64>,
 }
 
-/// Agreement of MODIS-equivalent and calibrated VIIRS over months where both exist.
-/// `overlap` is `[0, 0]` when there are none.
+/// Agreement of MODIS-equivalent and calibrated VIIRS over months where both exist with
+/// complete-enough coverage. `overlap` is `[0, 0]` when there are none.
 pub fn seam(mo: &Monthly) -> Seam {
     let both: Vec<(usize, f64, f64)> = (0..mo.len())
+        .filter(|&i| mo.modis_full[i] && mo.viirs_full[i])
         .filter_map(|i| Some((i, mo.meq[i]?, mo.kv[i]?)))
         .collect();
     let (Some(first), Some(last)) = (both.first(), both.last()) else {

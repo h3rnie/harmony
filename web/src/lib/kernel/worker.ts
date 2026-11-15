@@ -3,7 +3,7 @@
 import init, { Kernel } from './pkg/harmony_wasm.js'
 import wasmUrl from './pkg/harmony_wasm_bg.wasm?url'
 import type { KernelRequest, KernelResponse } from './protocol'
-import type { AnalyzeOptions, CellLayer, Meta, TileColumns } from './types'
+import type { AnalyzeOptions, CellLayer, CellLayerOptions, Meta, TileColumns } from './types'
 
 // Typed narrowly so this file also checks under the DOM lib used by the app tsconfig.
 const scope = self as unknown as {
@@ -65,7 +65,7 @@ async function run(req: KernelRequest): Promise<[unknown, Transferable[]]> {
       // Returned as the JSON string; the client parses it.
       return [current().analyze(JSON.stringify(req.arg as AnalyzeOptions)), []]
     case 'cellLayer': {
-      const r = current().cell_layer(JSON.stringify(req.arg))
+      const r = current().cell_layer(JSON.stringify(req.arg as CellLayerOptions))
       try {
         const layer: CellLayer = { level: r.level, cells: r.take_cells(), weights: r.take_weights(), values: r.take_values() }
         return [layer, [layer.cells.buffer, layer.weights.buffer, layer.values.buffer] as Transferable[]]

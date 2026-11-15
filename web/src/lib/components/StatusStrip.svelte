@@ -21,6 +21,16 @@
     `${MONTHS_SHORT[season.startMonth - 1]}–${MONTHS_SHORT[season.endMonth - 1]}, ${Math.round(season.concentration * 100)} % of activity`,
   )
   const ytd = $derived(a.ytd)
+  // Newest drawn month, when it is partial (still in progress) and so not the month described here.
+  const inProgress = $derived.by(() => {
+    const p = a.series.partial
+    if (!p) return null
+    for (let i = a.months.length - 1; i >= 0; i--) {
+      if (a.series.harmonized[i] == null) continue
+      return p[i] && a.months[i] > a.current.m ? a.months[i] : null
+    }
+    return null
+  })
 </script>
 
 {#if s}
@@ -36,6 +46,9 @@
         <button class="btn" onclick={() => session.setFocus(null)}>Back to {MONTHS_SHORT[a.current.month - 1]} {a.current.year}</button>
       {/if}
     </div>
+    {#if inProgress != null && s.isCurrent}
+      <p class="small muted in-progress">{monthLong(inProgress)} is still in progress — see Now for the live pace.</p>
+    {/if}
 
     <div class="answer">
       <div class="hero">
@@ -99,6 +112,7 @@
   .strip { padding: var(--sec-pad); border-bottom: 1px solid var(--rule); }
   .top { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
   .when { font-size: var(--fs-xl); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .in-progress { margin: 4px 0 0; }
   .answer { display: grid; grid-template-columns: auto 1fr; gap: 8px 32px; align-items: end; margin-top: 14px; }
   .hero { display: grid; gap: 4px; }
   .big { font-size: var(--fs-hero); line-height: 0.88; font-weight: 600; letter-spacing: -0.05em; color: var(--ink); }

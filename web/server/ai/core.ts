@@ -18,10 +18,11 @@ import { FieldStreamer } from './partialJson.ts'
 import { askMessages, briefMessages, BRIEF_SCHEMA, buildContext, SYSTEM_PROMPT } from './prompt.ts'
 import { ProviderError, type StreamArgs, type StreamResult, type Usage } from './types.ts'
 import { canonicalDossier, PayloadError, validateConversation, validateDossier } from './validate.ts'
+import { crossSiteReason, type HeaderBag } from '../sameOrigin.ts'
 
 export type { AiEnv }
 
-/** error codes: no_key / bad_config 503 · bad_request 400 · rate_limited 429 · upstream_error / refused / bad_output 502 */
+/** error codes: no_key / bad_config 503 · bad_request 400 · forbidden 403 · rate_limited 429 · upstream_error / refused / bad_output 502 */
 export class AiError extends Error {
   readonly status: number
   readonly code: string
@@ -69,6 +70,15 @@ export interface RunHooks {
   fresh?: boolean
   /** One-line, secret-free dev log. */
   log?: (line: string) => void
+}
+
+/**
+ * Call first on every AI route (the status GET included): refuses cross-site browser requests with 403 forbidden
+ * (see sameOrigin.ts). The JSON content type required on POST stays as a second line of defence.
+ */
+export function assertSameOrigin(headers: HeaderBag): void {
+  const why = crossSiteReason(headers)
+  if (why) throw new AiError(403, 'forbidden', why)
 }
 
 const LIMITS = { brief: { max: 10, windowMs: 60_000 }, ask: { max: 20, windowMs: 60_000 } } as const
@@ -149,6 +159,19 @@ const asProviderError = (e: unknown): ProviderError => (e instanceof ProviderErr
 
 interface Generated { result: StreamResult; target: Target; calls: number }
 
+/**
+ * Defence in depth behind the adapters: a result whose stop reason says it is incomplete or failed is an error, so it
+ * is retried / falls back like one and never reaches the response cache.
+ */
+function incompleteStop(stopReason: string | null): ProviderError | null {
+  switch (stopReason) {
+    case 'length': case 'max_tokens': case 'model_context_window_exceeded': return new ProviderError('truncated')
+    case 'error': return new ProviderError('server')
+    case 'refusal': case 'content_filter': return new ProviderError('refused')
+    default: return null
+  }
+}
+
 /** One logical generation: transient failures retry once on the same provider, then the fallback gets its turn. */
 async function generate(
   cfg: AiConfig,
@@ -168,6 +191,8 @@ async function generate(
         const result = await target.provider.streamText({
           ...base, model: target.model, effort: target.effort, maxTokens, cacheTtl: cfg.cacheTtl, signal: hooks.signal, onText,
         })
+        const bad = incompleteStop(result.stopReason)
+        if (bad) throw bad
         return { result, target, calls }
       } catch (e) {
         const pe = asProviderError(e)

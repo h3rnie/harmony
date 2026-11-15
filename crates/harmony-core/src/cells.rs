@@ -1,12 +1,12 @@
-//! Per-cell map layer for a month window: the harmonized total (day + night), or its ratio to
-//! the cell's own baseline median for the same calendar window.
+//! Per-cell map layer for a month window: the harmonized total (day, night or both), or its
+//! ratio to the cell's own baseline median for the same calendar window.
 
 use serde::Deserialize;
 
 use crate::meta::Meta;
 use crate::months::year_of;
 use crate::robust::{median, ratio, sorted};
-use crate::series::{source_for, Source};
+use crate::series::{source_for, Dn, Source};
 use crate::store::Store;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -24,6 +24,9 @@ pub struct CellLayerOptions {
     pub mode: CellMode,
     pub switch_m: i32,
     pub baseline: [i32; 2],
+    /// Overpass filter; absent = day and night.
+    #[serde(default)]
+    pub dn: Dn,
 }
 
 /// Values are per cell (not AOI-weighted); NaN where undefined (no covered month in the
@@ -72,6 +75,9 @@ pub fn cell_layer(meta: &Meta, store: &Store, o: &CellLayerOptions) -> CellLayer
     let mut cur = vec![0f64; ncell];
     let mut base = vec![0f64; ncell * nb];
     for r in 0..store.len() {
+        if !o.dn.accepts(store.dn[r]) {
+            continue;
+        }
         let m = store.m[r] as i32;
         let Some(i) = index(m) else { continue };
         let val = match src[i] {

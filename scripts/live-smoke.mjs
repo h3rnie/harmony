@@ -152,6 +152,56 @@ const eq = (a, b, msg) => ok(Math.abs(a - b) < 1e-9, `${msg} (got ${a}, want ${b
   ok(e6 instanceof LiveError && e6.status === 503 && e6.code === 'no_key', 'missing key: 503 no_key')
   ok(core.liveStatus({}).available === false, 'status without key: available false')
   resetLiveState()
+
+  // A large active box: 7 days = two FIRMS calls per source, 2 x 120k rows for NOAA-20 alone (merged twice).
+  // `push(...rows)` used to throw RangeError (argument count) at ~125k elements.
+  const ROWS = 120_000
+  const bigCsv = viirs.split('\n')[0] + '\n' + '-20.1,-60.2,330.1,0.4,0.4,2026-11-14,455,N20,n,2.0NRT,290.1,4.56,N\n'.repeat(ROWS)
+  const header = viirs.split('\n')[0] + '\n'
+  const fakeBig = async (url) => {
+    if (url.includes('mapkey_status')) return new Response(JSON.stringify({ transaction_limit: 5000, current_transactions: 10 }))
+    return new Response(url.includes('NOAA20') ? bigCsv : url.includes('MODIS') ? modis.split('\n')[0] + '\n' : header)
+  }
+  const big7 = await getLive(new URLSearchParams('bbox=-61,-21,-59,-19&days=7'), { FIRMS_MAP_KEY: KEY }, { fetch: fakeBig }).catch((e) => e)
+  ok(!(big7 instanceof Error) && big7.n === 2 * ROWS && big7.lat.length === 2 * ROWS && big7.sources.VIIRS_NOAA20_NRT.rows === 2 * ROWS,
+    `>= 200k rows merge without RangeError (${big7 instanceof Error ? `${big7.name}: ${big7.message}` : `n=${big7.n}`})`)
+  resetLiveState()
+}
+
+// ------------------------------------------------------------------ unit: cross-site guard (core + plugin)
+{
+  console.log('\n# cross-site guard')
+  const so = await import(pathUrl('web/server/sameOrigin.ts'))
+  const { assertSameOrigin, LiveError } = core
+  const h = (o) => ({ host: 'localhost:5194', ...o })
+  ok(so.crossSiteReason(h({})) === null, 'no Origin / Sec-Fetch-Site (curl, scripts): allowed')
+  ok(so.crossSiteReason(h({ origin: 'http://localhost:5194', 'sec-fetch-site': 'same-origin' })) === null, 'same-origin Origin: allowed')
+  ok(so.crossSiteReason(h({ origin: 'https://evil.example' })) !== null, 'foreign Origin: refused')
+  ok(so.crossSiteReason(h({ origin: 'http://localhost:5193' })) !== null, 'same host, other port: refused')
+  ok(so.crossSiteReason(h({ origin: 'null' })) !== null, 'opaque Origin "null": refused')
+  ok(so.crossSiteReason(h({ 'sec-fetch-site': 'cross-site' })) !== null, 'Sec-Fetch-Site cross-site without Origin: refused')
+  ok(so.crossSiteReason(new Headers({ host: 'a.example', origin: 'https://a.example' })) === null && so.crossSiteReason(new Headers({ host: 'a.example', origin: 'https://b.example' })) !== null, 'fetch Headers objects work too')
+  let le = null; try { assertSameOrigin(h({ origin: 'https://evil.example' })) } catch (e) { le = e }
+  ok(le instanceof LiveError && le.status === 403 && le.code === 'forbidden', 'liveCore.assertSameOrigin -> LiveError 403 forbidden')
+
+  // The Vite plugin handler, driven with fake req/res (no server, no key, no upstream call).
+  const { livePlugin } = await import(pathUrl('web/server/livePlugin.ts'))
+  let handler = null
+  livePlugin({ envDir: path.join(ROOT, 'scripts') }).configureServer({ middlewares: { use: (_route, fn) => { handler = fn } } })
+  const call = (url, headers, method = 'GET') => new Promise((resolve) => {
+    const res = { statusCode: 0, headersSent: false, headers: {}, setHeader(k, v) { this.headers[k.toLowerCase()] = v }, end(b) { resolve({ status: this.statusCode, body: JSON.parse(b) }) } }
+    handler({ url, method, headers }, res, () => resolve({ status: 'next' }))
+  })
+  const r1 = await call('/status', h({ origin: 'https://evil.example' }))
+  ok(r1.status === 403 && r1.body.error === 'forbidden', `GET /api/live/status from another origin -> 403 (${r1.status})`)
+  const r2 = await call('/?bbox=0,0,1,1&days=1', h({ 'sec-fetch-site': 'cross-site' }))
+  ok(r2.status === 403, `GET /api/live with Sec-Fetch-Site cross-site -> 403 (${r2.status})`)
+  const r3 = await call('/status', h({ origin: 'http://localhost:5194', 'sec-fetch-site': 'same-origin' }))
+  ok(r3.status === 200 && typeof r3.body.available === 'boolean', `same-origin status -> 200 (${r3.status})`)
+  const r4 = await call('/status', h({}))
+  ok(r4.status === 200, `no Origin (curl) status -> 200 (${r4.status})`)
+  const r5 = await call('/', h({}), 'POST')
+  ok(r5.status === 405, `no Origin POST -> still 405 (${r5.status})`)
 }
 
 // ------------------------------------------------------------------ HTTP against a dev server

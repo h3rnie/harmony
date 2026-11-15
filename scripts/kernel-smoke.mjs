@@ -101,6 +101,7 @@ for (const k of ['harmonized', 'lo80', 'hi80', 'lo95', 'hi95', 'modisEq', 'viirs
 for (const k of ['rawModisCount', 'rawViirsCount', 'naive']) allOf(a.series[k], isNum, `series.${k}`)
 allOf(a.series.source, (x) => [0, 1, 2, 3].includes(x), 'series.source')
 allOf(a.series.provisional, (x) => typeof x === 'boolean', 'series.provisional')
+allOf(a.series.partial, (x) => x === false, 'series.partial (full coverage everywhere)')
 for (const k of Object.keys(a.series)) assert.equal(a.series[k].length, L, `series.${k} length`)
 assert.equal(a.series.harmonized[0], null); assert.equal(a.series.source[20], 1); assert.equal(a.series.source[100], 2)
 assert.equal(a.series.source[300], 3); assert.equal(a.series.lo80[100], null); assert.ok(a.series.lo80[300] < a.series.harmonized[300])
@@ -152,6 +153,30 @@ assert.ok(weights.every((w) => w > 0 && w <= 1) && values.every((v) => v >= 0))
 const ratio = kernel.cell_layer(JSON.stringify({ mFrom: 296, mTo: 298, mode: 'ratio', switchM: SWITCH, baseline: [2003, 2022] }))
 const rv = ratio.take_values(); ratio.free()
 assert.ok(rv.every((v) => Number.isNaN(v) || (v > 0.3 && v < 5)), 'ratio values plausible')
+// Overpass filter on the map layer: day + night = both.
+const dnLayer = (dn) => {
+  const l = kernel.cell_layer(JSON.stringify({ mFrom: 296, mTo: 298, mode: 'harmonized', switchM: SWITCH, baseline: [2003, 2022], dn }))
+  const v = l.take_values(); l.free(); return v
+}
+const dv = dnLayer('day'), nv = dnLayer('night')
+assert.ok(values.every((v, i) => Math.abs(dv[i] + nv[i] - v) < 1e-3 * Math.max(1, v)), 'day + night cell layers = both')
+assert.ok(nv.some((v, i) => v < values[i]), 'night layer differs from both')
+
+// ---------- a trailing month below 50 % coverage is drawn but not described ----------
+{
+  const pm = structuredClone(meta)
+  pm.months.cov_viirs[M_LAST] = 0.48
+  const k = new Kernel(JSON.stringify(pm))
+  k.set_aoi(flat, Uint32Array.from([0, outer.length, outer.length + hole.length]))
+  k.begin(0); ingest(k, tile)
+  const p = JSON.parse(k.analyze(JSON.stringify(opts)))
+  const i = M_LAST // range starts at 0
+  assert.equal(p.series.partial[i], true); assert.ok(isNum(p.series.harmonized[i]))
+  assert.equal(p.current.m, M_LAST - 1); assert.equal(p.ytd.throughMonth, 11)
+  assert.deepEqual(p.outlook.months, [M_LAST, M_LAST + 1, M_LAST + 2])
+  assert.ok(isNum(p.calendar.value.at(-1)[11]))
+  k.free()
+}
 
 // ---------- errors surface as exceptions with readable messages ----------
 assert.throws(() => kernel.analyze('{"switchM":1}'), /invalid analyze options/)
@@ -201,6 +226,42 @@ const tBig = performance.now() - t0
 JSON.parse(bigJson)
 assert.equal(bigKept, N)
 assert.ok(tBig < 200, `analyze over ${N} rows took ${tBig.toFixed(1)} ms`)
+
+// ---------- decoded tile cache (web/src/lib/data/tileCache.ts): byte budget, LRU, current run kept ----------
+{
+  const { TileCache } = await import(new URL('../web/src/lib/data/tileCache.ts', import.meta.url).href)
+  let loads = 0
+  const tileOf = (bytes) => () => { loads++; return Promise.resolve({ bytes }) }
+  const c = new TileCache(100, (t) => t.bytes)
+  const [p1, p2] = [c.get('a', tileOf(40)), c.get('a', tileOf(40))]
+  assert.equal(p1, p2); assert.equal(loads, 1, 'concurrent reads share one decode')
+  await c.get('b', tileOf(40))
+  await p1
+  assert.equal(c.bytes, 80)
+  c.beginRun() // run 2: a, b are from an earlier run
+  await c.get('c', tileOf(40))
+  assert.ok(!c.has('a') && c.has('b') && c.has('c') && c.bytes === 80, 'over budget: the least recently used earlier-run tile goes')
+  await c.get('d', tileOf(40)); await c.get('e', tileOf(40))
+  assert.ok(!c.has('b') && c.has('c') && c.has('d') && c.has('e'), 'earlier-run tiles go before current-run tiles')
+  assert.equal(c.bytes, 120, 'the run in progress keeps its tiles even above the budget')
+  c.beginRun() // run 3: trims the earlier runs back to the budget, oldest first
+  assert.ok(!c.has('c') && c.has('d') && c.has('e') && c.bytes === 80, 'a new run trims to the budget in LRU order')
+  await c.get('d', tileOf(40))
+  assert.equal(loads, 5, 'a cache hit does not decode again')
+  let release
+  const pending = c.get('p', () => new Promise((r) => { release = r }))
+  await c.get('f', tileOf(40))
+  assert.ok(!c.has('e') && c.has('d') && c.has('f') && c.has('p'), 'a reused tile joins the current run; in-flight reads are never evicted')
+  release({ bytes: 30 }); await pending
+  assert.equal(c.bytes, 110, 'current run (d, f, p) kept above the budget')
+  c.beginRun() // run 4: everything is evictable now
+  assert.ok(c.bytes === 70 && !c.has('d') && c.has('p') && c.has('f'), `next run trims in LRU order (${c.bytes} bytes)`)
+  await c.get('x', () => Promise.reject(new Error('HTTP 500'))).catch(() => {})
+  assert.ok(!c.has('x'), 'a failed read is not cached')
+  const big = new TileCache(256 * 1024 * 1024, (t) => t.bytes)
+  for (let i = 0; i < 40; i++) { big.beginRun(); await big.get(`t${i}`, () => Promise.resolve({ bytes: 20 * 1024 * 1024 })) }
+  assert.ok(big.bytes <= 256 * 1024 * 1024 && big.size === 12, `40 × 20 MB tiles over runs stay within 256 MB (${big.size} kept)`)
+}
 
 console.log(`ok: ${kept}/${tile.cell.length} rows kept, ${a.aoi.nCells} cells, area ${aoi.areaKm2.toFixed(0)} km²`)
 console.log(`   seam ratioNaive ${a.seam.ratioNaive.toFixed(3)}, ratioHarmonized ${a.seam.ratioHarmonized.toFixed(3)}, r ${a.seam.r.toFixed(3)}`)

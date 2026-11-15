@@ -335,24 +335,26 @@ async function httpTests() {
 
 // ------------------------------------------------------------------ offline: unit checks + mock providers
 
-function sseAnthropic(res, { text, usage, stopReason = 'end_turn', model = 'claude-sonnet-5-5' }) {
+function sseAnthropic(res, { text, usage, stopReason = 'end_turn', model = 'claude-sonnet-5-5', truncate = false }) {
   res.writeHead(200, { 'content-type': 'text/event-stream' })
   const ev = (type, data) => res.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`)
   ev('message_start', { message: { id: 'msg_mock', type: 'message', role: 'assistant', model, content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: usage.input, output_tokens: 1, cache_read_input_tokens: usage.read, cache_creation_input_tokens: usage.write } } })
   ev('content_block_start', { index: 0, content_block: { type: 'text', text: '' } })
-  for (let i = 0; i < text.length; i += 23) ev('content_block_delta', { index: 0, delta: { type: 'text_delta', text: text.slice(i, i + 23) } })
+  for (let i = 0; i < (truncate ? text.length / 2 : text.length); i += 23) ev('content_block_delta', { index: 0, delta: { type: 'text_delta', text: text.slice(i, i + 23) } })
+  if (truncate) { res.end(); return } // connection cut: no message_delta (stop_reason) and no message_stop
   ev('content_block_stop', { index: 0 })
   ev('message_delta', { delta: { stop_reason: stopReason, stop_sequence: null }, usage: { output_tokens: usage.output } })
   ev('message_stop', {})
   res.end()
 }
-function sseOpenRouter(res, { text, usage, comments = true, midStreamError }) {
+function sseOpenRouter(res, { text, usage, comments = true, midStreamError, truncate = false, finish = 'stop' }) {
   res.writeHead(200, { 'content-type': 'text/event-stream' })
   if (comments) res.write(': OPENROUTER PROCESSING\n\n')
   const chunk = (o) => res.write(`data: ${JSON.stringify({ id: 'gen-mock', object: 'chat.completion.chunk', created: 1, model: 'anthropic/claude-sonnet-5.5', ...o })}\n\n`)
-  for (let i = 0; i < text.length; i += 17) chunk({ choices: [{ index: 0, delta: { content: text.slice(i, i + 17) }, finish_reason: null }] })
+  for (let i = 0; i < (truncate ? text.length / 2 : text.length); i += 17) chunk({ choices: [{ index: 0, delta: { content: text.slice(i, i + 17) }, finish_reason: null }] })
+  if (truncate) { res.end(); return } // connection cut: no finish_reason and no [DONE]
   if (midStreamError) { chunk({ error: { code: midStreamError, message: 'boom', metadata: { error_type: 'x' } }, choices: [{ index: 0, delta: { content: '' }, finish_reason: 'error' }] }); res.end(); return }
-  chunk({ choices: [{ index: 0, delta: { content: '' }, finish_reason: 'stop' }] })
+  chunk({ choices: [{ index: 0, delta: { content: '' }, finish_reason: finish }] })
   chunk({ choices: [], usage: { prompt_tokens: usage.input + usage.read + usage.write, completion_tokens: usage.output, prompt_tokens_details: { cached_tokens: usage.read, cache_write_tokens: usage.write } } })
   res.write('data: [DONE]\n\n')
   res.end()
@@ -380,8 +382,41 @@ async function offlineTests() {
   const okTxt = `${d.month.label} is ${d.month.ratio.toFixed(1)} times normal at the ${d.month.percentile}th percentile, 3rd of ${d.month.ofYears}; about ${Math.round(d.outlook.months[0].median).toLocaleString('en-US')} cell-days; ${d.area.km2.toLocaleString('en-US')} km2; 1.4 million`
   ok(G.ungroundedNumbers(okTxt, pool).filter((x) => !/^1\.4/.test(x)).length === 0, 'grounding accepts payload figures, rounded variants, thousands separators and small ordinals')
   ok(G.ungroundedNumbers('It was 7.7 times normal and 4,321 cell-days.', pool).length === 2, 'grounding rejects invented ratios and counts')
-  ok(G.ungroundedNumbers('about 3 times, 12 months, the 2nd', pool).length === 0, 'small counts and ordinals (<= 12) pass')
+  ok(G.ungroundedNumbers('about 3 months, 12 months, the 2nd, 2 of 3, 5 complete years', pool).length === 0, 'small counts and ordinals (<= 12) in count patterns pass')
   ok(G.ungroundedNumbers(`${Math.round(d.month.value / 1000)} thousand`, pool).length === 0, '"41 thousand" style scaling matches 41,2xx')
+
+  // grounding bypasses from the review
+  // (a) a small integer is a free count only in a count pattern, never before times / × / x / percent
+  ok(G.ungroundedNumbers('It was 9 times the normal.', [2.3]).length === 1, '(a) "9 times the normal" with a ratio of 2.3 is ungrounded')
+  ok(G.ungroundedNumbers('9× normal, 4x the median, 5 percent, 6 % and 7-fold', [2.3]).length === 5, '(a) small integers before ×, x, percent, % and -fold are not free')
+  ok(G.ungroundedNumbers('It doubled in 7 places.', []).length === 1, '(a) a bare small integer outside a count pattern is not free')
+  ok(G.ungroundedNumbers('the 3rd most active of 9 years, 2 of 3, 4 months, 5 complete years, 6 days', []).length === 0, '(a) ordinals and counts in recognised patterns still pass')
+  ok(G.ungroundedNumbers('It was 2 times the normal.', [2.3]).length === 0, '(a) a small integer that rounds a payload value passes')
+  // (b) signed figures keep their sign against direction words
+  const neg = JSON.parse(JSON.stringify(d)); neg.trend = { years: [2001, 2025], pctPerYear: -3.2, pValue: 0.01, direction: 'down' }; neg.seam.biasPct = -4.2
+  const np = G.briefPool(neg)
+  ok(G.ungroundedNumbers('Annual activity is rising 3.2 percent per year.', np).length === 1, '(b) "rising 3.2 percent" for a slope of -3.2 is ungrounded')
+  ok(G.ungroundedNumbers('Annual activity is falling by 3.2 percent per year.', np).length === 0, '(b) "falling 3.2 percent" for a slope of -3.2 passes')
+  ok(G.ungroundedNumbers('The trend is +3.2 percent per year.', np).length === 1 && G.ungroundedNumbers('The trend is -3.2 percent per year.', np).length === 0, '(b) an explicit sign is checked')
+  ok(G.ungroundedNumbers('The trend is 3.2 percent per year.', np).length === 0, '(b) no direction word: the magnitude alone passes')
+  ok(G.ungroundedNumbers('Calibrated VIIRS reads 4.2 percent above MODIS here.', np).length === 1 && G.ungroundedNumbers('Calibrated VIIRS reads 4.2 percent below MODIS here.', np).length === 0, '(b) bias: above/below checked against the sign')
+  ok(G.ungroundedNumbers('Activity is rising 1.4 percent per year.', pool).length === 0, '(b) a positive slope described as rising passes')
+  // (c) method constants only when the payload or the permitted caveat carries them
+  ok(G.ungroundedNumbers('It is above the 97.5th percentile.', pool).length === 1, '(c) a level threshold (97.5) not in the payload is ungrounded')
+  const no80 = { ...pool, values: pool.values.filter((v) => Math.abs(v - 80) > 6) } // the fixture has figures near 80
+  ok(G.ungroundedNumbers('The 80 percent range is wide.', no80).length === 0 && G.ungroundedNumbers('It saw an 80 percent rise.', no80).length === 1, '(c) 80 passes only as the 80 percent range / interval the payload carries')
+  const caveatTxt = 'A harmonized ratio outside 0.8 to 1.25 or a correlation below 0.7 means the sensors disagree.'
+  ok(G.ungroundedNumbers(caveatTxt, pool).length === 3, `(c) seam thresholds not permitted when the seam agrees (${G.ungroundedNumbers(caveatTxt, pool).join(', ')})`)
+  const weak = JSON.parse(JSON.stringify(d)); weak.seam.correlation = 0.62
+  ok(G.ungroundedNumbers(caveatTxt, G.briefPool(weak)).length === 0, '(c) seam thresholds permitted when the seam caveat applies')
+  // (d) digits in the untrusted area label never join the pool; a verbatim echo of the label is fine
+  const lab = makeDossier({ areaLabel: 'Sector 4417 near km 2918' })
+  const lp = G.briefPool(lab)
+  ok(G.ungroundedNumbers('It reached 4417 cell-days, 2918 above normal.', lp).length === 2, '(d) label digits are not grounded figures')
+  ok(G.ungroundedNumbers('In Sector 4417 near km 2918 activity was normal.', lp).length === 0, '(d) numbers inside an exact echo of the label pass')
+  ok(G.ungroundedNumbers('Sector 44170 near km 2918 activity.', lp).length === 2, '(d) the echo must be exact (no glued digits)')
+  ok(G.checkBrief(JSON.stringify(goodBrief(lab)), lab).problems.length === 0, '(d) a genuine brief for a label with digits passes')
+  ok(G.ungroundedNumbers('It reached 4417 cell-days.', G.askPool(lab, [])).length === 1, '(d) Ask pool excludes label digits too')
 
   // brief structure checks
   const good = goodBrief(d)
@@ -391,6 +426,8 @@ async function offlineTests() {
   ok(chk({ ...good, headline: 'one two three four five six seven eight nine ten eleven twelve thirteen' }).problems.some((p) => /headline/.test(p)), 'headline > 12 words rejected')
   ok(chk({ ...good, summary: good.summary.replace('times', '**times**') }).problems.some((p) => /markdown/.test(p)), 'markdown rejected')
   ok(chk({ ...good, summary: good.summary + ' It was 98765 cell-days.' }).problems.some((p) => /not in the statistics/.test(p)), 'ungrounded number rejected')
+  const freeInt = [9, 8, 7, 6, 5, 4, 3, 2, 10, 11, 12].find((k) => !pool.values.some((v) => Math.abs(v - k) <= 0.5))
+  ok(freeInt != null && chk({ ...good, headline: `${d.month.label} was ${freeInt} times normal` }).problems.some((p) => new RegExp(`not in the statistics: ${freeInt} `).test(p)), `brief with "${freeInt} times normal" (not the ratio) rejected`)
   ok(chk({ ...good, watch: ['a', 'b', 'c', 'd'] }).brief.watch.length === 3, 'watch trimmed to 3 (and flagged)')
   const hist = makeDossier({ view: { year: 2020, month: 8 } })
   ok(hist.outlook === null && hist.yearToDate.year === 2020 && hist.yearToDate.throughMonth === 'September', 'fixture: historical dossier has no outlook and describes 2020')
@@ -438,6 +475,26 @@ async function offlineTests() {
   const nk = await C.getBrief(d, {}).then(() => null, (e) => e)
   ok(nk?.status === 503 && nk?.code === 'no_key', `core: no key -> 503 no_key (got ${nk?.status} ${nk?.code})`)
 
+  // cross-site guard on the AI routes (core + Vite plugin handler with fake req/res; no provider call)
+  let fe = null; try { C.assertSameOrigin({ host: 'localhost:5194', origin: 'https://evil.example' }) } catch (x) { fe = x }
+  ok(fe?.status === 403 && fe?.code === 'forbidden', 'core.assertSameOrigin: foreign Origin -> AiError 403 forbidden')
+  const { aiPlugin } = await import(new URL('../web/server/ai/plugin.ts', import.meta.url).href)
+  const handlers = {}
+  aiPlugin({ envDir: fileURLToPath(new URL('.', import.meta.url)) }).configureServer({ middlewares: { use: (route, fn) => { handlers[route] = fn } } })
+  const hit = (route, method, headers) => new Promise((resolve) => {
+    const req = { url: '/', method, headers: { host: 'localhost:5194', ...headers }, on() { return req } }
+    const res = { statusCode: 0, headersSent: false, writableFinished: false, setHeader() {}, on() {}, end(b) { resolve({ status: this.statusCode, body: b ? JSON.parse(b) : null }) } }
+    handlers[route](req, res, () => resolve({ status: 'next' }))
+  })
+  const evil = { origin: 'https://evil.example', 'content-type': 'application/json' }
+  ok((await hit('/api/brief', 'GET', { origin: 'https://evil.example' })).status === 403, 'GET /api/brief (status) from another origin -> 403')
+  ok((await hit('/api/brief', 'POST', evil)).status === 403, 'POST /api/brief from another origin -> 403 (before the body is read)')
+  ok((await hit('/api/ask', 'POST', { 'sec-fetch-site': 'cross-site', 'content-type': 'application/json' })).status === 403, 'POST /api/ask with Sec-Fetch-Site cross-site -> 403')
+  ok((await hit('/api/ask', 'POST', { origin: 'http://localhost:5194', 'content-type': 'text/plain' })).status === 415, 'same-origin POST without a JSON content type -> still 415')
+  const st0 = await hit('/api/brief', 'GET', {})
+  ok(st0.status === 200 && typeof st0.body?.available === 'boolean', 'no-Origin GET /api/brief (curl, smoke scripts) -> 200 status')
+  ok((await hit('/api/brief', 'GET', { origin: 'http://localhost:5194', 'sec-fetch-site': 'same-origin' })).status === 200, 'same-origin GET /api/brief -> 200')
+
   // ---------------- mock providers
   console.log('\n=== offline: mock Anthropic + OpenRouter servers ===')
   const seenReq = { anthropic: [], openrouter: [] }
@@ -460,8 +517,8 @@ async function offlineTests() {
       const isBrief = JSON.stringify(body).includes('situation brief') || body.output_config?.format || body.response_format
       const text = step.text ?? (isBrief ? JSON.stringify(briefFor(body)) : 'The season normally peaks in August. Source: the matrix above shows August 2020 at 3.2 times the usual level.')
       const usage = step.usage ?? { input: 40, output: 210, read: 0, write: 3300 }
-      if (which === 'anthropic') sseAnthropic(res, { text, usage, stopReason: step.stopReason })
-      else sseOpenRouter(res, { text, usage, midStreamError: step.midStreamError })
+      if (which === 'anthropic') sseAnthropic(res, { text, usage, stopReason: step.stopReason, truncate: step.truncate })
+      else sseOpenRouter(res, { text, usage, midStreamError: step.midStreamError, truncate: step.truncate, finish: step.finish })
     })
   })
   await new Promise((r) => server.listen(0, '127.0.0.1', r))
@@ -577,6 +634,53 @@ async function offlineTests() {
   script.anthropic.push({ stopReason: 'max_tokens' })
   ;({ r, e } = await run(() => C.getBrief(d, ENV)))
   ok(e?.code === 'bad_output', 'stop_reason max_tokens -> 502 bad_output')
+
+  // 9. cut-off streams (no finish_reason / [DONE], no stop_reason) are network errors: retried, fallen back, never cached
+  C.resetAiState(); seenReq.openrouter.length = 0
+  script.openrouter.push({ truncate: true })
+  ;({ r, e } = await run(() => C.getBrief(d, orOnly2())))
+  ok(!e && r.calls === 2 && seenReq.openrouter.length === 2, `openrouter stream cut before finish_reason/[DONE]: retried, then served (calls ${r?.calls}, ${e?.code ?? 'ok'})`)
+  C.resetAiState(); seenReq.openrouter.length = 0
+  script.openrouter.push({ truncate: true }, { truncate: true })
+  ;({ r, e } = await run(() => C.getBrief(d, orOnly2())))
+  ok(e?.code === 'upstream_error' && seenReq.openrouter.length === 2, 'openrouter cut twice, no fallback: 502 upstream_error (not accepted)')
+  ;({ r, e } = await run(() => C.getBrief(d, orOnly2())))
+  ok(!e && r.cached === false && seenReq.openrouter.length === 3, 'nothing was cached from the cut streams: the next request calls the model')
+  C.resetAiState(); seenReq.openrouter.length = 0
+  script.openrouter.push({ finish: 'length' })
+  ;({ r, e } = await run(() => C.getAnswer({ dossier: d, messages: [{ role: 'user', content: 'When does it peak?' }] }, orOnly2())))
+  ok(e?.code === 'bad_output', `openrouter finish_reason length on Ask -> bad_output (${e?.code ?? 'accepted'})`)
+  ;({ r, e } = await run(() => C.getAnswer({ dossier: d, messages: [{ role: 'user', content: 'When does it peak?' }] }, orOnly2())))
+  ok(!e && r.cached === false && seenReq.openrouter.length === 2, 'a length-limited answer was not cached')
+  C.resetAiState(); seenReq.openrouter.length = 0
+  script.openrouter.push({ finish: 'error' }, { finish: 'error' })
+  ;({ r, e } = await run(() => C.getAnswer({ dossier: d, messages: [{ role: 'user', content: 'When does it peak?' }] }, orOnly2())))
+  ;({ r } = await run(() => C.getAnswer({ dossier: d, messages: [{ role: 'user', content: 'When does it peak?' }] }, orOnly2())))
+  ok(e?.code === 'upstream_error' && r?.cached === false && seenReq.openrouter.length === 3, 'finish_reason error: retried as a server error, then not cached')
+  C.resetAiState(); seenReq.anthropic.length = 0
+  script.anthropic.push({ truncate: true })
+  ;({ r, e } = await run(() => C.getBrief(d, ENV)))
+  ok(!e && r.calls === 2 && seenReq.anthropic.length === 2, `anthropic stream cut before stop_reason: retried, then served (calls ${r?.calls}, ${e?.code ?? 'ok'})`)
+  C.resetAiState(); seenReq.anthropic.length = 0; seenReq.openrouter.length = 0
+  script.anthropic.push({ truncate: true }, { truncate: true })
+  ;({ r, e } = await run(() => C.getBrief(d, FB)))
+  ok(!e && r.fellBack && r.provider === 'openrouter', `anthropic cut twice -> fallback provider (${r?.provider ?? e?.code})`)
+  C.resetAiState(); seenReq.anthropic.length = 0
+  script.anthropic.push({ truncate: true }, { truncate: true })
+  ;({ r, e } = await run(() => C.getBrief(d, ENV)))
+  ;({ r } = await run(() => C.getBrief(d, ENV)))
+  ok(e?.code === 'upstream_error' && r?.cached === false && seenReq.anthropic.length === 3, 'anthropic cut twice: 502, and nothing cached')
+  // Ask accepts free text, so a cut stream would otherwise be served and cached as a half answer.
+  const askQ = { dossier: d, messages: [{ role: 'user', content: 'Where is the peak?' }] }
+  for (const [which, envFor] of [['openrouter', orOnly2], ['anthropic', () => ENV]]) {
+    C.resetAiState(); seenReq[which].length = 0
+    script[which].push({ truncate: true })
+    ;({ r, e } = await run(() => C.getAnswer(askQ, envFor())))
+    ok(!e && r.calls === 2 && /usual level\.$/.test(r.text), `${which} Ask: cut stream retried; the full answer is served (calls ${r?.calls}, ${e?.code ?? 'ok'})`)
+    script[which].push({ truncate: true }, { truncate: true })
+    ;({ r, e } = await run(() => C.getAnswer({ ...askQ, messages: [{ role: 'user', content: 'Where is the peak now?' }] }, envFor())))
+    ok(e?.code === 'upstream_error', `${which} Ask: cut twice -> 502 upstream_error, no half answer (${e?.code ?? 'accepted'})`)
+  }
 
   server.close()
   delete process.env.ANTHROPIC_BASE_URL

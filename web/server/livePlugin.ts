@@ -4,12 +4,13 @@
 //   GET /api/live?bbox=w,s,e,n&days=N -> 200 LiveResponse (columnar JSON), Cache-Control: private, max-age=<cache time left>
 //                                        400 bad_request | too_large (+limit, area) · 429 rate_limited · 503 no_key | busy · 502 upstream_error
 //   anything but GET                  -> 405
+//   cross-site browser request        -> 403 forbidden (Origin not this host, or Sec-Fetch-Site: cross-site)
 //
 // Secrets: FIRMS_MAP_KEY is read server-side from <repo root>/.env.local, then .env, then process env
 // (Vite's loadEnv precedence). It is never logged and never leaves this process.
 import type { ServerResponse } from 'node:http'
 import { loadEnv, type Connect, type Plugin, type ResolvedConfig } from 'vite'
-import { LiveError, getLive, liveMaxAge, liveStatus, redact, type LiveEnv } from './liveCore.ts'
+import { LiveError, assertSameOrigin, getLive, liveMaxAge, liveStatus, redact, type LiveEnv } from './liveCore.ts'
 
 const ROUTE = '/api/live'
 
@@ -37,6 +38,11 @@ export function livePlugin(opts: { envDir: string }): Plugin {
     const log = (msg: string) => config?.logger.info(`[live] ${redact(msg, env.FIRMS_MAP_KEY)}`, { timestamp: true })
 
     try {
+      try { assertSameOrigin(req.headers) } catch (e) {
+        const err = e as LiveError
+        log(`${err.status} ${err.code} (${err.message})`)
+        return json(res, err.status, { error: err.code, detail: err.message })
+      }
       if (req.method !== 'GET') return json(res, 405, { error: 'method_not_allowed' }, { Allow: 'GET' })
       if (path === '/status') return json(res, 200, liveStatus(env))
 

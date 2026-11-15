@@ -2,7 +2,7 @@
 import type { Analysis, AnalyzeOptions, AoiInfo, CellLayer, KernelClient, Meta } from './kernel/types'
 import type { Aoi } from './geo'
 import { selectKernel, type KernelSelection } from './kernelSelect'
-import { mapLimit, readTile, tileInfo } from './data/tileReader'
+import { beginTileRun, mapLimit, readTile, tileInfo } from './data/tileReader'
 import { DEBOUNCE_MS, DEFAULT_BASELINE, FETCH_CONCURRENCY, MAX_AOI_BYTES, MAX_AOI_CELLS } from './config'
 import { readHash, writeHash, type CalMode, type Dn, type OverlayMode } from './urlState'
 import { fmtRatio, monthLong, ordinal, toM, yearOf } from './format'
@@ -212,6 +212,7 @@ class Session {
         // Tiles absent from the index hold no fire data; the mock kernel needs no tiles at all.
         const keys = sel.kind === 'mock' ? [] : index ? pick.keys.filter((k) => tileInfo(index, pick.level, k)) : pick.keys
         this.progress = { done: 0, total: keys.length, bytes: 0, level: pick.level }
+        beginTileRun() // this run's tiles stay cached; older ones may be evicted
         let ingest: Promise<unknown> = Promise.resolve()
         await mapLimit(keys, FETCH_CONCURRENCY, async (key) => {
           const ti = tileInfo(index, pick.level, key)
@@ -283,7 +284,7 @@ class Session {
         this.check(id)
         if (!this.dataReady) throw new Stale()
         return this.kernel!.cellLayer({
-          mFrom: m, mTo: m, mode: this.overlay, switchM: this.effectiveSwitchM, baseline: this.effectiveBaseline,
+          mFrom: m, mTo: m, mode: this.overlay, switchM: this.effectiveSwitchM, baseline: this.effectiveBaseline, dn: this.dn,
         })
       })
       this.check(id)

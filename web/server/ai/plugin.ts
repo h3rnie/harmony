@@ -6,6 +6,7 @@
 //                      {"type":"delta","field":"headline"|"summary","text"} ... {"type":"reset"}? ... {"type":"done","brief",...meta}
 //                      or {"type":"error","error"} if it fails after streaming began.
 //   POST /api/ask   -> body = { dossier, messages }. Same stream with field "text" and a done event carrying `text`.
+//   Every route, first: 403 forbidden for a cross-site browser request (Origin not this host, or Sec-Fetch-Site: cross-site).
 //   Before the stream starts: 400 bad_request · 415 · 429 rate_limited (+Retry-After) · 503 no_key / bad_config ·
 //   502 upstream_error / refused / bad_output (JSON { error }).
 //
@@ -14,7 +15,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { loadEnv, type Connect, type Plugin, type ResolvedConfig } from 'vite'
 import { ASK_MAX_ANSWER_CHARS, ASK_MAX_QUESTION_CHARS, ASK_MAX_TURNS, DOSSIER_MAX_BYTES } from '../../src/lib/brief/dossierTypes.ts'
-import { AiError, getAnswer, getBrief, getStatus, type AiEnv } from './core.ts'
+import { AiError, assertSameOrigin, getAnswer, getBrief, getStatus, type AiEnv } from './core.ts'
 
 const ENV_KEYS = [
   'AI_PROVIDER', 'AI_MODEL', 'AI_PROFILE', 'AI_FALLBACK', 'AI_FALLBACK_MODEL', 'AI_CACHE_TTL', 'BRIEF_MODEL',
@@ -64,6 +65,11 @@ export function aiPlugin(opts: { envDir: string }): Plugin {
     const log = (msg: string) => config?.logger.info(`[ai] ${msg}`, { timestamp: true })
 
     try {
+      try { assertSameOrigin(req.headers) } catch (e) {
+        const err = e as AiError
+        log(`${mode} ${err.status} ${err.code} (${err.message})`)
+        return json(res, err.status, { error: err.code })
+      }
       if (req.method === 'GET' && mode === 'brief') return json(res, 200, getStatus(readEnv()))
       if (req.method !== 'POST') return json(res, 405, { error: 'method_not_allowed' }, { Allow: mode === 'brief' ? 'GET, POST' : 'POST' })
 

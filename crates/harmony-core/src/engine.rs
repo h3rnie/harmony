@@ -149,7 +149,8 @@ impl Engine {
             current: stats::current(&mo, &base),
             trend: trend::trend(&years, &totals),
             season: season::season(&season_profile),
-            outlook: outlook::outlook(&mo.h, mo.m_first, o.baseline, &climatology),
+            // Partial months are left out, so the origin is the latest complete-enough month.
+            outlook: outlook::outlook(&mo.stat_values(), mo.m_first, o.baseline, &climatology),
             seam: stats::seam(&mo),
             records: stats::records(&mo, &base, &annual),
             climatology,
@@ -328,7 +329,7 @@ pub(crate) mod tests {
     fn cell_layer_values() {
         let cols = synthetic(10, 311);
         let e = engine_with(vec![vec![[0.0, 0.0], [0.1, 0.0], [0.1, 0.1], [0.0, 0.1]]], &cols, 311);
-        let o = CellLayerOptions { m_from: 300, m_to: 302, mode: cells::CellMode::Harmonized, switch_m: 276, baseline: [2003, 2022] };
+        let o = CellLayerOptions { m_from: 300, m_to: 302, mode: cells::CellMode::Harmonized, switch_m: 276, baseline: [2003, 2022], dn: Dn::Both };
         let l = e.cell_layer(&o).unwrap();
         assert_eq!((l.cells.len(), l.weights.len(), l.values.len()), (4, 4, 4));
         let expect: f64 = (0..cols.cell.len())
@@ -338,6 +339,25 @@ pub(crate) mod tests {
         assert!((l.values[0] as f64 - expect).abs() < 1e-3);
         let r = e.cell_layer(&CellLayerOptions { mode: cells::CellMode::Ratio, ..o.clone() }).unwrap();
         assert!(r.values.iter().all(|v| v.is_finite() && *v > 0.5 && *v < 2.0), "{:?}", r.values);
+        // Day / night filter: each keeps only its overpass, and they add up to both.
+        let only = |dn: Dn| {
+            let want = if dn == Dn::Day { 0 } else { 1 };
+            (0..cols.cell.len())
+                .filter(|&r| cols.cell[r] == l.cells[0] && cols.dn[r] == want && (300..=302).contains(&(cols.m[r] as i32)))
+                .map(|r| cols.kv[r] as f64 / 100.0)
+                .sum::<f64>()
+        };
+        let day = e.cell_layer(&CellLayerOptions { dn: Dn::Day, ..o.clone() }).unwrap();
+        let night = e.cell_layer(&CellLayerOptions { dn: Dn::Night, ..o.clone() }).unwrap();
+        assert!((day.values[0] as f64 - only(Dn::Day)).abs() < 1e-3);
+        assert!((night.values[0] as f64 - only(Dn::Night)).abs() < 1e-3);
+        assert!(day.values[0] < l.values[0] && night.values[0] < l.values[0]);
+        assert!((day.values[0] + night.values[0] - l.values[0]).abs() < 1e-3);
+        // The option is optional in JSON (defaults to both) and accepts the AnalyzeOptions spelling.
+        let json = r#"{"mFrom":300,"mTo":302,"mode":"harmonized","switchM":276,"baseline":[2003,2022]}"#;
+        assert_eq!(e.cell_layer_json(json).unwrap().values, l.values);
+        let json = r#"{"mFrom":300,"mTo":302,"mode":"harmonized","switchM":276,"baseline":[2003,2022],"dn":"night"}"#;
+        assert_eq!(e.cell_layer_json(json).unwrap().values, night.values);
         let out = e.cell_layer(&CellLayerOptions { m_from: 400, m_to: 410, ..o }).unwrap();
         assert!(out.values.iter().all(|v| v.is_nan()));
     }
@@ -401,6 +421,54 @@ pub(crate) mod tests {
         assert!(a.current.z.unwrap().is_finite());
         assert_eq!(a.current.level, "extreme");
         assert_no_bad_nulls(&serde_json::to_string(&a).unwrap());
+    }
+
+    #[test]
+    fn partial_latest_month_is_drawn_but_never_drives_a_statistic() {
+        let square = vec![vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]];
+        let cols = synthetic(10, 312);
+        // Reference: the record ends at 311 (Dec 2025).
+        let full = engine_with(square.clone(), &cols, 311);
+        // Same rows, record through 312 (Jan 2026) whose VIIRS coverage is 0.3 (MODIS full).
+        let mut meta: serde_json::Value = serde_json::from_str(&meta_json(10, 312)).unwrap();
+        meta["months"]["cov_viirs"][312] = serde_json::json!(0.3);
+        let mut e = Engine::new(&meta.to_string()).unwrap();
+        e.set_aoi(Aoi::from_rings(square).unwrap());
+        e.begin(0).unwrap();
+        e.ingest(&cols.view()).unwrap();
+
+        let (r, a) = (full.analyze(&opts([10, 312], Dn::Both)).unwrap(), e.analyze(&opts([10, 312], Dn::Both)).unwrap());
+        let last = a.months.len() - 1;
+        assert!(a.series.harmonized[last].is_some(), "partial month is still drawn");
+        assert_eq!(a.series.source[last], series::Source::Viirs);
+        assert!(a.series.partial[last] && !a.series.partial[last - 1]);
+        assert!(a.calendar.value[26][0].is_some(), "calendar keeps the partial value");
+        assert_eq!(a.current.m, 311);
+        assert_eq!((a.current.value, a.current.percentile, a.current.rank, a.current.of), (r.current.value, r.current.percentile, r.current.rank, r.current.of));
+        assert_eq!(a.current.level, r.current.level);
+        assert_eq!((a.ytd.year, a.ytd.through_month, a.ytd.rank, a.ytd.of), (2025, 12, r.ytd.rank, r.ytd.of));
+        assert_eq!(a.outlook.months, vec![312, 313, 314]);
+        assert_eq!(a.outlook.median, r.outlook.median);
+        assert_eq!(a.annual.total[26], None);
+        assert!(!a.annual.complete[26] && a.annual.rank[26].is_none());
+        assert_eq!((a.trend.slope_per_year, a.trend.years), (r.trend.slope_per_year, r.trend.years));
+        let tops = |x: &Analysis| x.records.top_months.iter().map(|t| (t.m, t.value)).collect::<Vec<_>>();
+        assert_eq!(tops(&a), tops(&r));
+        assert_eq!((a.seam.overlap, a.seam.n_months), (r.seam.overlap, r.seam.n_months));
+        assert_eq!(a.climatology.median, r.climatology.median);
+        assert_no_bad_nulls(&serde_json::to_string(&a).unwrap());
+
+        // Served by MODIS (switch after the month), whose coverage is full: a normal month.
+        let late = e.analyze(&AnalyzeOptions { switch_m: 400, ..opts([10, 312], Dn::Both) }).unwrap();
+        assert!(!late.series.partial[last]);
+        assert_eq!(late.current.m, 312);
+        // Coverage exactly at the threshold is complete enough.
+        meta["months"]["cov_viirs"][312] = serde_json::json!(0.5);
+        let mut e = Engine::new(&meta.to_string()).unwrap();
+        e.set_aoi(Aoi::from_rings(vec![vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]]).unwrap());
+        e.begin(0).unwrap();
+        e.ingest(&cols.view()).unwrap();
+        assert_eq!(e.analyze(&opts([10, 312], Dn::Both)).unwrap().current.m, 312);
     }
 
     #[test]

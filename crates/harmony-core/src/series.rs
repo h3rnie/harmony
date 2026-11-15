@@ -98,6 +98,12 @@ pub struct Monthly {
     pub nmod: Vec<f64>,
     pub nvii: Vec<f64>,
     pub provisional: Vec<bool>,
+    /// The month has a value but the stream serving it covers less than
+    /// [`MIN_COVERAGE`](crate::meta::MIN_COVERAGE) of it: drawn, never used in a statistic.
+    pub partial: Vec<bool>,
+    /// MODIS / calibrated VIIRS coverage is complete enough (for the seam).
+    pub modis_full: Vec<bool>,
+    pub viirs_full: Vec<bool>,
 }
 
 impl Monthly {
@@ -122,9 +128,23 @@ impl Monthly {
         self.index(m).and_then(|i| self.h[i])
     }
 
-    /// Index of the latest month with a value.
+    /// Harmonized value of index `i` for statistics: `None` for partial months.
+    pub fn stat(&self, i: usize) -> Option<f64> {
+        self.h[i].filter(|_| !self.partial[i])
+    }
+
+    pub fn stat_at(&self, m: i32) -> Option<f64> {
+        self.index(m).and_then(|i| self.stat(i))
+    }
+
+    /// The harmonized record with partial months removed.
+    pub fn stat_values(&self) -> Vec<Option<f64>> {
+        (0..self.len()).map(|i| self.stat(i)).collect()
+    }
+
+    /// Index of the latest complete-enough month with a value (a trailing partial month is skipped).
     pub fn latest(&self) -> Option<usize> {
-        self.h.iter().rposition(Option::is_some)
+        (0..self.len()).rev().find(|&i| self.stat(i).is_some())
     }
 }
 
@@ -196,6 +216,9 @@ pub fn aggregate(meta: &Meta, store: &Store, dn: Dn, switch_m: i32) -> Monthly {
         nmod: Vec::with_capacity(n),
         nvii: Vec::with_capacity(n),
         provisional: Vec::with_capacity(n),
+        partial: Vec::with_capacity(n),
+        modis_full: Vec::with_capacity(n),
+        viirs_full: Vec::with_capacity(n),
     };
     for (i, &[meq, kv, v, nmod, nvii]) in tot.iter().enumerate() {
         let m = meta.m_first + i as i32;
@@ -229,6 +252,14 @@ pub fn aggregate(meta: &Meta, store: &Store, dn: Dn, switch_m: i32) -> Monthly {
         out.nmod.push(nmod);
         out.nvii.push(nvii);
         out.provisional.push(meta.provisional(m));
+        let (modis_full, viirs_full) = (meta.modis_full(m), meta.viirs_full(m));
+        out.partial.push(match src {
+            Source::None => false,
+            Source::Bridge | Source::Modis => !modis_full,
+            Source::Viirs => !viirs_full,
+        });
+        out.modis_full.push(modis_full);
+        out.viirs_full.push(viirs_full);
     }
     out
 }
@@ -251,6 +282,9 @@ pub struct Series {
     pub naive: Vec<f64>,
     pub source: Vec<Source>,
     pub provisional: Vec<bool>,
+    /// The month has a value but its serving stream covers < 50 % of it (e.g. the month in
+    /// progress): drawn, but excluded from every statistic.
+    pub partial: Vec<bool>,
 }
 
 /// Slices the record to the inclusive display `range`; months outside the record are null/0.
@@ -275,6 +309,7 @@ pub fn series(mo: &Monthly, range: (i32, i32)) -> (Vec<i32>, Series) {
         s.naive.push(if m < mo.viirs_start_m { nmod } else { nvii });
         s.source.push(i.map_or(Source::None, |i| mo.source[i]));
         s.provisional.push(i.is_some_and(|i| mo.provisional[i]));
+        s.partial.push(i.is_some_and(|i| mo.partial[i]));
     }
     (months, s)
 }

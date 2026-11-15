@@ -1,6 +1,6 @@
 // Main-thread KernelClient backed by the WASM kernel in a module Web Worker (see worker.ts).
 import type { KernelOp, KernelRequest, KernelResponse } from './protocol'
-import type { Analysis, AnalyzeOptions, AoiInfo, CellLayer, KernelClient, Meta, MonthIndex, TileColumns } from './types'
+import type { Analysis, AnalyzeOptions, AoiInfo, CellLayer, CellLayerOptions, KernelClient, Meta, TileColumns } from './types'
 
 export interface KernelClientOptions {
   /**
@@ -82,8 +82,7 @@ export function createKernelClient(options: KernelClientOptions = {}): KernelCli
     begin: (level: number) => call<void>('begin', level),
     ingestTile: (cols: TileColumns) => call<number>('ingestTile', cols, options.transferTiles ? tileBuffers(cols) : []),
     analyze: async (opts: AnalyzeOptions) => JSON.parse(await call<string>('analyze', opts)) as Analysis,
-    cellLayer: (opts: { mFrom: MonthIndex; mTo: MonthIndex; mode: 'harmonized' | 'ratio'; switchM: MonthIndex; baseline: [number, number] }) =>
-      call<CellLayer>('cellLayer', opts),
+    cellLayer: (opts: CellLayerOptions) => call<CellLayer>('cellLayer', opts),
     terminate() {
       worker.terminate()
       failAll('kernel client terminated')

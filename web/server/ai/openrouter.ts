@@ -73,7 +73,7 @@ export function createOpenRouterProvider(o: OpenRouterOptions): AiProvider {
       if (o.referer) headers['HTTP-Referer'] = o.referer
       if (o.title) headers['X-Title'] = o.title
 
-      const st = { text: '', usage: null as ChunkUsage | null, model: a.model, finish: null as string | null }
+      const st = { text: '', usage: null as ChunkUsage | null, model: a.model, finish: null as string | null, done: false }
       try {
         const res = await fetch(`${base}/chat/completions`, { method: 'POST', headers, body: JSON.stringify(body), signal })
         if (!res.ok) {
@@ -88,7 +88,8 @@ export function createOpenRouterProvider(o: OpenRouterOptions): AiProvider {
         const handleLine = (line: string): void => {
           if (!line.startsWith('data:')) return // blank lines and ": OPENROUTER PROCESSING" comments
           const payload = line.slice(5).trim()
-          if (!payload || payload === '[DONE]') return
+          if (payload === '[DONE]') { st.done = true; return }
+          if (!payload) return
           let ch: Chunk
           try { ch = JSON.parse(payload) as Chunk } catch { return }
           if (ch.error) throw kindForErrorCode(ch.error.code)
@@ -117,6 +118,9 @@ export function createOpenRouterProvider(o: OpenRouterOptions): AiProvider {
         throw new ProviderError('network', undefined, e instanceof Error ? e.name : 'error')
       }
 
+      // A stream that stops with neither a finish_reason nor [DONE] was cut off (connection reset, proxy timeout):
+      // a network failure, so it is retried / falls back and is never accepted or cached as a complete answer.
+      if (!st.finish && !st.done) throw new ProviderError('network', undefined, 'stream ended before finish_reason or [DONE]')
       if (st.finish === 'error') throw new ProviderError('server')
       if (st.finish === 'length') throw new ProviderError('truncated')
       if (st.finish === 'content_filter') throw new ProviderError('refused')

@@ -69,8 +69,11 @@ export function createAnthropicProvider(apiKey: string): AiProvider {
         throw mapError(e, a.signal)
       }
 
+      // The SDK returns the accumulated snapshot when the stream ends early; without message_delta there is no
+      // stop_reason. Treat that as a cut-off connection (retried / falls back, never cached).
+      if (message.stop_reason == null) throw new ProviderError('network', undefined, 'stream ended without a stop_reason')
       if (message.stop_reason === 'refusal') throw new ProviderError('refused')
-      if (message.stop_reason === 'max_tokens') throw new ProviderError('truncated')
+      if (message.stop_reason === 'max_tokens' || message.stop_reason === 'model_context_window_exceeded') throw new ProviderError('truncated')
       const text = message.content.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('')
       if (!text.trim()) throw new ProviderError('empty')
       const u = message.usage

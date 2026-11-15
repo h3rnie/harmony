@@ -3,6 +3,7 @@ import { asyncBufferFromUrl, cachedAsyncBuffer, parquetMetadataAsync, parquetRea
 import { compressors } from 'hyparquet-compressors'
 import type { Meta, TileColumns } from '../kernel/types'
 import { DATA_BASE, FETCH_CONCURRENCY } from '../config'
+import { TileCache } from './tileCache'
 
 /** { "L0": { "tx_ty": [bytes, rows] } } */
 export type TileIndex = Record<string, Record<string, [number, number]>>
@@ -38,19 +39,19 @@ const CTORS: Record<Col, Uint32ArrayConstructor | Uint16ArrayConstructor | Uint8
 
 // Whole-file reads below this size (one request); larger tiles use HTTP range requests.
 const WHOLE_FILE_LIMIT = 2 * 1024 * 1024
-const cache = new Map<string, Promise<TileColumns>>()
-const CACHE_MAX = 400
+/** Decoded tiles kept for re-use, bounded by their decoded size (least recently used go first). */
+const CACHE_MAX_BYTES = 256 * 1024 * 1024
+const tileBytes = (t: TileColumns) => COLUMNS.reduce((n, c) => n + t[c].byteLength, 0)
+const cache = new TileCache<TileColumns>(CACHE_MAX_BYTES, tileBytes)
+
+/** Call when a new area run starts: tiles of earlier runs become evictable, the new run's tiles are kept. */
+export function beginTileRun(): void {
+  cache.beginRun()
+}
 
 export function readTile(level: number, key: string, byteLength?: number, signal?: AbortSignal): Promise<TileColumns> {
   const url = tileUrl(level, key)
-  let p = cache.get(url)
-  if (!p) {
-    p = readTileUncached(url, byteLength, signal)
-    p.catch(() => cache.delete(url))
-    cache.set(url, p)
-    if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value!)
-  }
-  return p
+  return cache.get(url, () => readTileUncached(url, byteLength, signal))
 }
 
 async function readTileUncached(url: string, byteLength?: number, signal?: AbortSignal): Promise<TileColumns> {

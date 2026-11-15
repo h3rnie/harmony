@@ -7,6 +7,7 @@ import {
   LIVE_SOURCES, SAT_AQUA, SAT_N20, SAT_N21, SAT_TERRA,
   type LiveLimits, type LiveResponse, type LiveSource, type LiveSourceInfo, type LiveStatus,
 } from '../src/lib/live/types.ts'
+import { crossSiteReason, type HeaderBag } from './sameOrigin.ts'
 
 export interface LiveEnv { FIRMS_MAP_KEY?: string }
 
@@ -17,7 +18,7 @@ export interface LiveDeps {
 
 export interface LiveParams { bbox: [number, number, number, number]; days: number }
 
-/** codes: bad_request / too_large 400 · rate_limited 429 · busy / no_key 503 · upstream_error 502 */
+/** codes: bad_request / too_large 400 · forbidden 403 · rate_limited 429 · busy / no_key 503 · upstream_error 502 */
 export class LiveError extends Error {
   readonly status: number
   readonly code: string
@@ -55,6 +56,17 @@ let upstreamRequests = 0
 
 export function resetLiveState(): void {
   cache.clear(); inflight.clear(); hits.length = 0; usage = null; upstreamRequests = 0
+}
+
+/** Call first on every live route: refuses cross-site browser requests with 403 forbidden (see sameOrigin.ts). */
+export function assertSameOrigin(headers: HeaderBag): void {
+  const why = crossSiteReason(headers)
+  if (why) throw new LiveError(403, 'forbidden', why)
+}
+
+/** Appends without spreading into arguments: `push(...src)` throws RangeError past ~125k elements. */
+function append<T>(dst: T[], src: readonly T[]): void {
+  for (let i = 0; i < src.length; i++) dst.push(src[i])
 }
 
 export function liveAvailable(env: LiveEnv): boolean {
@@ -203,7 +215,7 @@ async function fetchSource(key: string, source: LiveSource, p: LiveParams, f: ty
     const text = await res.text()
     if (!res.ok) throw new UpstreamFormatError(`HTTP ${res.status}`)
     const part = parseFirmsCsv(text, source, p.bbox)
-    for (const k of Object.keys(merged) as (keyof ParsedCsv)[]) merged[k].push(...part[k])
+    for (const k of Object.keys(merged) as (keyof ParsedCsv)[]) append(merged[k], part[k])
   }
   return merged
 }
@@ -260,7 +272,7 @@ async function fetchAll(key: string, p: LiveParams, f: typeof fetch, nowMs: numb
 
   // Merge, newest first.
   const all: ParsedCsv = { lat: [], lon: [], t: [], sat: [], conf: [], frp: [], dn: [] }
-  for (const part of parts) for (const k of Object.keys(all) as (keyof ParsedCsv)[]) all[k].push(...part[k])
+  for (const part of parts) for (const k of Object.keys(all) as (keyof ParsedCsv)[]) append(all[k], part[k])
   const order = all.t.map((_, i) => i).sort((a, b) => all.t[b] - all.t[a])
   const pick = (arr: number[]) => order.map((i) => arr[i])
   const today0 = Date.UTC(new Date(nowMs).getUTCFullYear(), new Date(nowMs).getUTCMonth(), new Date(nowMs).getUTCDate())

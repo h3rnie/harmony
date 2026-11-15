@@ -59,6 +59,11 @@ pub struct Meta {
     pub ci_scale: f64,
 }
 
+/// Coverage from which a month counts as complete enough for statistics. The pipeline
+/// (`calibrate.py`) scales a month by 1/coverage only from this threshold and leaves it raw
+/// below, so a month under it (typically the month in progress) reads low.
+pub const MIN_COVERAGE: f64 = 0.5;
+
 fn one() -> f64 {
     1.0
 }
@@ -129,6 +134,16 @@ impl Meta {
     /// Calibrated VIIRS has coverage in month `m`.
     pub fn viirs_ok(&self, m: i32) -> bool {
         self.in_record(m) && m >= self.viirs_start_m && month_value(&self.months.cov_viirs, m, 1.0) > 0.0
+    }
+
+    /// MODIS coverage of month `m` is at least [`MIN_COVERAGE`].
+    pub fn modis_full(&self, m: i32) -> bool {
+        self.modis_ok(m) && month_value(&self.months.cov_modis, m, 1.0) >= MIN_COVERAGE
+    }
+
+    /// Calibrated VIIRS coverage of month `m` is at least [`MIN_COVERAGE`].
+    pub fn viirs_full(&self, m: i32) -> bool {
+        self.viirs_ok(m) && month_value(&self.months.cov_viirs, m, 1.0) >= MIN_COVERAGE
     }
 
     pub fn provisional(&self, m: i32) -> bool {

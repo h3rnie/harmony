@@ -27,7 +27,7 @@
   const switchYear = $derived(Math.floor(session.effectiveSwitchM / 12) + 2000)
   const focusM = $derived(session.focus)
 
-  type Cell = { m: number; v: number | null; fill: string; ink: string; label: string; src: SourceCode; prov: boolean; empty: boolean }
+  type Cell = { m: number; v: number | null; fill: string; ink: string; label: string; src: SourceCode; prov: boolean; partial: boolean; empty: boolean }
 
   function colorFor(v: number | null, ratio: number | null, pct: number | null): string | null {
     if (v == null) return null
@@ -51,7 +51,8 @@
         const fill = colorFor(v, ratio, pct)
         return {
           m, v, fill: fill ?? 'transparent', ink: fill ? inkOn(fill) : 'var(--ink-3)', label: labelFor(v, ratio, pct),
-          src: (si >= 0 ? a.series.source[si] : 0) as SourceCode, prov: si >= 0 ? a.series.provisional[si] : false, empty: v == null,
+          src: (si >= 0 ? a.series.source[si] : 0) as SourceCode, prov: si >= 0 ? a.series.provisional[si] : false,
+          partial: si >= 0 && v != null ? (a.series.partial?.[si] ?? false) : false, empty: v == null,
         }
       }),
     ),
@@ -73,6 +74,7 @@
     if (s.percentile != null) parts.push(`${ordinal(Math.round(s.percentile))} percentile`)
     parts.push(SOURCE_LABEL[cell.src])
     if (cell.prov) parts.push('provisional')
+    if (cell.partial) parts.push('partial month, still in progress')
     return parts.join(', ')
   }
 
@@ -184,7 +186,7 @@
                 <div
                   class="cal-cell"
                   class:empty={cell.empty}
-                  class:prov={cell.prov}
+                  class:prov={cell.prov || cell.partial}
                   class:current={cell.m === a.current.m}
                   class:focus={cell.m === focusM}
                   role="gridcell"
@@ -229,7 +231,7 @@
 
       {#if tip && tipStats && tipCell && !tipCell.empty}
         <div class="tip" class:below={tip.below} style:left={`${tip.x}px`} style:top={`${tip.y}px`} role="tooltip">
-          <p class="tt">{MONTHS_LONG[tipStats.month - 1]} {tipStats.year}{tipStats.provisional ? ' · provisional' : ''}</p>
+          <p class="tt">{MONTHS_LONG[tipStats.month - 1]} {tipStats.year}{tipCell.partial ? ' · partial month' : tipStats.provisional ? ' · provisional' : ''}</p>
           <dl>
             <dt>Harmonized</dt><dd class="num">{fmtNum(tipStats.value)} AFCD-M</dd>
             {#if tipStats.lo80 != null && tipStats.hi80 != null}<dt>80 % interval</dt><dd class="num">{fmtNum(tipStats.lo80)} – {fmtNum(tipStats.hi80)}</dd>{/if}

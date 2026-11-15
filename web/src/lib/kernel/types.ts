@@ -57,6 +57,13 @@ export interface Series {
   naive: number[]
   source: SourceCode[]
   provisional: boolean[]
+  /**
+   * The month has a value but the stream serving it covers < 50 % of it (typically the month in
+   * progress). Drawn, but never used in a statistic: `current`, YTD, ranks, records, annual totals,
+   * the seam and the outlook origin all stop at the latest complete-enough month. Optional for
+   * older kernels/mocks; absent = no partial months.
+   */
+  partial?: boolean[]
 }
 
 export interface Calendar {
@@ -155,6 +162,15 @@ export interface Analysis {
   aoi: AoiInfo & { level: number; nCells: number; rows: number }
 }
 
+export interface CellLayerOptions {
+  mFrom: MonthIndex; mTo: MonthIndex
+  mode: 'harmonized' | 'ratio'
+  switchM: MonthIndex
+  baseline: [number, number]
+  /** Overpass filter; absent = both. */
+  dn?: AnalyzeOptions['dn']
+}
+
 export interface CellLayer {
   level: number
   cells: Uint32Array        // cell ids at `level`
@@ -173,7 +189,7 @@ export interface KernelClient {
   begin(level: number): Promise<void>
   ingestTile(cols: TileColumns): Promise<number>
   analyze(opts: AnalyzeOptions): Promise<Analysis>
-  cellLayer(opts: { mFrom: MonthIndex; mTo: MonthIndex; mode: 'harmonized' | 'ratio'; switchM: MonthIndex; baseline: [number, number] }): Promise<CellLayer>
+  cellLayer(opts: CellLayerOptions): Promise<CellLayer>
 }
 
 export interface TileColumns {

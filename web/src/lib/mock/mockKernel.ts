@@ -1,7 +1,7 @@
 // A KernelClient that fabricates a believable Analysis from the AOI alone, so the whole UI works
 // with no data and no wasm. Everything is deterministic in the AOI centroid. Numbers are NOT real.
 import type {
-  AnalyzeOptions, Analysis, AoiInfo, CellLayer, KernelClient, Meta, MonthIndex, SourceCode, TileColumns,
+  AnalyzeOptions, Analysis, AoiInfo, CellLayer, CellLayerOptions, KernelClient, Meta, MonthIndex, SourceCode, TileColumns,
 } from '../kernel/types'
 import { ringsAreaKm2, ringsBbox, ringsCentroid, pointInRings, type Rings } from '../geo'
 import { gaussian, mannKendall, median, mulberry32, pearson, percentileOf, quantile, sortNum, theilSen } from '../stats'
@@ -353,7 +353,7 @@ export class MockKernel implements KernelClient {
     }
   }
 
-  async cellLayer(opts: { mFrom: MonthIndex; mTo: MonthIndex; mode: 'harmonized' | 'ratio'; switchM: MonthIndex; baseline: [number, number] }): Promise<CellLayer> {
+  async cellLayer(opts: CellLayerOptions): Promise<CellLayer> {
     const L = this.meta.levels.find((l) => l.level === this.level) ?? this.meta.levels[1]
     const c = L.cell_deg
     const [w, s, e, n] = this.info!.bbox
@@ -362,7 +362,7 @@ export class MockKernel implements KernelClient {
     const fq = Array.from({ length: 6 }, () => 0.6 + rng() * 2.2)
     const span = Math.max(e - w, n - s)
     const cells: number[] = [], weights: number[] = [], values: number[] = []
-    const rec = this.record('both')
+    const rec = this.record(opts.dn ?? 'both')
     let agg = 0, aggMed = 0
     for (let m = opts.mFrom; m <= opts.mTo; m++) {
       agg += rec.trueV[m] ?? 0
