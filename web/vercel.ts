@@ -65,11 +65,16 @@ export const config: VercelConfig = {
     'api/live/status.ts': { maxDuration: 10 },
   },
   rewrites: [
+    // The pitch deck is a static page of its own (public/demo/), not a client-side route.
+    { source: '/demo', destination: '/demo/index.html' },
+    { source: '/demo/', destination: '/demo/index.html' },
     // Client-side routes only: no file extension, not under /api/ or /assets/.
     { source: '/((?!api/|api$|assets/)[^.]*)', destination: '/index.html' },
   ],
   headers: [
     { source: '/(.*)', headers: SECURITY_HEADERS },
+    // The deck's files are not content-hashed: revalidate so an updated slide shows at once.
+    { source: '/demo(/.*)?', headers: [{ key: 'Cache-Control', value: 'public, max-age=0, must-revalidate' }] },
     // Vite content-hashes everything under /assets/: safe to cache forever.
     { source: '/assets/(.*)', headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }] },
     // The HTML shell and the unhashed public files must pick up a new deployment at once.

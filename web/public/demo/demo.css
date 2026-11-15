@@ -1,0 +1,53 @@
+/* Viewer for the pitch deck at /demo. Slides are authored at 1920 x 1080 (deck.css) and scaled to fit. */
+@font-face { font-family: 'Schibsted Grotesk'; src: url('/demo/fonts/schibsted-grotesk.woff2') format('woff2'); font-weight: 400 700; font-display: swap; }
+@font-face { font-family: 'JetBrains Mono'; src: url('/demo/fonts/jetbrains-mono.woff2') format('woff2'); font-weight: 400 500; font-display: swap; }
+@font-face { font-family: 'Barlow'; src: url('/demo/fonts/barlow-500.woff2') format('woff2'); font-weight: 500; font-display: swap; }
+@font-face { font-family: 'Barlow'; src: url('/demo/fonts/barlow-600.woff2') format('woff2'); font-weight: 600; font-display: swap; }
+
+* { margin: 0; }
+html, body { height: 100%; }
+html { color-scheme: dark; }
+body { background: #05070a; color: #eceef2; font-family: 'Schibsted Grotesk', Arial, sans-serif; overflow: hidden; }
+
+.dv-viewport { position: fixed; left: 0; right: 0; top: 0; bottom: 56px; overflow: hidden; }
+body.dv-with-notes .dv-viewport { bottom: calc(56px + 30vh); }
+.dv-stage { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; font-size: 32px; line-height: 1.2; }
+.dv-stage > section { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; box-sizing: border-box; overflow: hidden; isolation: isolate; display: none; }
+.dv-stage > section.on { display: flex; }
+.dv-stage aside { display: none; }
+.dv-stage h1 { font-size: 96px; font-weight: 600; }
+.dv-stage h2 { font-size: 64px; font-weight: 600; }
+.dv-stage h3 { font-size: 44px; font-weight: 600; }
+.dv-stage p, .dv-stage h1, .dv-stage h2, .dv-stage h3 { overflow-wrap: break-word; text-wrap: pretty; }
+
+.dv-bar { position: fixed; left: 0; right: 0; bottom: 0; height: 56px; padding: 0 20px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 16px; background: #0a0d12; border-top: 1px solid #232b37; font-size: 15px; }
+.dv-bar .dv-steps, .dv-bar .dv-tools { display: flex; align-items: center; gap: 10px; }
+.dv-bar .dv-home, .dv-bar .dv-tools { flex: 1 1 0; }
+.dv-bar .dv-tools { justify-content: flex-end; }
+.dv-bar a { white-space: nowrap; color: #c6cbd4; text-decoration: underline; text-decoration-color: #5b6470; text-underline-offset: 3px; }
+.dv-bar a:hover { color: #eceef2; }
+.dv-bar button { font: inherit; white-space: nowrap; color: #eceef2; background: #121720; border: 1px solid #232b37; border-radius: 6px; height: 36px; min-width: 44px; padding: 0 12px; cursor: pointer; }
+.dv-bar button:hover:not(:disabled) { border-color: #5b6470; }
+.dv-bar button:disabled { color: #5b6470; cursor: default; }
+.dv-bar button[aria-pressed='true'] { border-color: #ff8a4c; color: #ff8a4c; }
+.dv-bar a:focus-visible, .dv-bar button:focus-visible { outline: 2px solid #ff8a4c; outline-offset: 2px; }
+#count { font-family: 'JetBrains Mono', 'Courier New', monospace; min-width: 64px; text-align: center; color: #c6cbd4; }
+
+.dv-notes { position: fixed; left: 0; right: 0; bottom: 56px; height: 30vh; box-sizing: border-box; overflow-y: auto; padding: 20px 24px; background: #0a0d12; border-top: 1px solid #232b37; }
+.dv-notes[hidden] { display: none; }
+.dv-notes p { max-width: 68ch; margin: 0 auto; font-size: 17px; line-height: 1.55; color: #c6cbd4; }
+
+@media (max-width: 720px) {
+  .dv-bar { padding: 0 10px; gap: 8px; font-size: 14px; }
+  #full-btn { display: none; }
+}
+
+@media print {
+  @page { size: 1920px 1080px; margin: 0; }
+  html, body { height: auto; overflow: visible; background: #0a0d12; }
+  .dv-bar, .dv-notes { display: none !important; }
+  .dv-viewport { position: static; overflow: visible; }
+  .dv-stage { position: static; width: 1920px; height: auto; transform: none !important; }
+  .dv-stage > section { display: flex !important; position: relative; break-after: page; break-inside: avoid; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .dv-stage > section * { animation: none !important; }
+}

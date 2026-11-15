@@ -31,6 +31,13 @@
   </head>
   <body>
     <div id="app"></div>
+    <!-- Shown until the app has started (src/main.ts removes it). theme-init.js turns it into a readable message if
+         the app fails to start, so a failure is never a blank page. -->
+    <div id="boot" role="status" style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;text-align:center;font:16px/1.5 system-ui,sans-serif;pointer-events:none">
+      <p style="margin:0;letter-spacing:.3em;font-weight:600">HARMONY</p>
+      <p id="boot-msg" style="margin:0;max-width:34em;opacity:.75">Loading the fire record…</p>
+    </div>
+    <noscript><p style="position:fixed;left:0;right:0;bottom:24px;text-align:center;font:16px/1.5 system-ui,sans-serif">Harmony needs JavaScript to run. The <a href="/demo">slides</a> describe what it does.</p></noscript>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
