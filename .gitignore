@@ -1,0 +1,19 @@
+# data and build outputs
+/data/
+/target/
+node_modules/
+dist/
+.venv/
+__pycache__/
+*.pyc
+web/src/lib/kernel/pkg/
+
+# secrets
+.env
+.env.*
+!.env.example
+
+# misc
+.DS_Store
+Thumbs.db
+*.log
