@@ -7,6 +7,8 @@ export interface Preset {
   subtitle: string
   /** Suggested focus month; year omitted = latest year in the record. */
   focus: { year?: number; month: number }
+  /** One line on what to look for, so the story sets expectations before the numbers arrive. */
+  notice: string
   rings: Rings
 }
 
@@ -19,6 +21,7 @@ export const PRESETS: Preset[] = [
     title: 'Amazon arc of deforestation',
     subtitle: 'Rondônia · Mato Grosso · Pará — August 2019',
     focus: { year: 2019, month: 8 },
+    notice: 'The outcry was global, yet the satellites saw only a moderately busy August. Compare 2005 and 2007 in the calendar.',
     rings: P([[-66.5, -10.2], [-63.5, -13.3], [-60, -14.6], [-55.5, -13.6], [-51, -11.2], [-47.6, -7.6], [-48.4, -3.8], [-51.8, -4.9], [-55, -6.6], [-58.6, -7.4], [-62.4, -7.7], [-65.6, -8.6]]),
   },
   {
@@ -26,6 +29,7 @@ export const PRESETS: Preset[] = [
     title: 'SE Australia — Black Summer',
     subtitle: 'NSW & East Gippsland — December 2019',
     focus: { year: 2019, month: 12 },
+    notice: 'A forest region that rarely burns at this scale: watch December 2019 stand out from every row above it.',
     rings: P([[145.6, -37.9], [148.2, -38.1], [150.2, -37.6], [151.2, -34.4], [152.6, -32.2], [153.6, -29.0], [152.6, -28.2], [150.8, -29.2], [149.6, -31.6], [148.6, -34.6], [147.0, -36.2]]),
   },
   {
@@ -33,6 +37,7 @@ export const PRESETS: Preset[] = [
     title: 'British Columbia & NW Territories',
     subtitle: 'Canada’s record season — August 2023',
     focus: { year: 2023, month: 8 },
+    notice: 'Northern forests burn in a short summer season; watch how far 2023 stands above every other year.',
     rings: P([[-128.5, 50.2], [-122.5, 49.1], [-117.5, 50.2], [-112.5, 55.5], [-108.5, 60.2], [-110.5, 63.4], [-117.5, 64.2], [-124.5, 62.6], [-129.6, 58.6], [-130.6, 54.4]]),
   },
   {
@@ -40,6 +45,7 @@ export const PRESETS: Preset[] = [
     title: 'Gran Chaco',
     subtitle: 'Paraguay · Bolivia · Argentina — September 2020',
     focus: { year: 2020, month: 9 },
+    notice: 'A dry forest cleared for farming: see how the September peak repeats every year, and how 2020 compares.',
     rings: P([[-64.6, -18.6], [-60.8, -18.0], [-57.8, -20.4], [-57.6, -23.8], [-59.2, -26.8], [-62.2, -28.4], [-64.6, -26.4], [-65.2, -22.2]]),
   },
   {
@@ -47,6 +53,7 @@ export const PRESETS: Preset[] = [
     title: 'Miombo woodlands',
     subtitle: 'Zambia–Angola fire belt — dry-season peak, July',
     focus: { month: 7 },
+    notice: 'One of the most regular fire seasons on Earth: see how alike the rows of the calendar are.',
     rings: P([[15.2, -10.4], [19.8, -9.2], [24.6, -9.6], [28.6, -10.2], [31.2, -12.6], [30.4, -15.6], [26.6, -17.2], [21.4, -16.8], [17.0, -16.2], [14.8, -13.4]]),
   },
   {
@@ -54,6 +61,7 @@ export const PRESETS: Preset[] = [
     title: 'Northern California',
     subtitle: 'August Complex & North Bay — September 2020',
     focus: { year: 2020, month: 9 },
+    notice: 'Most years are quiet; look for the extreme summers of 2008, 2020 and 2021 in the calendar.',
     rings: P([[-124.4, 42.0], [-120.0, 42.0], [-120.0, 39.6], [-120.8, 38.4], [-122.4, 37.8], [-123.4, 38.2], [-124.0, 39.6], [-124.6, 40.8]]),
   },
 ]

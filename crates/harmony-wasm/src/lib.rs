@@ -94,7 +94,7 @@ impl Kernel {
         self.engine.analyze_json(options_json).map_err(js)
     }
 
-    /// `options_json`: `{ mFrom, mTo, mode, switchM, baseline }`.
+    /// `options_json`: `CellLayerOptions` (`{ mFrom, mTo, mode, switchM, baseline, dn?, seriesMode? }`).
     pub fn cell_layer(&self, options_json: &str) -> Result<CellLayerResult, JsError> {
         let l = self.engine.cell_layer_json(options_json).map_err(js)?;
         Ok(CellLayerResult { level: l.level, cells: l.cells, weights: l.weights, values: l.values })

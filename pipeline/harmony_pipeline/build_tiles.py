@@ -17,6 +17,7 @@ import numpy as np
 from .afcd import OUT as CUBE, data_through
 from .availability import OUT_M as AVAIL_M
 from .calibrate import CALIB_JSON, COEF, l0_values_sql
+from .harmonize import HARM_JSON
 from .common import connect, fresh, is_regional, posix, run_info, timed, write_json
 from .config import DIST, FIT_END, FIT_START, BRIDGE_END, BRIDGE_START, K_MIN_SUM, LEVELS, L0_NX
 from . import config as C
@@ -88,7 +89,13 @@ def build_meta(con, cal: dict) -> dict:
            "quality": "nrt" if s.endswith("NRT") else "standard"} for s, span in api.items()),
         {"name": "RESOLVE Ecoregions 2017 (biome x realm strata)", "years": "2017", "quality": "reference"},
     ]
-    return {
+    harm = json.loads(HARM_JSON.read_text()) if HARM_JSON.exists() else None
+    if harm:
+        for s in st:
+            err = harm["strata_err"][s["id"]] if s["id"] < len(harm["strata_err"]) else None
+            if err:
+                s["err"] = err
+    meta = {
         "version": 1,
         "generated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "data_through": through,
@@ -106,7 +113,7 @@ def build_meta(con, cal: dict) -> dict:
             "viirs_sats": [int(x) for x in am.viirs_sats],
         },
         "strata": st,
-        "ci_scale": round(cal["ci_scale"], 4),
+        "ci_scale": round(cal["ci_scale"], 4),    # legacy: used only when the harmonization fields are absent
         "method": {
             "unit": "AFCD-M: MODIS-equivalent active-fire cell-days (distinct 0.0125 deg sub-cell x local-solar "
                     "date x day|night with >= 1 accepted detection)",
@@ -132,10 +139,20 @@ def build_meta(con, cal: dict) -> dict:
         },
         "sources": sources,
     }
+    if harm:
+        meta["fusion"] = harm["fusion"]
+        meta["drift"] = harm["drift"]
+        meta["conformal"] = harm["conformal"]
+        meta["method"]["harmonization"] = (
+            "default series = per stratum x dn precision-weighted fusion of MODIS-derived meq and calibrated VIIRS kv "
+            "(error model by triple collocation, strata[].err; common-mode correlation fusion.kappa); MODIS corrected "
+            "for orbit drift from drift.start_year (drift); 80/95 % bounds from split-conformal multipliers "
+            "(conformal) on a shifted log, log(x + 0.5); ci_scale is legacy")
+    return meta
 
 
 def main(force: bool = False) -> None:
-    deps = [CUBE, CALIB_JSON, COEF / "k.parquet", COEF / "r.parquet"]
+    deps = [CUBE, CALIB_JSON, COEF / "k.parquet", COEF / "r.parquet", HARM_JSON]
     if not force and fresh(TILES / "index.json", deps) and fresh(META, deps):
         print("[tiles] up to date")
         return

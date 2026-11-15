@@ -7,6 +7,7 @@
   import { linear, linePath, bandPath, niceMax, niceTicks, tickLabel } from '../charts/scale'
   import { fmtNum, fmtRatio, monthShort, yearOf } from '../format'
   import { SOURCE_SHORT } from '../analysisUtil'
+  import Term from './Term.svelte'
 
   let { a }: { a: Analysis } = $props()
 
@@ -101,12 +102,9 @@
   )
 </script>
 
-<section class="seam" aria-labelledby="seam-h">
+<section class="seam" id="seam" aria-labelledby="seam-h">
   <div class="head">
-    <div>
-      <p class="eyebrow">03 · Why harmonize?</p>
-      <h2 id="seam-h">The 2012 seam</h2>
-    </div>
+    <h3 id="seam-h" class="sub-title">Why two satellites had to be joined</h3>
     <div class="seg toggle" role="radiogroup" aria-label="Series shown">
       <button role="radio" aria-checked={!harmonized} onclick={() => (harmonized = false)}>Raw sensors</button>
       <button role="radio" aria-checked={harmonized} onclick={() => (harmonized = true)}>Harmonized</button>
@@ -115,18 +113,18 @@
 
   <p class="lede">
     {#if !harmonized}
-      Stitching hotspot counts together — MODIS until {yearOf(vStart)}, VIIRS after — invents a jump: the finer VIIRS sensor simply sees more.
+      Joining the raw counts end to end, <Term id="sensors">MODIS</Term> until {yearOf(vStart)} and VIIRS after, invents a jump: the finer VIIRS sensor simply sees more small fires. That is <Term id="seam">the 2012 seam</Term>.
     {:else}
-      One unit across both eras: MODIS-equivalent active-fire cell-days. Calibrated VIIRS (green) tracks MODIS (blue) where both fly; the band is the 80 / 95 % interval once VIIRS carries the record.
+      One unit across both eras, <Term id="afcdm" />. Calibrated VIIRS (green) tracks MODIS (blue) where both fly; the grey band is the likely range once VIIRS carries the record.
     {/if}
   </p>
 
   <div class="nums">
-    <div><span class="eyebrow">Raw VIIRS ÷ MODIS</span><strong class="num">{fmtRatio(s.ratioNaive)}</strong></div>
-    <div><span class="eyebrow">Harmonized ratio</span><strong class="num">{fmtRatio(s.ratioHarmonized)}</strong></div>
-    <div><span class="eyebrow">Agreement r</span><strong class="num">{s.r == null ? '—' : s.r.toFixed(2)}</strong></div>
-    <div><span class="eyebrow">Bias</span><strong class="num">{s.biasPct == null ? '—' : `${s.biasPct >= 0 ? '+' : '−'}${Math.abs(s.biasPct).toFixed(1)} %`}</strong></div>
-    <div class="small muted ov">{s.nMonths} overlap months, {monthShort(s.overlap[0])} – {monthShort(s.overlap[1])}</div>
+    <div><span class="nl">Raw VIIRS ÷ MODIS</span><strong class="num">{fmtRatio(s.ratioNaive)}</strong></div>
+    <div><span class="nl">After harmonizing</span><strong class="num">{fmtRatio(s.ratioHarmonized)}</strong></div>
+    <div><span class="nl">Agreement (r)</span><strong class="num">{s.r == null ? '—' : s.r.toFixed(2)}</strong></div>
+    <div><span class="nl">Bias</span><strong class="num">{s.biasPct == null ? '—' : `${s.biasPct >= 0 ? '+' : '−'}${Math.abs(s.biasPct).toFixed(1)} %`}</strong></div>
+    <div class="muted ov">{s.nMonths} months with both sensors, {monthShort(s.overlap[0])} – {monthShort(s.overlap[1])}</div>
   </div>
 
   <div class="chart" bind:clientWidth={width}>
@@ -201,19 +199,26 @@
         <li><span class="sw band"></span>80 / 95 % interval</li>
       {/if}
     </ul>
-    <label class="slider">
-      <span>Calibrated VIIRS carries the record from <strong class="num">{sliderYear}</strong></span>
-      <input type="range" name="switch-year" min={firstSwitch} max={lastSwitch} step="1" bind:value={sliderYear} onchange={commitSwitch} aria-label="Switch year: first year served from calibrated VIIRS" />
-    </label>
   </div>
+  <!-- Legacy control: the hard switch year will give way to sensor fusion; kept behind a disclosure on purpose. -->
+  <details class="more">
+    <summary>Advanced: switch year</summary>
+    <div class="more-body">
+      <label class="slider">
+        <span>Calibrated VIIRS carries the record from <strong class="num">{sliderYear}</strong></span>
+        <input type="range" name="switch-year" min={firstSwitch} max={lastSwitch} step="1" bind:value={sliderYear} onchange={commitSwitch} aria-label="Switch year: first year served from calibrated VIIRS" />
+      </label>
+    </div>
+  </details>
   <p class="sr-only" aria-live="polite">{harmonized ? 'Showing harmonized record.' : 'Showing raw sensor counts.'} {summary}</p>
 </section>
 
 <style>
-  .seam { padding: var(--sec-pad); border-bottom: 1px solid var(--rule); }
-  .head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+  .seam { padding: 22px 0 24px; border-bottom: 1px solid var(--rule); }
+  .head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .nl { font-size: var(--fs-sm); color: var(--ink-3); }
   .toggle button { min-height: 34px; padding: 0 14px; font-size: var(--fs-md); }
-  .lede { color: var(--ink-2); max-width: 62ch; margin: 10px 0 12px; min-height: 3em; }
+  .lede { color: var(--ink-2); max-width: var(--measure); margin: 10px 0 12px; min-height: 3em; }
   .nums { display: flex; flex-wrap: wrap; gap: 8px 26px; align-items: flex-end; margin-bottom: 8px; }
   .nums > div { display: grid; }
   .nums strong { font-size: var(--fs-stat); font-weight: 600; letter-spacing: -0.03em; }
@@ -249,5 +254,5 @@
   .sw.viirs { background: var(--s-viirs); }
   .sw.harm { background: var(--s-harm); height: 3px; }
   .sw.band { height: 9px; background: var(--band-80); }
-  .slider { display: grid; gap: 2px; font-size: var(--fs-sm); color: var(--ink-2); min-width: 240px; }
+  .slider { display: grid; gap: 2px; font-size: var(--fs-sm); color: var(--ink-2); max-width: 360px; }
 </style>

@@ -372,7 +372,18 @@ def main(force: bool = False) -> None:
         bfit = fit_stream(BR, nS, biome, nB, list(range(BRIDGE_START[0], BRIDGE_END[0] + 1)), TAU_GRID)
         print(f"  bridge tau={bfit.tau} rmse={bfit.tau_rmse}")
 
-    # ci_scale from LOYO predictions aggregated to 1 deg cell-months ---------------------------
+    # LOYO predictions at (1-degree cell, stratum, dn, month) for harmonize.py (conformal, error model) ----------
+    with timed("calibrate loyo table"):
+        lk = ((F.c1.astype(np.int64) * nS + F.s) * 2 + F.dn) * 400 + F.m
+        u, (P, P2, O) = group_sum(lk, fit.pred_loyo, fit.pred_loyo ** 2, F.num)
+        ldf = pd.DataFrame({"c1": (u // 400 // 2 // nS).astype("uint32"), "s": (u // 400 // 2 % nS).astype("uint16"),
+                            "dn": (u // 400 % 2).astype("uint8"), "m": (u % 400).astype("uint16"),
+                            "P": P, "P2": P2, "O": O})
+        con.register("ldf", ldf)
+        con.execute(f"COPY ldf TO '{posix(COEF / 'loyo_c1.parquet')}' (FORMAT parquet)")
+        con.unregister("ldf")
+
+    # ci_scale (legacy, kept for the legacy interval) from LOYO predictions at 1 deg cell-months ----------
     with timed("calibrate ci_scale"):
         sdn = F.s.astype(np.int64) * 2 + F.dn
         g = (F.c1 * 400 + F.m) * (nS * 2) + sdn

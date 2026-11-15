@@ -137,7 +137,7 @@
 {#if available}
   <div class="ask" role="group" aria-labelledby="ask-h">
     <h3 id="ask-h">Ask Harmony</h3>
-    <p class="small muted prov">Answers come only from the statistics on this page, not from the web or from anything else. They cannot tell causes, weather or burned area.</p>
+    <p class="muted prov">Answers come only from the statistics on this page, not from the web or from anything else. They cannot tell causes, weather or burned area.</p>
 
     {#if turns.length === 0 && !busy}
       <div class="chips" aria-label="Suggested questions">
@@ -199,21 +199,21 @@
 
 <style>
   .ask { margin-top: 22px; padding-top: 16px; border-top: 1px dashed var(--rule-strong); max-width: 70ch; }
-  h3 { margin: 0 0 4px; font-size: 1rem; }
+  h3 { margin: 0 0 4px; font-size: var(--fs-base); }
   .prov { margin: 0 0 10px; }
   .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
   .chip {
-    font: inherit; font-size: 0.86rem; text-transform: none; letter-spacing: normal; line-height: 1.35; color: var(--ink-2); background: var(--surface); border: 1px solid var(--rule-strong);
+    font: inherit; font-size: var(--fs-base); text-transform: none; letter-spacing: normal; line-height: 1.35; color: var(--ink-2); background: var(--surface); border: 1px solid var(--rule-strong);
     border-radius: 999px; padding: 4px 12px; cursor: pointer; text-align: left;
   }
   .chip:hover:not(:disabled) { color: var(--ink); background: var(--surface-2); }
   .chip:disabled { opacity: 0.5; cursor: not-allowed; }
   .log { max-height: 340px; overflow-y: auto; padding: 4px 2px; margin-bottom: 10px; display: flex; flex-direction: column; gap: 10px; }
-  .q { margin: 0; padding: 6px 10px; background: var(--surface-2); border-radius: 8px; font-size: 0.95rem; align-self: flex-end; max-width: 92%; }
-  .who { display: block; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3); margin: 0 0 2px; }
+  .q { margin: 0; padding: 6px 10px; background: var(--surface-2); border-radius: 8px; font-size: var(--fs-base); align-self: flex-end; max-width: 92%; }
+  .who { display: block; font-size: var(--fs-xs); color: var(--ink-3); margin: 0 0 2px; }
   .q .who { display: inline; margin-right: 8px; }
   .ans { border-left: 2px solid var(--accent); padding-left: 12px; }
-  .ans .body { margin: 0; white-space: pre-wrap; line-height: 1.55; font-size: 0.98rem; }
+  .ans .body { margin: 0; white-space: pre-wrap; line-height: 1.55; font-size: var(--fs-base); }
   .meta { margin: 4px 0 0; }
   .warn { color: var(--warning); margin: 4px 0 0; }
   .err { color: var(--ink-2); margin: 0 0 8px; }

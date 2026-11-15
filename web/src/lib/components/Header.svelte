@@ -13,6 +13,7 @@
     return Number.isNaN(+dt) ? d : dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
   })
   // Age of the newest near-real-time acquisition, when the live proxy is available and has data.
+  const busy = $derived(session.aoi != null && (session.status === 'loading' || session.status === 'analyzing'))
   const liveAge = $derived(live.available && live.latestT != null ? fmtAge(live.now / 1000 - live.latestT) : null)
 </script>
 
@@ -28,12 +29,10 @@
         <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 1 9.5 9h-9z" fill="none" stroke="currentColor" stroke-width="1.3" /></svg>
         Demo data
       </span>
-    {:else if session.sel}
-      <span class="chip kernel" title="Rust/WASM kernel on pipeline tiles">WASM kernel</span>
     {/if}
     {#if through}
       <span class="chip fresh" title={liveAge ? 'Science record (calendar) through this date · newest near-real-time FIRMS detection, provisional' : 'Science record (calendar) through this date'}>
-        <span class="dot" aria-hidden="true"></span>{liveAge ? 'Record' : 'Data'} <span class="num">{through}</span>{#if liveAge}<span class="sep" aria-hidden="true">·</span><span class="live-t">Live <span class="num">{liveAge === 'just now' ? 'just now' : `${liveAge} ago`}</span></span>{/if}
+        <span class="dot" aria-hidden="true"></span>Data to <span class="num">{through}</span>{#if liveAge}<span class="sep" aria-hidden="true">·</span><span class="live-t">live <span class="num">{liveAge === 'just now' ? 'just now' : `${liveAge} ago`}</span></span>{/if}
       </span>
     {/if}
     <button class="btn pulse-btn" onclick={() => dispatchEvent(new CustomEvent('harmony:open-pulse'))} title="26 years of global fire seasons on a globe">
@@ -52,6 +51,13 @@
       {/if}
     </button>
   </div>
+  {#if busy}
+    <div class="progress" role="progressbar" aria-label="Loading analysis"
+      aria-valuemin="0" aria-valuemax={session.progress.total || 1} aria-valuenow={session.progress.done}>
+      <div class="bar" class:indeterminate={!session.progress.total}
+        style:width={session.progress.total ? `${(100 * session.progress.done) / session.progress.total}%` : '30%'}></div>
+    </div>
+  {/if}
 </header>
 <About />
 
@@ -62,7 +68,7 @@
     padding: 0 16px; background: color-mix(in srgb, var(--bg) 94%, transparent); backdrop-filter: blur(8px);
     border-bottom: 1px solid var(--rule);
   }
-  .brand { display: flex; align-items: center; gap: 10px; min-width: 0; color: var(--ink); text-decoration: none; }
+  .brand { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 36px; color: var(--ink); text-decoration: none; }
   .wm {
     font-family: var(--font-display); font-weight: 500; font-size: var(--fs-base); line-height: 1;
     letter-spacing: var(--track-wordmark); margin-right: calc(-1 * var(--track-wordmark)); text-transform: uppercase;
@@ -74,9 +80,12 @@
   }
   .right { display: flex; align-items: center; gap: 10px; }
   .chip { padding: 5px 8px; }
-  .chip.kernel { color: var(--ink-3); }
+  .progress { position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; overflow: hidden; }
+  .bar { height: 100%; background: var(--accent); transition: width 0.2s; }
+  .bar.indeterminate { animation: slide 1.1s ease-in-out infinite; }
+  @keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
   .sep { color: var(--ink-faint); }
-  .fresh .num { letter-spacing: 0; text-transform: none; color: var(--ink); }
+  .fresh .num { color: var(--ink); }
   .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--good); }
   .nav { display: flex; align-items: center; gap: 2px; }
   .nl {
@@ -89,7 +98,6 @@
   .pulse-btn { border-color: color-mix(in srgb, var(--accent) 60%, var(--rule-strong)); color: var(--accent-ink); }
   .pulse-btn:hover:not(:disabled) { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); }
   @media (max-width: 1180px) { .tagline { display: none; } }
-  @media (max-width: 1000px) { .chip.kernel { display: none; } }
   @media (max-width: 720px) { .live-t, .fresh .sep { display: none; } }
   @media (max-width: 560px) {
     .hdr { padding: 0 10px; gap: 8px; }

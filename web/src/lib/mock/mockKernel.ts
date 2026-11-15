@@ -1,7 +1,8 @@
 // A KernelClient that fabricates a believable Analysis from the AOI alone, so the whole UI works
 // with no data and no wasm. Everything is deterministic in the AOI centroid. Numbers are NOT real.
 import type {
-  AnalyzeOptions, Analysis, AoiInfo, CellLayer, CellLayerOptions, KernelClient, Meta, MonthIndex, SourceCode, TileColumns,
+  AnalogYear, Analogs, AnalyzeOptions, Analysis, AoiInfo, CellLayer, CellLayerOptions, KernelClient, Meta, MonthIndex, SourceCode,
+  TileColumns,
 } from '../kernel/types'
 import { ringsAreaKm2, ringsBbox, ringsCentroid, pointInRings, type Rings } from '../geo'
 import { gaussian, mannKendall, median, mulberry32, pearson, percentileOf, quantile, sortNum, theilSen } from '../stats'
@@ -159,22 +160,46 @@ export class MockKernel implements KernelClient {
     const n = M_LAST + 1
     const prov = (m: number) => meta.months.provisional[m] === 1
 
-    // Harmonized full record + intervals.
+    // Harmonized full record + intervals. Fused (default): a MODIS weight that falls with the (mock) orbit
+    // drift after 2020, bounds on every month; switch: the original hard switch. Lens 'viirs': values x k.
+    const mode = opts.mode ?? 'fused'
+    const unit = opts.unit ?? 'modis'
+    const lensK = unit === 'viirs' ? rec.k : 1
     const H: (number | null)[] = new Array(n).fill(null)
     const lo80: (number | null)[] = new Array(n).fill(null), hi80 = [...lo80], lo95 = [...lo80], hi95 = [...lo80]
+    const wM: (number | null)[] = new Array(n).fill(null)
+    const modisAdj: (number | null)[] = new Array(n).fill(null)
     const src: SourceCode[] = new Array(n).fill(0)
     for (let m = M_FIRST; m <= M_LAST; m++) {
-      const useV = m >= switchM && rec.viirsCal[m] != null
-      const v = useV ? rec.viirsCal[m]! : rec.modisEq[m]
-      H[m] = v
-      src[m] = useV ? 3 : m < meta.aqua_start_m ? 1 : 2
-      if (src[m] !== 2) {
-        const rel = src[m] === 1 ? 0.035 : 0.018
-        const sig = Math.sqrt(rel + 1 / Math.max(v, 0.5)) * meta.ci_scale
-        lo80[m] = v * Math.exp(-1.2816 * sig); hi80[m] = v * Math.exp(1.2816 * sig)
-        lo95[m] = v * Math.exp(-1.96 * sig); hi95[m] = v * Math.exp(1.96 * sig)
+      const y = yearOf(m)
+      const drift = y >= 2020 ? Math.exp(0.012 * (y - 2019)) : 1
+      modisAdj[m] = rec.modisEq[m] / drift
+      const vc = rec.viirsCal[m]
+      let v: number, w: number
+      if (mode === 'switch') {
+        const useV = m >= switchM && vc != null
+        v = useV ? vc! : rec.modisEq[m]
+        w = useV ? 0 : 1
+        modisAdj[m] = rec.modisEq[m]
+      } else if (vc == null) {
+        v = modisAdj[m]!; w = 1
+      } else {
+        w = Math.min(0.7, Math.max(0.2, 0.7 - 0.08 * Math.max(0, y - 2019)))
+        v = w * modisAdj[m]! + (1 - w) * vc
       }
+      H[m] = v
+      wM[m] = v > 0 ? w : null
+      src[m] = w < 0.5 ? 3 : m < meta.aqua_start_m ? 1 : 2
+      const rel = src[m] === 1 ? 0.035 : 0.018
+      const sig = Math.sqrt(rel + 1 / Math.max(v, 0.5))
+      const [q80, q95] = mode === 'switch' && src[m] === 2 ? [1.2816 * 1.3, 1.96 * 1.3] : [1.2816 * 1.25, 1.96 * 1.25]
+      lo80[m] = v * Math.exp(-q80 * sig); hi80[m] = v * Math.exp(q80 * sig)
+      lo95[m] = v * Math.exp(-q95 * sig); hi95[m] = v * Math.exp(q95 * sig)
     }
+    const lensed = (arr: (number | null)[]) => arr.map((x) => (x == null ? null : x * lensK))
+    for (const arr of [H, lo80, hi80, lo95, hi95, modisAdj]) arr.splice(0, arr.length, ...lensed(arr))
+    const modisEqL = rec.modisEq.map((x) => x * lensK)
+    const viirsCalL = lensed(rec.viirsCal)
 
     // Climatology over baseline years.
     const [b0, b1] = opts.baseline
@@ -315,6 +340,43 @@ export class MockKernel implements KernelClient {
       outlook.hi80.push((c + 1) * Math.exp(a + 1.2816 * s) - 1)
     })
 
+    // Analog years: complete years whose log1p year-to-date trajectory is closest to this year's.
+    const analogs = ((): Analogs | undefined => {
+      const cands: number[] = []
+      for (let y = 2001; y < yNow; y++) cands.push(y)
+      if (cands.length < 4) return undefined
+      const val = (y: number, mo: number) => H[toM(y, mo)] ?? 0
+      const dist = (a: number, b: number) => {
+        let s = 0
+        for (let mo = 1; mo <= through; mo++) s += (Math.log1p(val(a, mo)) - Math.log1p(val(b, mo))) ** 2
+        return Math.sqrt(s / through)
+      }
+      const rest = (y: number) => { let s = 0; for (let mo = through + 1; mo <= 12; mo++) s += val(y, mo); return s }
+      const hasRest = through < 12
+      const restMedian = hasRest ? median(sortNum(cands.map(rest))) : null
+      const ratio = (y: number) => (restMedian != null && restMedian > 0 ? rest(y) / restMedian : null)
+      const sd = (xs: number[]) => {
+        if (xs.length < 2) return null
+        const mu = xs.reduce((s, x) => s + x, 0) / xs.length
+        return Math.sqrt(xs.reduce((s, x) => s + (x - mu) ** 2, 0) / (xs.length - 1))
+      }
+      const logs = (ys: number[]) => ys.map(ratio).filter((r): r is number => r != null && r > 0).map(Math.log)
+      const ranked = cands.map((y) => ({ y, d: dist(y, yNow) })).sort((a, b) => a.d - b.d || a.y - b.y)
+      const top: AnalogYear[] = ranked.slice(0, 3).map(({ y, d }) => {
+        let peak: number | null = null
+        for (let mo = through + 1; mo <= 12; mo++) if (val(y, mo) > 0 && (peak == null || val(y, mo) > val(y, peak))) peak = mo
+        return { year: y, distance: d, restTotal: hasRest ? rest(y) : null, restRatio: hasRest ? ratio(y) : null, peakMonth: hasRest ? peak : null }
+      })
+      const spread = hasRest ? sd(logs(top.map((t) => t.year))) : null
+      const climSpread = hasRest ? sd(logs(cands)) : null
+      const skill = hasRest ? 0.05 + (mulberry32(this.seed(opts.dn) ^ 0x2545f491)() - 0.5) * 0.3 : null
+      const informative = skill != null && skill > 0.1 && spread != null && climSpread != null && spread < climSpread
+      return {
+        year: yNow, throughMonth: through, candidates: cands.length, top, restMedian, spread, climSpread, skill, informative,
+        note: `Closest years so far: ${top.map((t) => t.year).join(', ')} (mock numbers).`,
+      }
+    })()
+
     // Seam diagnostics over the whole overlap.
     let sv = 0, sm = 0, sc = 0, se = 0
     const la: number[] = [], lb: number[] = []
@@ -341,10 +403,16 @@ export class MockKernel implements KernelClient {
       months,
       series: {
         harmonized: pick(H), lo80: pick(lo80), hi80: pick(hi80), lo95: pick(lo95), hi95: pick(hi95),
-        modisEq: months.map((m) => rec.modisEq[m]), viirsCal: pick(rec.viirsCal), viirsRaw: pick(rec.viirsRaw),
+        modisEq: pick(modisEqL), viirsCal: pick(viirsCalL), viirsRaw: pick(rec.viirsRaw),
         rawModisCount: pick(rec.rawModis), rawViirsCount: pick(rec.rawViirs), naive: pick(naive),
         source: pick(src), provisional: months.map(prov),
+        modisWeight: pick(wM), modisAdj: pick(modisAdj),
       },
+      harmonization: {
+        mode, unit, intervals: 'conformal',
+        lensFactor: unit === 'viirs' ? new Array(12).fill(1 / rec.k) : null, lensFallback: false,
+      },
+      ...(analogs ? { analogs } : {}),
       calendar, climatology: clim,
       annual: { years, total, complete, rank },
       ytd, current, trend, season, outlook, seam,

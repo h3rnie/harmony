@@ -162,12 +162,9 @@
     : '')
 </script>
 
-<section class="lab" aria-labelledby="lab-h">
+<section class="lab" id="lab" aria-labelledby="lab-h">
   <div class="head">
-    <div>
-      <p class="eyebrow">Method lab · in-browser ML</p>
-      <h2 id="lab-h">Would machine learning do better?</h2>
-    </div>
+    <h3 id="lab-h" class="sub-title">Would machine learning do better?</h3>
     <button class="btn" aria-expanded={open} aria-controls="lab-body" onclick={toggle}>
       {open ? 'Close the lab' : 'Open the lab'}
     </button>
@@ -191,7 +188,7 @@
       {:else}
         <div class="nums" class:stale={phase !== 'done'}>
           <div class="grp">
-            <span class="eyebrow">Fit years {yearOf(meta!.fit_window_m[0])}–{yearOf(meta!.fit_window_m[1])}, vs MODIS</span>
+            <span class="gl">Fit years {yearOf(meta!.fit_window_m[0])}–{yearOf(meta!.fit_window_m[1])}, vs MODIS</span>
             <table class="agree">
               <thead><tr><th></th><th scope="col">r</th><th scope="col">Bias</th></tr></thead>
               <tbody>
@@ -202,7 +199,7 @@
           </div>
           {#if res.oot.production.n > 0}
             <div class="grp">
-              <span class="eyebrow">Out of time, {yearOf(meta!.fit_window_m[1]) + 1}–{yearOf(res.oot.to)}</span>
+              <span class="gl">Out of time, {yearOf(meta!.fit_window_m[1]) + 1}–{yearOf(res.oot.to)}</span>
               <table class="agree">
                 <thead><tr><th class="sr-only">Method</th><th scope="col">r</th><th scope="col">Bias</th></tr></thead>
                 <tbody>
@@ -321,16 +318,15 @@
 </section>
 
 <style>
-  .lab {
-    padding: var(--sec-pad); border-bottom: 1px solid var(--rule);
-  }
-  .head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
-  .lede { color: var(--ink-2); max-width: 62ch; margin: 10px 0 0; }
+  .lab { padding: 22px 0 24px; border-bottom: 1px solid var(--rule); }
+  .head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .lede { color: var(--ink-2); max-width: var(--measure); margin: 10px 0 0; }
   .body { margin-top: 14px; }
   .quiet { color: var(--ink-3); max-width: 62ch; }
   .nums { display: flex; flex-wrap: wrap; gap: 8px 32px; margin-bottom: 10px; }
   .nums.stale { opacity: 0.55; }
   .grp { display: grid; gap: 2px; }
+  .gl { font-size: var(--fs-sm); color: var(--ink-3); }
   .agree { font-size: var(--fs-md); }
   .agree th, .agree td { padding: 1px 10px 1px 0; text-align: right; font-weight: 400; }
   .agree tbody th { text-align: left; color: var(--ink-2); display: flex; align-items: center; gap: 6px; }
@@ -369,7 +365,7 @@
   .tw { max-width: 100%; overflow-x: auto; }
   .tbl .tw { max-height: 280px; overflow: auto; margin-top: 6px; }
   .tbl table th, .tbl table td { padding: 2px 10px 2px 0; text-align: right; border-bottom: 1px solid var(--rule); font-weight: 400; }
-  h3 { margin: 22px 0 4px; }
+  .body h3 { margin: 22px 0 4px; font-size: var(--fs-base); }
   .mt { width: 100%; margin: 6px 0 10px; }
   .mt th, .mt td { padding: 3px 8px; border-bottom: 1px solid var(--rule); text-align: right; font-weight: 400; white-space: nowrap; }
   .mt thead th { color: var(--ink-3); font-size: var(--fs-xs); }

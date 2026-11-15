@@ -103,3 +103,32 @@ CLIM_BASELINE = (2003, 2022)   # overview climatology years
 
 def ym_index(ym: tuple[int, int]) -> int:
     return month_index(*ym)
+
+# ---- harmonization science core (harmonize.py) -----------------------------------------------
+TC_WINDOW = ((2012, 2), (2019, 12))   # pre-drift overlap: triple collocation, drift reference ratios
+DRIFT_REF_YEARS = (2012, 2019)        # reference years for the satellite-specific drift ratios
+DRIFT_START_YEAR = 2020               # first year the kernel corrects MODIS for drift
+DRIFT_ATTR_FRAC = 0.5                 # |log factor| x this is added (as 1 sd) for drift-vs-real-change attribution
+DRIFT_MIN_EXP = 2000.0                # min expected AFCD in a biome x dn x year for a biome-specific factor
+JACK_GROUPS = 40                      # delete-a-group jackknife over 5-degree blocks
+VIIRS_ERAS = {1: ((2012, 2), (2017, 12)),   # number of VIIRS satellites -> TC window for the VIIRS stream
+              2: ((2018, 1), (2019, 12)),
+              3: ((2023, 3), (2025, 12))}
+TC_MIN_DOF_CELL = 500                 # min residual degrees of freedom for a 1-degree TC estimate at a level
+TC_MIN_DOF_STRATUM = 48               # same for stratum-month TC
+CONF_SIZE_EDGES = (5.0, 20.0, 100.0, 1000.0)   # activity-size classes of the predicted value (AFCD-M)
+CONF_MIN_N = 500                      # min scores per Mondrian bin (biome group x size class) before merging
+CONF_Q_MAX = 8.0                      # cap of a conformal multiplier (a bin with >5 % unreachable scores)
+OOT_TEST_YEARS = (2022, 2024)         # out-of-time conformal coverage test
+# biome groups for conformal bins and summaries (RESOLVE biome numbers; 0 = unclassified)
+BIOME_GROUPS = (
+    ("Tropical forests", (1, 2, 3)),
+    ("Temperate forests", (4, 5)),
+    ("Boreal forest and tundra", (6, 11)),
+    ("Tropical savannas and grasslands", (7,)),
+    ("Temperate grasslands", (8,)),
+    ("Flooded and montane grasslands", (9, 10)),
+    ("Mediterranean", (12,)),
+    ("Deserts and xeric shrublands", (13,)),
+    ("Mangroves and unclassified", (14, 0, 98, 99)),
+)

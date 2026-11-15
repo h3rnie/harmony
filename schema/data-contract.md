@@ -72,7 +72,61 @@ Parquet v1, ZSTD, sorted by (cell, stratum, m, dn). A row exists only if some va
 }
 ```
 
-## Interval formula (kernel)
+## Harmonization fields in meta.json (added 2026-11; all optional)
+A reader that does not know these fields ignores them; a kernel that finds them absent falls back to the legacy
+behaviour (hard switch at `switchM`, VIIRS / bridge intervals from the legacy formula below, `ci_scale`). The tile
+schema is unchanged.
+
+```jsonc
+"strata": [{ …,
+  "err": {                         // sensor error model, MODIS-equivalent AFCD, pairs are [day, night]
+    "modis":  { "rho": [d, n], "phi": [d, n] },   // Terra∪Aqua `meq` (native, before drift correction)
+    "bridge": { "rho": [d, n], "phi": [d, n] },   // Terra-only bridged `meq` (rho includes relvar_bridge)
+    "viirs":  { "rho": [[d, n], [d, n], [d, n]],  // calibrated VIIRS `kv` by number of VIIRS satellites (1, 2, 3);
+                "phi": [[d, n], [d, n], [d, n]] } // rho EXCLUDES relvar (the kernel adds relvar as the calibration floor)
+  } }],
+"fusion": { "kappa": [d, n] },     // correlation of the MODIS and VIIRS stratum-coherent (rho) error components
+"drift": {                         // MODIS orbit-drift correction of `meq` (Terra∪Aqua), see validation.json `drift`
+  "ref_years": [2012, 2019], "start_year": 2020, "years": [2020, …, 2026],
+  "attr_frac": 0.5,                // share of |log factor| added as 1-sd attribution uncertainty
+  "biome": { "<biome>": { "log_f": [[day by year], [night by year]], "log_sd": [[…], […]] }, …,
+             "all": { … } }        // fallback for a biome without its own entry
+},
+"conformal": {                     // split-conformal multipliers on sigma_log (Mondrian: biome group x size class)
+  "size_edges": [5, 20, 100, 1000],          // class c holds edges[c-1] <= H < edges[c] (class 0: H < 5)
+  "groups": [{ "name": "…", "biomes": [7] }, …],
+  "q80": [[per size class] per group], "q95": [[…]], "n": [[…]],
+  "global": { "q80": [per size class], "q95": […], "n": […] }   // for a biome in no group
+}
+```
+`months.viirs_sats` (bitmask 1 S-NPP, 2 NOAA-20, 4 NOAA-21) selects the VIIRS error row: number of set bits,
+clamped to 1..3. `biome` of a stratum comes from `strata[].biome`.
+
+## Series formula (kernel)
+Groups `g` = stratum × dn present in the AOI. Per month and group: `M_g = Σ w_i meq_i`, `V_g = Σ w_i kv_i` (AFCD).
+- **MODIS stream**: bridge parameters before `aqua_start_m`, `modis` after. Drift (fused mode only), for months
+  with `year >= drift.start_year`: `f = exp(log_f[biome][dn][year])` (last listed year for later years),
+  `M_g ← M_g / f`, `rho_M ← rho_M + log_sd² + (attr_frac · log f)²`.
+- **VIIRS stream**: `rho_V = relvar + err.viirs.rho[n_sats]`, `phi_V = err.viirs.phi[n_sats]`.
+- Stream variance at level `μ`: `Var_j(μ) = rho_j μ² + phi_j μ`; common mode
+  `C(μ) = kappa sqrt(rho_M0 rho_V0) μ²` with the rho parts before drift terms and relvar, plus `relvar μ²` in
+  drift-corrected months (the correction is anchored on calibrated VIIRS, so it shares its calibration error);
+  `C ≤ 0.99 sqrt(Var_M Var_V)`.
+- **Fused mode**: a stream is used if its coverage is > 0; if one stream is full (coverage ≥ 0.5) a partial
+  one is dropped. Two streams: `μ` starts at `(M_g + V_g)/2`, then 3 times
+  `w = clamp((Var_V − C) / (Var_M + Var_V − 2C), 0, 1)`, `μ = w M_g + (1 − w) V_g` (the weight is computed from
+  `Var/μ`, so `μ = 0` gives the limit `phi_V / (phi_M + phi_V)` when `C = 0`).
+  `H_g = μ`, `Var_g = w² Var_M + (1−w)² Var_V + 2 w (1−w) C`. One stream: that stream and its variance.
+  `H = Σ H_g`, `Var = Σ Var_g` (groups independent, as in the legacy formula), MODIS weight
+  `= Σ w_g H_g / Σ H_g` (null when `H = 0` or no MODIS).
+- **Switch mode**: the legacy stream choice at `switchM` (no drift correction), `Var` = that stream's variance.
+- **Bounds** for every covered month: `σ_log = sqrt(Var) / max(H, 0.5)`, size class from `H` (MODIS units),
+  `q = Σ_g H_g q[group(g)][class] / H` (global row when `H = 0`), bounds `H · exp(∓ q σ_log)`.
+- **Lens** (`unit: "viirs"`): every MODIS-equivalent value of month m (fused value, bounds, modisEq, viirsCal and
+  all statistics computed from them) is divided by `f_k = Σ kv / Σ v` of calendar month `k` over the AOI's
+  `fit_window_m` months (fallback: all fit-window months, then all months with `v > 0`, else 1).
+
+## Interval formula (legacy kernel, used when the fields above are absent)
 For one month and AOI weights `w_i`, VIIRS-derived value `H = Σ w_i kv_i`:
 `Var = ci_scale² · [ Σ_{s,dn} relvar_{s,dn} (Σ_{i∈s,dn} w_i kv_i)² + Σ_{s,dn} (Σ w_i kv_i + alpha_{s,dn} Σ w_i² kvsq_i) ]`;
 `σ_log = sqrt(Var) / max(H, 0.5)`; bounds `H·exp(∓z σ_log)`, z = 1.2816 (80 %) and 1.96 (95 %).
@@ -111,17 +165,43 @@ overview/meta.json
 overview/pulse/{year}.png    2880 x 1080 atlas, 4 cols x 3 rows of months (Jan top-left, row-major)
 overview/clim.png            same layout: per-cell median over 2003–2022 of each calendar month (zeros included)
 overview/land.png            1440 x 720 land fraction x 255 (RESOLVE Ecoregions 2017, 2 x 2 supersampled)
+overview/season.png          720 x 2520: 7 layers of 720 x 360 stacked vertically (fire clock)
+overview/trend.png           720 x 1800: 5 layers of 720 x 360 stacked vertically (trend 2001–2025)
 ```
 - Each month is a 720 x 360 equirectangular image: row 0 = 90 N, column 0 = 180 W, 0.5 deg cells
   (`x = floor((lon + 180) / 0.5)`, `y = floor((90 - lat) / 0.5)`). Months outside `m_first..m_last` are all zero.
 - Encoding `u = round(255 · min(1, sqrt(x / cap)))`, with `u >= 1` wherever `x > 0`; decode `x = cap · (u / 255)²`
   (≈1 % precision near the cap, coarser at low values: the overview is for display, the tiles are the record).
 - `cap` = 99.9th percentile of the non-zero cell-months (a robust global constant).
+- Signed codes (season vectors, trends): `u = 128 + round(127 · clamp(v / lim, -1, 1))`, so 1..255 with 128 = 0;
+  `u = 0` is reserved for "no value" where stated. Decode `v = (u - 128) / 127 · lim`.
+
+`season.png` (from the **mean** of each calendar month over the baseline years; layer k = rows 360k..360k+359):
+
+| layer | content | encoding |
+|---|---|---|
+| 0, 1 | unit vector of the peak month, angle 2π·(month-1)/12 (cos, sin) | signed, lim 1; 128 where no fire (linear filtering stays circular) |
+| 2 | concentration: resultant length of the circular mean of the 12 monthly values | 255 · R |
+| 3 | mean annual activity | `round(255 · sqrt(x / season.cap))`, >= 1 where x > 0 |
+| 4 | peak month | 1..12, 0 = no fire |
+| 5 | second season (bimodal cells) | 1..12, 0 = none |
+| 6 | season length: shortest run of consecutive months holding `season.share` (80 %) of the total | months 1..12, 0 = no fire |
+
+`trend.png` (Theil–Sen slope of annual totals of the complete years in `trend.years`, on 3 x 3-cell = 1.5 deg moving
+sums, % of the window's baseline mean per year):
+
+| layer | content | encoding |
+|---|---|---|
+| 0 | trend, %/yr | signed, lim `trend.range_pct_per_yr` (10); 0 = not estimated |
+| 1 | Mann–Kendall two-sided p | `1 + round(254 · (1 - p))`; 0 = not estimated |
+| 2 | flag | 0 not estimated, 1 estimated, 2 significant after Benjamini–Hochberg FDR 5 % across cells |
+| 3 | baseline mean annual activity of the cell | `round(255 · sqrt(x / trend.cap))` |
+| 4 | same trend from the MODIS-derived stream alone (seam test) | as layer 0 |
 
 `meta.json`:
 ```jsonc
 {
-  "version": 2, "data_through": "2026-11-05", "scope": "global" | "regional: …",
+  "version": 3, "data_through": "2026-11-05", "scope": "global" | "regional: …",
   "cap": 708.0, "cap_quantile": 99.9, "encoding": "…",
   "grid": { "cell_deg": 0.5, "width": 720, "height": 360, "row0": "north (90 N)", "col0": "180 W" },
   "atlas": { "cols": 4, "rows": 3, "order": "row-major, January top-left", "width": 2880, "height": 1080 },
@@ -131,6 +211,24 @@ overview/land.png            1440 x 720 land fraction x 255 (RESOLVE Ecoregions 
   "default_switch_m": 276,
   "clim": { "file": "clim.png", "baseline": [2003, 2022], "stat": "median incl. zero months" },
   "land": { "file": "land.png", "width": 1440, "height": 720, "value": "…" },
+  "season": { "file": "season.png", "baseline": [2003, 2022], "layers": 7, "cap": 1310.8, "share": 0.8,
+              "bimodal": { "min_pooled_afcd_per_yr": 20, "ratio": 0.15, "dip": 0.5, "share_of_active_cells": 0.227 } },
+  "trend": { "file": "trend.png", "layers": 5, "range_pct_per_yr": 10, "cap": …, "years": [2001, …, 2025],
+             "years_modis_only": […], "switch_year": 2023, "min_baseline_afcd_per_yr": 10, "pooling": "…",
+             "significance": "…", "share_valid_cells_sig": 0.289,
+             "global": { "all_years": { "pct_per_yr", "p", "years", "n_years" }, "without_viirs_years": {…},
+                         "modis_only_all_years": {…}, "annual_totals": { "2001": … }, "annual_totals_modis_only": {…},
+                         "harmonized_over_modis_after_switch": { "2023": 1.015, … } },
+             "vs_modis_only": { "cells", "sign_agreement", "slope_correlation" },
+             "regions": [ { "code": "BONA", "name", "box": [w, s, e, n], "cell_mean_pct_per_yr", "sign",
+                            "share_falling_sig", "share_rising_sig", "total_pct_per_yr", "total_p",
+                            "total_pct_per_yr_modis_only", "baseline_afcd_per_yr", "vs_modis_only": {…} }, … ],
+             "checks": [ { "name": "Sahel-Sudan savanna", "box", "expected_sign": -1 | 0 | 1, "source",
+                           "total_pct_per_yr", "total_p", "total_pct_per_yr_without_viirs_years",
+                           "total_pct_per_yr_modis_only" }, … ] },
   "global_monthly": [ … ]                // sum of x over all cells, one per month m_first..m_last
 }
 ```
+Version 3 adds `season` and `trend`; readers accept version 2 (without them). A year is complete for the trend when
+every month's coverage of the served stream (`meq` before the switch, `kv` after, with the kernel's fallback) is >= 0.5.
+The watchlist (`data/dist/watch.json`) is described in `schema/watch.md`.

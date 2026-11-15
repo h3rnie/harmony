@@ -3,12 +3,13 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::analogs::{self, Analogs};
 use crate::cells::{self, CellLayer, CellLayerOptions};
 use crate::geom::{tile_keys, Aoi, AoiInfo, CellWeights};
 use crate::meta::Meta;
 use crate::outlook::{self, Outlook};
 use crate::season::{self, Season};
-use crate::series::{self, Dn, Series};
+use crate::series::{self, Dn, Mode, Series, Unit};
 use crate::stats::{self, Annual, Baseline, Calendar, Climatology, Current, Records, Seam, Ytd};
 use crate::store::{Store, TileColumns};
 use crate::trend::{self, Trend};
@@ -25,6 +26,27 @@ pub struct AnalyzeOptions {
     #[serde(default)]
     pub dn: Dn,
     pub range: [i32; 2],
+    /// `fused` (default) or `switch`; `switch_m` only matters in switch mode.
+    #[serde(default)]
+    pub mode: Mode,
+    /// Unit of the MODIS-equivalent values: `modis` (default) or `viirs` (the lens).
+    #[serde(default)]
+    pub unit: Unit,
+}
+
+/// How the record in this analysis was built.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Harmonization {
+    /// Effective mode: `fused` degrades to `switch` when meta.json has no error model.
+    pub mode: Mode,
+    pub unit: Unit,
+    /// `conformal` when the error model and the conformal table gave the bounds, else `legacy`.
+    pub intervals: &'static str,
+    /// The 12 calendar-month lens factors (VIIRS lens only).
+    pub lens_factor: Option<Vec<f64>>,
+    /// Some calendar month had no factor of its own and used a fallback level.
+    pub lens_fallback: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -52,6 +74,9 @@ pub struct Analysis {
     pub seam: Seam,
     pub records: Records,
     pub aoi: AoiSummary,
+    pub harmonization: Harmonization,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub analogs: Option<Analogs>,
 }
 
 #[derive(Debug)]
@@ -130,7 +155,18 @@ impl Engine {
             return Err(Error::new(format!("display range longer than {MAX_RANGE_MONTHS} months")));
         }
         let meta = &self.meta;
-        let mo = series::aggregate(meta, store, o.dn, o.switch_m);
+        let mut mo = series::aggregate(meta, store, o.dn, o.mode, o.switch_m);
+        let lens = (o.unit == Unit::Viirs).then(|| series::lens(&mo, meta.fit_window_m));
+        if let Some(l) = &lens {
+            series::apply_lens(&mut mo, l);
+        }
+        let harmonization = Harmonization {
+            mode: if mo.fused { Mode::Fused } else { Mode::Switch },
+            unit: o.unit,
+            intervals: if mo.conformal { "conformal" } else { "legacy" },
+            lens_factor: lens.as_ref().map(|l| l.factor.to_vec()),
+            lens_fallback: lens.as_ref().is_some_and(|l| l.fallback),
+        };
         let (months, series) = series::series(&mo, range);
         let base = Baseline::new(&mo, o.baseline);
         let climatology = stats::climatology(&base);
@@ -153,6 +189,8 @@ impl Engine {
             outlook: outlook::outlook(&mo.stat_values(), mo.m_first, o.baseline, &climatology),
             seam: stats::seam(&mo),
             records: stats::records(&mo, &base, &annual),
+            analogs: analogs::analogs(&mo),
+            harmonization,
             climatology,
             annual,
             aoi: AoiSummary {
@@ -264,7 +302,7 @@ pub(crate) mod tests {
     }
 
     fn opts(range: [i32; 2], dn: Dn) -> AnalyzeOptions {
-        AnalyzeOptions { switch_m: 276, baseline: [2003, 2022], dn, range }
+        AnalyzeOptions { switch_m: 276, baseline: [2003, 2022], dn, range, mode: Mode::Fused, unit: Unit::Modis }
     }
 
     #[test]
@@ -329,7 +367,7 @@ pub(crate) mod tests {
     fn cell_layer_values() {
         let cols = synthetic(10, 311);
         let e = engine_with(vec![vec![[0.0, 0.0], [0.1, 0.0], [0.1, 0.1], [0.0, 0.1]]], &cols, 311);
-        let o = CellLayerOptions { m_from: 300, m_to: 302, mode: cells::CellMode::Harmonized, switch_m: 276, baseline: [2003, 2022], dn: Dn::Both };
+        let o = CellLayerOptions { m_from: 300, m_to: 302, mode: cells::CellMode::Harmonized, switch_m: 276, baseline: [2003, 2022], dn: Dn::Both, series_mode: Mode::Fused };
         let l = e.cell_layer(&o).unwrap();
         assert_eq!((l.cells.len(), l.weights.len(), l.values.len()), (4, 4, 4));
         let expect: f64 = (0..cols.cell.len())
@@ -370,7 +408,9 @@ pub(crate) mod tests {
             "calendar.percentile", "calendar.z", "annual.total", "annual.rank", "ytd.ratio",
             "current.lo80", "current.hi80", "current.ratio", "current.percentile", "current.z",
             "season.secondPeak", "seam.ratioNaive", "seam.ratioHarmonized", "seam.r", "seam.biasPct",
-            "records.topMonths.ratio",
+            "records.topMonths.ratio", "series.modisWeight", "series.modisAdj",
+            "harmonization.lensFactor", "analogs.restMedian", "analogs.spread", "analogs.climSpread",
+            "analogs.skill", "analogs.top.restTotal", "analogs.top.restRatio", "analogs.top.peakMonth",
         ];
         fn walk(v: &serde_json::Value, path: &str) {
             match v {
@@ -515,5 +555,316 @@ pub(crate) mod tests {
         let dt = t0.elapsed();
         eprintln!("analyze over {} rows: {:?} ({} bytes)", e.store().unwrap().len(), dt, json.len());
         assert_eq!(e.store().unwrap().len(), c.cell.len());
+    }
+
+    /// `meta_json` plus the harmonization blocks: error model, common mode, drift from 2020
+    /// (biome 7 with its own factors, others via `all`), conformal table.
+    pub fn model_meta_json(m_first: i32, m_last: i32) -> String {
+        let mut v: serde_json::Value = serde_json::from_str(&meta_json(m_first, m_last)).unwrap();
+        let n = (m_last + 1) as usize;
+        let sats: Vec<u32> = (0..n).map(|m| if m < 145 { 0 } else if m < 220 { 1 } else if m < 280 { 3 } else { 7 }).collect();
+        v["months"]["viirs_sats"] = serde_json::json!(sats);
+        let err = |s: f64| serde_json::json!({
+            "modis": { "rho": [0.01 * s, 0.02 * s], "phi": [1.2, 1.5] },
+            "bridge": { "rho": [0.03 * s, 0.04 * s], "phi": [2.0, 2.5] },
+            "viirs": { "rho": [[0.02, 0.03], [0.015, 0.02], [0.012, 0.018]], "phi": [[0.8, 0.9], [0.6, 0.7], [0.5, 0.6]] }
+        });
+        v["strata"][0]["err"] = err(1.0);
+        v["strata"][1]["err"] = err(2.0);
+        v["fusion"] = serde_json::json!({ "kappa": [0.3, 0.2] });
+        v["drift"] = serde_json::json!({
+            "ref_years": [2012, 2019], "start_year": 2020, "years": [2020, 2021, 2022, 2023, 2024, 2025],
+            "attr_frac": 0.5,
+            "biome": {
+                "7": { "log_f": [[0.0, 0.02, 0.05, 0.08, 0.1, 0.12], [0.0, -0.01, -0.03, -0.05, -0.06, -0.08]],
+                       "log_sd": [[0.01, 0.01, 0.02, 0.02, 0.03, 0.03], [0.02, 0.02, 0.02, 0.03, 0.03, 0.04]] },
+                "all": { "log_f": [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]],
+                         "log_sd": [[0.01, 0.01, 0.01, 0.01, 0.01, 0.01], [0.01, 0.01, 0.01, 0.01, 0.01, 0.01]] }
+            }
+        });
+        v["conformal"] = serde_json::json!({
+            "size_edges": [5, 20, 100, 1000],
+            "groups": [{ "name": "savanna", "biomes": [7] }, { "name": "forest", "biomes": [1, 2] }],
+            "q80": [[1.4, 1.5, 1.6, 1.7, 1.8], [1.3, 1.35, 1.4, 1.45, 1.5]],
+            "q95": [[2.2, 2.4, 2.6, 2.8, 3.0], [2.0, 2.1, 2.2, 2.3, 2.4]],
+            "n": [[500, 500, 500, 500, 500], [500, 500, 500, 500, 500]],
+            "global": { "q80": [1.35, 1.45, 1.55, 1.65, 1.75], "q95": [2.1, 2.3, 2.5, 2.7, 2.9], "n": [1, 1, 1, 1, 1] }
+        });
+        v.to_string()
+    }
+
+    fn engine_meta(meta: &str, aoi: Vec<Vec<[f64; 2]>>, cols: &Cols) -> Engine {
+        let mut e = Engine::new(meta).unwrap();
+        e.set_aoi(Aoi::from_rings(aoi).unwrap());
+        e.begin(0).unwrap();
+        e.ingest(&cols.view()).unwrap();
+        e
+    }
+
+    fn square() -> Vec<Vec<[f64; 2]>> {
+        vec![vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]]
+    }
+
+    #[test]
+    fn legacy_meta_fused_equals_switch_and_old_record() {
+        let cols = synthetic(10, 311);
+        let e = engine_with(square(), &cols, 311);
+        let f = e.analyze(&opts([10, 311], Dn::Both)).unwrap();
+        let s = e.analyze(&AnalyzeOptions { mode: Mode::Switch, ..opts([10, 311], Dn::Both) }).unwrap();
+        assert_eq!(serde_json::to_string(&f.series).unwrap(), serde_json::to_string(&s.series).unwrap());
+        assert_eq!(f.harmonization.mode, Mode::Switch);
+        assert_eq!(f.harmonization.intervals, "legacy");
+        // Legacy: native MODIS months have no interval; MODIS weight is 1, then 0 after the switch.
+        let i = |m: i32| (m - 10) as usize;
+        assert!(f.series.lo80[i(100)].is_none() && f.series.lo80[i(20)].is_some() && f.series.lo80[i(300)].is_some());
+        assert_eq!((f.series.modis_weight[i(100)], f.series.modis_weight[i(300)]), (Some(1.0), Some(0.0)));
+        assert_eq!(f.series.modis_adj[i(300)], f.series.modis_eq[i(300)]);
+    }
+
+    #[test]
+    fn fused_series_has_bounds_everywhere_and_sits_between_streams() {
+        let cols = synthetic(10, 311);
+        let e = engine_meta(&model_meta_json(10, 311), square(), &cols);
+        let a = e.analyze(&opts([10, 311], Dn::Both)).unwrap();
+        assert_eq!((a.harmonization.mode, a.harmonization.intervals), (Mode::Fused, "conformal"));
+        let s = &a.series;
+        for (k, &m) in a.months.iter().enumerate() {
+            let h = s.harmonized[k].unwrap();
+            assert!(s.lo95[k].unwrap() <= s.lo80[k].unwrap() && s.lo80[k].unwrap() <= h);
+            assert!(h <= s.hi80[k].unwrap() && s.hi80[k].unwrap() <= s.hi95[k].unwrap());
+            let Some(w) = s.modis_weight[k] else {
+                assert_eq!(h, 0.0, "m {m}: the weight is null only for an empty month");
+                continue;
+            };
+            assert!((0.0..=1.0).contains(&w));
+            if m < 145 {
+                assert_eq!(w, 1.0);
+                assert_eq!(s.harmonized[k], s.modis_eq[k]);
+                assert_eq!(s.source[k], if m < 30 { series::Source::Bridge } else { series::Source::Modis });
+            } else {
+                let (mo, vi) = (s.modis_adj[k].unwrap(), s.viirs_cal[k].unwrap());
+                assert!(h >= mo.min(vi) - 1e-9 && h <= mo.max(vi) + 1e-9, "m {m}: {h} not in [{mo}, {vi}]");
+                assert!(w > 0.0 && w < 1.0, "m {m}: w {w}");
+            }
+            if m < 240 {
+                assert_eq!(s.modis_adj[k], s.modis_eq[k], "no drift correction before 2020");
+            }
+        }
+        assert_no_bad_nulls(&serde_json::to_string(&a).unwrap());
+        // Switch mode with the error model: the old record, now with bounds on MODIS months too.
+        let sw = e.analyze(&AnalyzeOptions { mode: Mode::Switch, ..opts([10, 311], Dn::Both) }).unwrap();
+        let old = engine_with(square(), &cols, 311).analyze(&opts([10, 311], Dn::Both)).unwrap();
+        assert_eq!(sw.series.harmonized, old.series.harmonized);
+        assert_eq!(sw.series.source, old.series.source);
+        assert!(sw.series.lo80.iter().all(Option::is_some));
+        assert_eq!(sw.series.modis_adj, sw.series.modis_eq, "switch mode never drift-corrects");
+        assert_eq!(sw.harmonization.mode, Mode::Switch);
+    }
+
+    #[test]
+    fn group_fusion_and_conformal_q_hand_checked() {
+        // One L0 cell (stratum 0, biome 7), day only; months 200 (2016-09) and 250 (2020-11).
+        let mut c = Cols::default();
+        let cell = 1800 * 7200 + 3600;
+        for (m, meq, kv) in [(200u16, 4000u32, 6000u32), (250, 4000, 6000)] {
+            c.cell.push(cell);
+            c.stratum.push(0);
+            c.m.push(m);
+            c.dn.push(0);
+            c.meq.push(meq);
+            c.kv.push(kv);
+            c.kvsq.push(3600.0);
+            c.v.push(4 * kv);
+            c.nmod.push(80);
+            c.nvii.push(300);
+        }
+        let meta = model_meta_json(10, 311);
+        let e = engine_meta(&meta, vec![vec![[0.0, 0.0], [0.05, 0.0], [0.05, 0.05], [0.0, 0.05]]], &c);
+        let a = e.analyze(&opts([200, 250], Dn::Both)).unwrap();
+        let mt = Meta::parse(&meta).unwrap();
+        let p = &mt.strata[0];
+        // Month 250: drift index 0 (log_f 0, sd 0.01) -> rho_M = 0.01 + 0.0001; two VIIRS satellites.
+        let pl = series::plan(&mt, 250, Mode::Fused, 276, true);
+        assert_eq!((pl.drift_idx, pl.era, pl.use_m, pl.use_v), (Some(0), 1, true, true));
+        let sm = series::StreamVar { rho: 0.01 + 0.0001, phi: 1.2 };
+        let sv = series::StreamVar { rho: 0.015 + 0.04, phi: 0.6 };
+        let c_rho = 0.3 * (0.01f64 * 0.015).sqrt() + 0.04; // common mode + shared calibration floor
+        let f = series::fuse(40.0, 60.0, sm, sv, c_rho);
+        let g = series::estimate(&mt, &pl, p, 0, 40.0, 60.0);
+        assert!((g.h - f.h).abs() < 1e-12 && (g.var - f.var).abs() < 1e-12 && (g.w - f.w).abs() < 1e-12);
+        let k = 50;
+        assert!((a.series.harmonized[k].unwrap() - f.h).abs() < 1e-9);
+        assert!((a.series.modis_weight[k].unwrap() - f.w).abs() < 1e-9);
+        // H in [20, 100) -> class 2, biome 7 -> group 0: q80 1.6, q95 2.6.
+        assert!(f.h >= 20.0 && f.h < 100.0);
+        let b = series::bounds_shifted(f.h, f.var, 1.6, 2.6);
+        assert!((a.series.lo80[k].unwrap() - b[0]).abs() < 1e-9 && (a.series.hi95[k].unwrap() - b[3]).abs() < 1e-9);
+        // Month 200: no drift, one VIIRS satellite, no shared calibration floor.
+        let pl = series::plan(&mt, 200, Mode::Fused, 276, true);
+        assert_eq!((pl.drift_idx, pl.era), (None, 0));
+        let f = series::fuse(40.0, 60.0, series::StreamVar { rho: 0.01, phi: 1.2 },
+            series::StreamVar { rho: 0.02 + 0.04, phi: 0.8 }, 0.3 * (0.01f64 * 0.02).sqrt());
+        assert!((a.series.harmonized[0].unwrap() - f.h).abs() < 1e-9);
+        // An empty covered month: zero, a degenerate interval from the global row, no weight.
+        assert_eq!(a.series.harmonized[1], Some(0.0));
+        assert_eq!((a.series.lo80[1], a.series.modis_weight[1]), (Some(0.0), None));
+    }
+
+    #[test]
+    fn drift_correction_from_start_year_and_only_when_fused() {
+        let cols = synthetic(10, 311);
+        let e = engine_meta(&model_meta_json(10, 311), square(), &cols);
+        let a = e.analyze(&opts([10, 311], Dn::Day)).unwrap();
+        let i = |m: i32| (m - 10) as usize;
+        for m in [239, 240, 260, 300, 311] {
+            let (adj, raw) = (a.series.modis_adj[i(m)].unwrap(), a.series.modis_eq[i(m)].unwrap());
+            if m < 240 {
+                assert_eq!(adj, raw);
+            } else if m >= 252 {
+                assert!(adj < raw, "m {m}: a positive day log_f lowers MODIS ({adj} vs {raw})");
+            }
+        }
+        // 2025 (index 5, log_f 0.12) for stratum-0 rows only: the exact factor.
+        let mut c0 = Cols::default();
+        for r in 0..cols.cell.len() {
+            if cols.stratum[r] == 0 && cols.m[r] == 300 && cols.dn[r] == 0 {
+                c0.cell.push(cols.cell[r]);
+                c0.stratum.push(0);
+                c0.m.push(300);
+                c0.dn.push(0);
+                c0.meq.push(cols.meq[r]);
+                c0.kv.push(cols.kv[r]);
+                c0.kvsq.push(cols.kvsq[r]);
+                c0.v.push(cols.v[r]);
+                c0.nmod.push(cols.nmod[r]);
+                c0.nvii.push(cols.nvii[r]);
+            }
+        }
+        let e0 = engine_meta(&model_meta_json(10, 311), square(), &c0);
+        let a0 = e0.analyze(&opts([300, 300], Dn::Day)).unwrap();
+        let (adj, raw) = (a0.series.modis_adj[0].unwrap(), a0.series.modis_eq[0].unwrap());
+        assert!((adj - raw * (-0.12f64).exp()).abs() < 1e-9 * raw, "{adj} vs {raw}");
+        let s0 = e0.analyze(&AnalyzeOptions { mode: Mode::Switch, ..opts([300, 300], Dn::Day) }).unwrap();
+        assert_eq!(s0.series.modis_adj[0], s0.series.modis_eq[0]);
+    }
+
+    #[test]
+    fn lens_keeps_calendar_ratios_percentiles_and_ranks() {
+        let cols = synthetic(10, 311);
+        let e = engine_meta(&model_meta_json(10, 311), square(), &cols);
+        let m = e.analyze(&opts([10, 311], Dn::Both)).unwrap();
+        let v = e.analyze(&AnalyzeOptions { unit: Unit::Viirs, ..opts([10, 311], Dn::Both) }).unwrap();
+        let f = v.harmonization.lens_factor.clone().unwrap();
+        // July has no fire in the synthetic record: it takes the pooled fit-window factor.
+        assert!(v.harmonization.lens_fallback && f.iter().all(|x| *x > 0.0 && x.is_finite()));
+        assert!(f.iter().any(|x| (x - f[0]).abs() > 1e-6), "synthetic factors vary by calendar month");
+        let close = |a: Option<f64>, b: Option<f64>| match (a, b) {
+            (Some(a), Some(b)) => (a - b).abs() <= 1e-9 * a.abs().max(1.0),
+            (None, None) => true,
+            _ => false,
+        };
+        for (y, (rm, rv)) in m.calendar.ratio.iter().zip(&v.calendar.ratio).enumerate() {
+            for k in 0..12 {
+                assert!(close(rm[k], rv[k]), "ratio {y} {k}");
+                assert!(close(m.calendar.percentile[y][k], v.calendar.percentile[y][k]), "percentile {y} {k}");
+                if let (Some(a), Some(b)) = (m.calendar.value[y][k], v.calendar.value[y][k]) {
+                    assert!((a / f[k] - b).abs() < 1e-9 * a.max(1.0));
+                }
+            }
+        }
+        let (cm, cv) = (&m.current, &v.current);
+        assert!(close(cm.ratio, cv.ratio) && close(cm.percentile, cv.percentile));
+        assert_eq!((cm.rank, cm.of, cm.level), (cv.rank, cv.of, cv.level));
+        let k = (cm.month - 1) as usize;
+        assert!((cm.value / f[k] - cv.value).abs() < 1e-9 * cm.value.max(1.0));
+        assert!((cm.hi80.unwrap() / f[k] - cv.hi80.unwrap()).abs() < 1e-9 * cm.hi80.unwrap().max(1.0));
+        assert_eq!(m.harmonization.lens_factor, None);
+
+        // A constant factor (v = 4 kv everywhere) also keeps annual ranks, the YTD ratio, records,
+        // the trend in % per year and the season.
+        let mut c4 = synthetic(10, 311);
+        c4.v.iter_mut().zip(&c4.kv).for_each(|(v, kv)| *v = 4 * *kv);
+        let e = engine_meta(&model_meta_json(10, 311), square(), &c4);
+        let m = e.analyze(&opts([10, 311], Dn::Both)).unwrap();
+        let v = e.analyze(&AnalyzeOptions { unit: Unit::Viirs, ..opts([10, 311], Dn::Both) }).unwrap();
+        assert!(v.harmonization.lens_factor.clone().unwrap().iter().all(|x| (x - 0.25).abs() < 1e-12));
+        assert_eq!(m.annual.rank, v.annual.rank);
+        assert!(close(m.ytd.ratio, v.ytd.ratio));
+        assert_eq!((m.ytd.rank, m.ytd.of), (v.ytd.rank, v.ytd.of));
+        let order = |a: &Analysis| a.records.top_months.iter().map(|t| t.m).collect::<Vec<_>>();
+        assert_eq!(order(&m), order(&v));
+        assert!((m.trend.slope_pct_per_year - v.trend.slope_pct_per_year).abs() < 1e-9);
+        assert_eq!(m.season, v.season);
+    }
+
+    #[test]
+    fn lens_fallbacks() {
+        // No VIIRS rows at all: factor 1, flagged.
+        let mut c = synthetic(10, 311);
+        c.kv.iter_mut().for_each(|x| *x = 0);
+        c.v.iter_mut().for_each(|x| *x = 0);
+        let e = engine_meta(&model_meta_json(10, 311), square(), &c);
+        let v = e.analyze(&AnalyzeOptions { unit: Unit::Viirs, ..opts([10, 311], Dn::Both) }).unwrap();
+        assert!(v.harmonization.lens_fallback);
+        assert_eq!(v.harmonization.lens_factor.clone().unwrap(), vec![1.0; 12]);
+        assert_no_bad_nulls(&serde_json::to_string(&v).unwrap());
+    }
+
+    #[test]
+    fn model_meta_degenerate_inputs_never_produce_nan() {
+        let sq = square();
+        let mut meta: serde_json::Value = serde_json::from_str(&model_meta_json(10, 311)).unwrap();
+        meta["strata"][0]["err"] = serde_json::json!({ "modis": {}, "viirs": { "rho": [[null, "x"]] } });
+        meta["strata"][1]["relvar"] = serde_json::json!([0, 0]);
+        meta["fusion"]["kappa"] = serde_json::json!([-1, 1e308]);
+        meta["conformal"]["q80"] = serde_json::json!([[0, -1]]);
+        let meta = meta.to_string();
+        for cols in [Cols::default(), synthetic(10, 311)] {
+            let e = engine_meta(&meta, sq.clone(), &cols);
+            for mode in [Mode::Fused, Mode::Switch] {
+                for unit in [Unit::Modis, Unit::Viirs] {
+                    let o = AnalyzeOptions { mode, unit, ..opts([0, 330], Dn::Both) };
+                    let json = serde_json::to_string(&e.analyze(&o).unwrap()).unwrap();
+                    // serde_json writes non-finite floats as null, which assert_no_bad_nulls rejects.
+                    assert_no_bad_nulls(&json);
+                }
+            }
+            let l = e.cell_layer(&CellLayerOptions { m_from: 250, m_to: 260, mode: cells::CellMode::Harmonized,
+                switch_m: 276, baseline: [2003, 2022], dn: Dn::Both, series_mode: Mode::Fused }).unwrap();
+            assert!(l.values.iter().all(|v| v.is_finite()));
+        }
+        let mut one = Engine::new(&model_meta_json(200, 200)).unwrap();
+        one.set_aoi(Aoi::from_rings(sq).unwrap());
+        one.begin(0).unwrap();
+        one.ingest(&synthetic(200, 200).view()).unwrap();
+        let json = one.analyze_json(r#"{"switchM":276,"baseline":[2003,2022],"dn":"both","range":[190,210],"mode":"fused","unit":"viirs"}"#).unwrap();
+        assert_no_bad_nulls(&json);
+        assert!(one.analyze_json(r#"{"switchM":276,"baseline":[2003,2022],"range":[0,1],"mode":"blend"}"#).is_err());
+    }
+
+    #[test]
+    fn cell_layer_fused_rows() {
+        let cols = synthetic(10, 311);
+        let meta = model_meta_json(10, 311);
+        let e = engine_meta(&meta, vec![vec![[0.0, 0.0], [0.1, 0.0], [0.1, 0.1], [0.0, 0.1]]], &cols);
+        let o = CellLayerOptions { m_from: 260, m_to: 262, mode: cells::CellMode::Harmonized, switch_m: 276,
+            baseline: [2003, 2022], dn: Dn::Both, series_mode: Mode::Fused };
+        let l = e.cell_layer(&o).unwrap();
+        let mt = Meta::parse(&meta).unwrap();
+        let rows = || (0..cols.cell.len()).filter(|&r| cols.cell[r] == l.cells[0] && (260..=262).contains(&(cols.m[r] as i32)));
+        let expect: f64 = rows()
+            .map(|r| {
+                let pl = series::plan(&mt, cols.m[r] as i32, Mode::Fused, 276, true);
+                let p = &mt.strata[cols.stratum[r] as usize];
+                series::estimate(&mt, &pl, p, cols.dn[r] as usize, cols.meq[r] as f64 / 100.0, cols.kv[r] as f64 / 100.0).h
+            })
+            .sum();
+        assert!((l.values[0] as f64 - expect).abs() < 1e-3, "{} vs {expect}", l.values[0]);
+        // Switch mode: the stream at the switch (MODIS before 276).
+        let s = e.cell_layer(&CellLayerOptions { series_mode: Mode::Switch, ..o.clone() }).unwrap();
+        let meq: f64 = rows().map(|r| cols.meq[r] as f64 / 100.0).sum();
+        assert!((s.values[0] as f64 - meq).abs() < 1e-3);
+        let json = r#"{"mFrom":260,"mTo":262,"mode":"harmonized","switchM":276,"baseline":[2003,2022],"seriesMode":"switch"}"#;
+        assert_eq!(e.cell_layer_json(json).unwrap().values, s.values);
     }
 }

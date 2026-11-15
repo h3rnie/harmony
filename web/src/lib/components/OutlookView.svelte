@@ -3,6 +3,7 @@
   import { linear, linePath, niceMax, niceTicks, tickLabel } from '../charts/scale'
   import { fmtNum, fmtRatio, monthShort, MONTHS_SHORT } from '../format'
   import { seriesIndex } from '../analysisUtil'
+  import Term from './Term.svelte'
 
   let { a }: { a: Analysis } = $props()
 
@@ -26,6 +27,15 @@
   const y = $derived(linear([0, yMax], [H - M.b, M.t]))
   const pastPath = $derived(linePath(past.map((p) => (p.v == null ? null : [x(p.m), y(p.v)]))))
   const climPath = $derived(linePath(allM.map((m) => [x(m), y(a.climatology.median[m % 12])])))
+  const lead = $derived.by(() => {
+    const n = o.months.length
+    const span = n > 1 ? `${monthShort(o.months[0]).split(' ')[0]} to ${monthShort(o.months[n - 1]).split(' ')[0]}` : monthShort(o.months[0])
+    if (noSkill) return `For ${span}, expect about the seasonal normal: Harmony cannot forecast this area better than its usual pattern.`
+    const sumM = o.median.reduce((p, q) => p + q, 0), sumC = o.climatology.reduce((p, q) => p + q, 0)
+    const r = sumC > 0 ? sumM / sumC : null
+    const word = r == null ? 'similar to' : r >= 1.5 ? 'well above' : r >= 1.15 ? 'above' : r > 0.87 ? 'close to' : r > 0.67 ? 'below' : 'well below'
+    return `${span} is likely to be ${word} normal${r == null ? '' : ` (about ${fmtRatio(r)})`}, if the current pattern carries on.`
+  })
   const statement = $derived(
     noSkill
       ? `No skill beyond climatology for this area (hindcast skill ${o.skill.toFixed(2)}): the outlook is the seasonal normal.`
@@ -33,18 +43,16 @@
   )
 </script>
 
-<section class="outlook" aria-labelledby="outlook-h">
-  <p class="eyebrow">06 · Outlook</p>
-  <h2 id="outlook-h">Next {o.months.length} months</h2>
-  <p class="lede">{statement}</p>
+<section class="outlook" id="next" aria-labelledby="outlook-h">
+  <h2 id="outlook-h" class="q-title">What’s next?</h2>
+  <p class="lead">{lead}</p>
 
   <div class="cards">
     {#each o.months as m, i (m)}
       <div class="card">
-        <span class="eyebrow">{monthShort(m)}</span>
-        <strong class="num">{fmtNum(o.median[i])}</strong>
-        <span class="small muted">80 %: <span class="num">{fmtNum(o.lo80[i])}–{fmtNum(o.hi80[i])}</span></span>
-        <span class="small">{fmtRatio(o.climatology[i] > 0 ? o.median[i] / o.climatology[i] : null)} the normal of <span class="num">{fmtNum(o.climatology[i])}</span></span>
+        <span class="mo">{monthShort(m)}</span>
+        <strong class="num">{fmtRatio(o.climatology[i] > 0 ? o.median[i] / o.climatology[i] : null)} <span class="nl">normal</span></strong>
+        <span class="small muted">{#if i === 0}<Term id="likely">Likely range</Term>{:else}Likely range{/if} <span class="num">{fmtNum(o.lo80[i])}–{fmtNum(o.hi80[i])}</span></span>
       </div>
     {/each}
   </div>
@@ -71,18 +79,23 @@
   </div>
   <ul class="keys">
     <li><span class="sw past-sw"></span>Recent months</li>
-    <li><span class="sw o-sw"></span>Outlook median, 80 % range</li>
-    <li><span class="sw clim-sw"></span>Climatological median</li>
+    <li><span class="sw o-sw"></span>Outlook, with likely range</li>
+    <li><span class="sw clim-sw"></span>Normal (median)</li>
   </ul>
+  <details class="more">
+    <summary>Details</summary>
+    <div class="more-body"><p>{statement} Values in <Term id="afcdm" />: {o.months.map((m, i) => `${monthShort(m)} ${fmtNum(o.median[i])} against a normal of ${fmtNum(o.climatology[i])}`).join('; ')}.</p></div>
+  </details>
 </section>
 
 <style>
   .outlook { padding: var(--sec-pad); border-bottom: 1px solid var(--rule); }
-  .lede { color: var(--ink-2); max-width: 68ch; margin: 8px 0 12px; }
   .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0; margin-bottom: 12px; }
   .card { display: grid; gap: 1px; padding: 0 14px; border-left: 1px solid var(--rule); }
   .card:first-child { border-left: 0; padding-left: 0; }
   .card strong { font-size: var(--fs-stat); font-weight: 600; letter-spacing: -0.03em; }
+  .nl { font-family: var(--font-ui); font-size: var(--fs-base); font-weight: 400; letter-spacing: 0; color: var(--ink-2); }
+  .mo { font-size: var(--fs-sm); color: var(--ink-3); }
   svg { display: block; overflow: hidden; }
   .grid { stroke: var(--rule); }
   .tk { font-family: var(--font-num); font-size: var(--fs-xs); fill: var(--ink-3); }

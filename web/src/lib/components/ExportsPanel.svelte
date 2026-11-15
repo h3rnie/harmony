@@ -2,7 +2,6 @@
   import type { Analysis } from '../kernel/types'
   import { session } from '../session.svelte'
   import { themeState } from '../theme.svelte'
-  import { FIRMS_ACK } from '../config'
   import { aoiGeoJson, calendarCsv, calendarSvg, download, seriesCsv, slug, svgToPng, type ExportContext } from '../export/exporters'
   import {
     DEFAULT_MAX_ROWS, fmtBytes, isAbort, loadPointsIndex, planHotspots, runHotspots,
@@ -10,6 +9,8 @@
   } from '../export/hotspots'
   import { onDestroy } from 'svelte'
   import { monthShort, yearOf } from '../format'
+  import { live as liveFeed } from '../live/store.svelte'
+  import { liveCsv } from '../live/csv'
 
   let { a }: { a: Analysis } = $props()
   let status = $state<string | null>(null)
@@ -47,6 +48,15 @@
     const { svg, width, height } = calendarSvg(ctx!, session.calMode, themeState.theme)
     download(`${base}-calendar.png`, await svgToPng(svg, width, height), 'image/png')
   })
+  const liveHot = run('Live hotspots CSV', () => {
+    const d = liveFeed.data
+    if (!d || !liveFeed.inside) throw new Error('Live detections are not loaded.')
+    const stamp = new Date(d.fetched_at * 1000).toISOString().slice(0, 16).replace(/[:T]/g, '')
+    download(`${slug(session.aoi?.label ?? 'area')}-live-hotspots-${stamp}.csv`, liveCsv(d, liveFeed.inside, session.aoi?.label ?? 'area'), 'text/csv')
+  })
+  async function copyLink() {
+    try { await navigator.clipboard.writeText(location.href); status = 'Link to this view copied.' } catch { status = 'Copy the address bar to share this view.' }
+  }
   const geo = run('Area GeoJSON', () => download(`${base}.geojson`, aoiGeoJson(ctx!), 'application/geo+json'))
 
   // ---- Hotspots CSV: estimate -> confirm -> progress -> summary ----
@@ -175,12 +185,17 @@
   })
 </script>
 
-<section class="exports" aria-labelledby="exp-h">
-  <p class="eyebrow">08 · Exports</p>
-  <h2 id="exp-h">Take it with you</h2>
+<section class="exports" id="export" aria-labelledby="exp-h">
+  <h2 id="exp-h" class="q-title">Take it with you</h2>
+  <p class="lead">Share this exact view, or download the numbers and figures behind it.</p>
+  <div class="primary">
+    <button class="btn primary" onclick={copyLink}>Copy link to this view</button>
+    <button class="btn" disabled={busy} onclick={pngCal}>Calendar image (PNG)</button>
+  </div>
+  <h3 class="sub-h">Data and figures</h3>
   <div class="grid">
     <div>
-      <h3>Tables</h3>
+      <h4>Tables</h4>
       <button class="btn" disabled={busy} onclick={csvCal}>Calendar CSV</button>
       <button class="btn" disabled={busy} onclick={csvSeries}>Full series CSV</button>
       <button
@@ -191,20 +206,21 @@
         onclick={() => { if (hotAvail === 'yes' && ctx) hotEstimate() }}
       >Hotspots CSV</button>
       {#if hotAvail === 'no'}<span id="hot-why" class="sr-only">{hotAvailMsg}</span>{/if}
+      {#if liveFeed.available}
+        <button class="btn" disabled={busy || !liveFeed.data?.n} onclick={liveHot} title="Near-real-time detections from the last 7 days (provisional)">Live hotspots CSV, last 7 days</button>
+      {/if}
     </div>
     <div>
-      <h3>Figures</h3>
-      <button class="btn" disabled={busy} onclick={pngCal}>Calendar PNG</button>
+      <h4>Figures</h4>
       <button class="btn" disabled={busy} onclick={svgCal}>Calendar SVG</button>
     </div>
     <div>
-      <h3>Area</h3>
-      <button class="btn" disabled={busy} onclick={geo}>AOI GeoJSON</button>
-      <button class="btn" onclick={async () => { try { await navigator.clipboard.writeText(location.href); status = 'Link to this view copied.' } catch { status = 'Copy the address bar to share this view.' } }}>Copy share link</button>
+      <h4>Area</h4>
+      <button class="btn" disabled={busy} onclick={geo}>Area outline (GeoJSON)</button>
     </div>
   </div>
   <div class="hot-range">
-    <span class="eyebrow" id="hot-range-l">Hotspots for</span>
+    <span class="hr-l" id="hot-range-l">Hotspots CSV covers</span>
     <div class="seg" role="radiogroup" aria-labelledby="hot-range-l">
       {#each HOT_RANGES as [v, l] (v)}
         <button role="radio" aria-checked={hotRange === v} onclick={() => (hotRange = v)}>{l}</button>
@@ -276,16 +292,19 @@
   <p class="sr-only" aria-live="polite" aria-atomic="true">{live}</p>
   <p class="status small" role="status">{status ?? ''}</p>
   {#if session.isMock}<p class="small warn">Demo mode: exports contain synthetic numbers and say so in their header.</p>{/if}
-  <p class="small muted ack">Exports include this acknowledgement: “{FIRMS_ACK}”</p>
+  <p class="note">Every file carries the FIRMS data acknowledgement shown at the foot of the page.</p>
 </section>
 
 <style>
   .exports { padding: var(--sec-pad); border-bottom: 1px solid var(--rule); }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px 24px; margin-top: 12px; }
+  .primary { display: flex; flex-wrap: wrap; gap: 8px; }
+  .sub-h { font-size: var(--fs-base); margin: 20px 0 0; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px 24px; margin-top: 10px; }
   .grid > div { display: flex; flex-wrap: wrap; gap: 6px; align-content: flex-start; }
-  h3 { width: 100%; font-family: var(--font-display); font-size: var(--fs-xs); font-weight: 500; color: var(--ink-3); text-transform: uppercase; letter-spacing: var(--track-label); margin-bottom: 2px; }
+  h4 { width: 100%; font-size: var(--fs-sm); font-weight: 500; color: var(--ink-3); margin: 0 0 2px; }
+  .hr-l { font-size: var(--fs-sm); color: var(--ink-2); }
   .hot-range { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--rule); }
-  .hot-range .seg button { min-height: 26px; font-size: var(--fs-sm); }
+  .hot-range .seg button { min-height: 30px; font-size: var(--fs-sm); }
   .status { min-height: 1.4em; margin: 10px 0 0; color: var(--ink-2); }
   .warn { color: var(--warning); }
   .hot { margin-top: 14px; padding: 12px 14px; max-width: 64ch; background: var(--surface); border: 1px solid var(--rule-strong); border-radius: var(--radius); }
@@ -299,5 +318,4 @@
   .bar::-webkit-progress-value { background: var(--accent); transition: width 0.2s; }
   .bar::-moz-progress-bar { background: var(--accent); }
   .btn[aria-disabled='true'] { opacity: 0.45; cursor: not-allowed; }
-  .ack { max-width: 72ch; }
 </style>

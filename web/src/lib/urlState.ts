@@ -97,6 +97,15 @@ export function writeHash(v: ViewState) {
   if (v.baseline) q.push(`bl=${v.baseline.join('-')}`)
   if (v.dn !== 'both') q.push(`dn=${v.dn}`)
   if (v.rangeYears) q.push(`r=${v.rangeYears.join('-')}`)
+  // The Global pulse owns `view`, `t` and `mode`; keep them so a state write while it opens never resets its month.
+  const cur = new URLSearchParams(location.hash.replace(/^#/, ''))
+  if (cur.get('view') === 'pulse') {
+    q.push('view=pulse')
+    for (const k of ['t', 'mode']) {
+      const v = cur.get(k)
+      if (v) q.push(`${k}=${encodeURIComponent(v)}`)
+    }
+  }
   const next = q.length ? `#${q.join('&')}` : ''
   if (next !== location.hash) history.replaceState(null, '', `${location.pathname}${location.search}${next}`)
 }

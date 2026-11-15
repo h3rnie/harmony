@@ -178,6 +178,102 @@ assert.ok(nv.some((v, i) => v < values[i]), 'night layer differs from both')
   k.free()
 }
 
+// ---------- harmonization: error model, fusion, drift, conformal bounds, lens, analogs ----------
+// The checks above use the legacy meta (no error model): 'fused' degrades to the switch, exactly the old record.
+assert.equal(a.harmonization.mode, 'switch'); assert.equal(a.harmonization.intervals, 'legacy')
+const modelMeta = structuredClone(meta)
+modelMeta.months.viirs_sats = Array.from({ length: n }, (_, m) => (m < VIIRS_START ? 0 : m < 220 ? 1 : m < 280 ? 3 : 7))
+modelMeta.strata.forEach((s, i) => {
+  s.err = {
+    modis: { rho: [0.01 * (1 + i), 0.02], phi: [1.2, 1.5] },
+    bridge: { rho: [0.03, 0.04], phi: [2.0, 2.5] },
+    viirs: { rho: [[0.02, 0.03], [0.015, 0.02], [0.012, 0.018]], phi: [[0.8, 0.9], [0.6, 0.7], [0.5, 0.6]] },
+  }
+})
+modelMeta.fusion = { kappa: [0.3, 0.2] }
+modelMeta.drift = {
+  ref_years: [2012, 2019], start_year: 2020, years: [2020, 2021, 2022, 2023, 2024, 2025], attr_frac: 0.5,
+  biome: { 7: { log_f: [[0, 0.02, 0.05, 0.08, 0.1, 0.12], [0, -0.01, -0.03, -0.05, -0.06, -0.08]],
+                log_sd: [[0.01, 0.01, 0.02, 0.02, 0.03, 0.03], [0.02, 0.02, 0.02, 0.03, 0.03, 0.04]] } },
+}
+modelMeta.conformal = {
+  size_edges: [5, 20, 100, 1000], groups: [{ name: 'savanna', biomes: [7] }],
+  q80: [[1.4, 1.5, 1.6, 1.7, 1.8]], q95: [[2.2, 2.4, 2.6, 2.8, 3.0]], n: [[500, 500, 500, 500, 500]],
+  global: { q80: [1.35, 1.45, 1.55, 1.65, 1.75], q95: [2.1, 2.3, 2.5, 2.7, 2.9], n: [1, 1, 1, 1, 1] },
+}
+{
+  const k = new Kernel(JSON.stringify(modelMeta))
+  k.set_aoi(flat, Uint32Array.from([0, outer.length, outer.length + hole.length]))
+  k.begin(0); ingest(k, tile)
+  const run = (o) => JSON.parse(k.analyze(JSON.stringify({ ...opts, ...o })))
+  const f = run({})
+  assert.equal(f.harmonization.mode, 'fused'); assert.equal(f.harmonization.intervals, 'conformal')
+  assert.equal(f.harmonization.unit, 'modis'); assert.equal(f.harmonization.lensFactor, null)
+  const s = f.series
+  for (const key of ['modisWeight', 'modisAdj']) { assert.equal(s[key].length, L); allOf(s[key], isNumOrNull, `series.${key}`) }
+  let both = 0, between = 0
+  for (let i = 0; i < L; i++) {
+    const m = f.months[i]
+    if (m < M_FIRST || m > M_LAST) { assert.equal(s.harmonized[i], null); assert.equal(s.lo80[i], null); continue }
+    const h = s.harmonized[i]
+    assert.ok(isNum(h) && isNum(s.lo80[i]) && isNum(s.hi95[i]), `bounds for covered month ${m}`)
+    assert.ok(s.lo95[i] <= s.lo80[i] && s.lo80[i] <= h && h <= s.hi80[i] && s.hi80[i] <= s.hi95[i], `ordered bounds ${m}`)
+    const w = s.modisWeight[i]
+    assert.ok(w === null ? h === 0 : w >= 0 && w <= 1, `weight ${m}: ${w}`)
+    if (m < VIIRS_START) { assert.equal(w, 1); assert.equal(h, s.modisEq[i]) }
+    if (m < 240) assert.equal(s.modisAdj[i], s.modisEq[i], `no drift correction before 2020 (${m})`)
+    if (m >= VIIRS_START && s.viirsCal[i] !== null) {
+      // Each stratum x dn group lies between its two streams; the area sum lies between the sums of the
+      // per-group minima and maxima, which can leave the area-level [min, max] when groups disagree in sign
+      // (here kv/meq varies by +-5 % per row and the drift factor reaches 12 %).
+      const lo = Math.min(s.modisAdj[i], s.viirsCal[i]), hi = Math.max(s.modisAdj[i], s.viirsCal[i])
+      assert.ok(h >= 0.88 * lo && h <= 1.12 * hi, `fused near the streams (${m}): ${h} vs [${lo}, ${hi}]`)
+      if (h >= lo - 1e-9 && h <= hi + 1e-9) between++
+      both++
+    }
+  }
+  assert.ok(both > 150 && between / both > 0.6, `fused strictly between the area streams in ${between} of ${both} months`)
+  assert.ok(s.modisAdj[300] < s.modisEq[300], 'drift-corrected MODIS in 2025 (positive day factor)')
+  // Switch mode reproduces the original record (MODIS before switchM, calibrated VIIRS after) and keeps bounds everywhere.
+  const sw = run({ mode: 'switch' })
+  assert.deepEqual(sw.series.harmonized, a.series.harmonized)
+  assert.deepEqual(sw.series.source, a.series.source)
+  assert.equal(sw.series.lo80[100] !== null, true, 'MODIS months now carry an interval')
+  assert.deepEqual(sw.series.modisAdj, sw.series.modisEq)
+  // Lens: calendar ratios and percentiles do not change; values are divided by the calendar-month factor.
+  const v = run({ unit: 'viirs' })
+  assert.equal(v.harmonization.unit, 'viirs'); assert.equal(v.harmonization.lensFactor.length, 12)
+  const fac = v.harmonization.lensFactor
+  for (let y = 0; y < f.calendar.years.length; y++) for (let mo = 0; mo < 12; mo++) {
+    const [r1, r2] = [f.calendar.ratio[y][mo], v.calendar.ratio[y][mo]]
+    const [p1, p2] = [f.calendar.percentile[y][mo], v.calendar.percentile[y][mo]]
+    assert.ok(r1 === r2 || Math.abs(r1 - r2) < 1e-9 * Math.max(1, Math.abs(r1)), `lens ratio ${y}/${mo}`)
+    assert.ok(p1 === p2 || Math.abs(p1 - p2) < 1e-9, `lens percentile ${y}/${mo}`)
+    const [v1, v2] = [f.calendar.value[y][mo], v.calendar.value[y][mo]]
+    if (v1 !== null) assert.ok(Math.abs(v1 / fac[mo] - v2) < 1e-9 * Math.max(1, v1), `lens value ${y}/${mo}`)
+  }
+  assert.equal(v.current.level, f.current.level); assert.equal(v.current.rank, f.current.rank)
+  // Analogs.
+  const an = f.analogs
+  assert.ok(an && an.year === 2025 && an.throughMonth === 12 && an.candidates === 24, JSON.stringify(an)?.slice(0, 200))
+  assert.equal(an.top.length, 3); an.top.forEach((t) => { assert.ok(isNum(t.distance) && t.restRatio === null) })
+  assert.ok(typeof an.note === 'string' && typeof an.informative === 'boolean')
+  const pm = structuredClone(modelMeta); pm.months.cov_viirs[M_LAST] = 0.3; pm.months.cov_modis[M_LAST] = 0.3
+  const kp = new Kernel(JSON.stringify(pm))
+  kp.set_aoi(flat, Uint32Array.from([0, outer.length, outer.length + hole.length])); kp.begin(0); ingest(kp, tile)
+  const ap = JSON.parse(kp.analyze(JSON.stringify(opts)))
+  assert.equal(ap.series.partial[M_LAST], true); assert.equal(ap.current.m, M_LAST - 1)
+  assert.equal(ap.analogs.throughMonth, 11); assert.ok(ap.analogs.top.every((t) => t.restTotal !== null))
+  kp.free()
+  // Cell layer: per-row fusion by default, the old switch layer on request.
+  const cl = (o) => { const l = k.cell_layer(JSON.stringify({ mFrom: 260, mTo: 262, mode: 'harmonized', switchM: SWITCH, baseline: [2003, 2022], ...o })); const x = l.take_values(); l.free(); return x }
+  const cf = cl({}), cs = cl({ seriesMode: 'switch' })
+  assert.ok(cf.every((x) => Number.isFinite(x) && x >= 0) && cs.some((x, i) => x !== cf[i]), 'fused and switch cell layers differ')
+  console.log(`   fused: MODIS weight 2016-09 ${s.modisWeight[200].toFixed(3)}, 2025-12 ${s.modisWeight[311].toFixed(3)}; 80 % band 2025-12 [${s.lo80[311].toFixed(1)}, ${s.hi80[311].toFixed(1)}] around ${s.harmonized[311].toFixed(1)}`)
+  console.log(`   analogs ${an.top.map((t) => `${t.year} (${t.distance.toFixed(3)})`).join(', ')}; lens Sep factor ${fac[8].toFixed(3)}`)
+  k.free()
+}
+
 // ---------- errors surface as exceptions with readable messages ----------
 assert.throws(() => kernel.analyze('{"switchM":1}'), /invalid analyze options/)
 assert.throws(() => kernel.set_aoi(Float64Array.from([179, 0, -179, 0, -179, 1, 179, 1]), Uint32Array.from([0])), /antimeridian/)
@@ -192,7 +288,7 @@ assert.equal(empty.aoi.rows, 0); assert.equal(empty.series.harmonized[100], 0); 
 assert.equal(empty.outlook.method, 'climatology')
 
 // ---------- performance: country-sized polygon at L0, ~2 M rows ----------
-const big = new Kernel(JSON.stringify(meta))
+const big = new Kernel(JSON.stringify(modelMeta)) // fused path with drift and conformal bounds
 const ring = []
 for (let i = 0; i < 4000; i++) {
   const t = (i / 4000) * 2 * Math.PI, r = 17 + 2 * Math.sin(7 * t) + 0.5 * Math.cos(53 * t)

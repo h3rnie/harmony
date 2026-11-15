@@ -1,10 +1,11 @@
 //! Harmony analysis kernel (pure Rust, no I/O).
 //!
-//! AOI rasterisation, zonal sums of the harmonized MODIS + VIIRS tile columns, the contract
-//! uncertainty interval, and the statistics shown in the web app. Output shapes mirror
+//! AOI rasterisation, zonal sums of the MODIS + VIIRS tile columns, their precision-weighted
+//! fusion under the sensor error model, the conformal uncertainty interval, analog years, and the statistics shown in the web app. Output shapes mirror
 //! `web/src/lib/kernel/types.ts`; the tile schema and interval formula follow
 //! `schema/data-contract.md`.
 
+pub mod analogs;
 pub mod cells;
 pub mod engine;
 pub mod geom;

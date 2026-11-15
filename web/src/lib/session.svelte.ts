@@ -125,8 +125,14 @@ class Session {
 
   // ---------------------------------------------------------------- public actions
 
-  setAoi(aoi: Aoi | null, o: { keepFocus?: boolean; focusM?: number | null } = {}) {
+  /**
+   * o.edit: the same place reshaped (draw "Edit"), so the previous answer may stay on screen, dimmed, until the new one
+   * is ready. Any other change is a different place: its old answer is cleared at once, so a stale answer for the
+   * wrong area or month never shows and then flips (audit F9).
+   */
+  setAoi(aoi: Aoi | null, o: { keepFocus?: boolean; focusM?: number | null; edit?: boolean } = {}) {
     this.aoi = aoi
+    if (!o.edit) { this.analysis = null; this.layer = null; this.layerM = null; this.aoiInfo = null }
     if (!o.keepFocus) this.focusM = o.focusM ?? null
     const preset = presetById(aoi?.presetId)
     this.pendingMonth = null

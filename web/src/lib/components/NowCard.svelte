@@ -3,12 +3,12 @@
   import { session } from '../session.svelte'
   import { themeState } from '../theme.svelte'
   import { live, fmtAge } from '../live/store.svelte'
-  import { calibrationFromSeries, computePace, type PaceDay } from '../live/pace'
-  import { liveCsv } from '../live/csv'
+  import type { PaceDay } from '../live/pace'
+  import Term from './Term.svelte'
+  import { livePace } from './livePace'
   import { LIVE_SOURCES, SAT_AQUA, SAT_N20, SAT_N21, SAT_TERRA, type LiveSource } from '../live/types'
   import { LEVEL_TONE } from '../analysisUtil'
   import { LEVEL_LABEL, MONTHS_LONG, MONTHS_SHORT, fmtNum, fmtRatio } from '../format'
-  import { download, slug } from '../export/exporters'
 
   let { a }: { a: Analysis } = $props()
 
@@ -16,19 +16,11 @@
   const nf = new Intl.NumberFormat('en-US')
   const ago = (sec: number) => { const t = fmtAge(sec); return t === 'just now' ? t : `${t} ago` }
 
-  const calibration = $derived(calibrationFromSeries(a.months, a.series.viirsCal, a.series.viirsRaw))
   const d = $derived(live.data)
-  const pace = $derived.by(() => {
-    const data = live.data, inside = live.inside
-    if (!data || !inside) return null
-    return computePace({
-      rows: data, inside, dn: session.dn, windowStart: data.window_start,
-      // the clock only matters at day boundaries; fetched_at keeps this stable between refreshes
-      now: Math.max(data.fetched_at, Math.floor(live.now / 1000)),
-      refLon: live.refLon,
-      sourceOk: { n20: !data.sources.VIIRS_NOAA20_NRT.error, n21: !data.sources.VIIRS_NOAA21_NRT.error },
-      calibration, normal: a.climatology,
-    })
+  const pace = $derived(livePace(a))
+  const stamp = $derived.by(() => {
+    const t = new Date(d ? d.fetched_at * 1000 : live.now)
+    return t.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
   })
 
   const nowDate = $derived(new Date(live.now))
@@ -36,10 +28,6 @@
   const partOf = $derived(nowDate.getUTCDate() <= 10 ? 'early' : nowDate.getUTCDate() <= 20 ? 'mid' : 'late')
   const unit = $derived(pace?.calibration === 'none' ? 'VIIRS cell-days' : 'AFCD-M')
   const tone = $derived(pace?.level ? LEVEL_TONE[pace.level] ?? 'neutral' : 'neutral')
-  const ratioBig = $derived.by(() => {
-    if (pace?.ratio == null) return null
-    return fmtRatio(pace.ratio).replace('×', '')
-  })
   const failed = $derived(d ? LIVE_SOURCES.filter((s) => d.sources[s].error) : [])
   const dnNote = $derived(session.dn === 'both' ? '' : ` (${session.dn} overpasses only)`)
   const latest = $derived.by(() => {
@@ -97,7 +85,7 @@
             title: (r: Row) => [
               `${r.date} (local solar)${r.complete ? '' : ' · partial day'}`,
               r.v == null ? 'No VIIRS data' : `${fmtNum(r.v)} ${unit}`,
-              normal ? `Normal ${fmtNum(r.median)} (q25–q75 ${fmtNum(r.q25)}–${fmtNum(r.q75)})` : null,
+              normal ? `Normal ${fmtNum(r.median)} (middle half ${fmtNum(r.q25)}–${fmtNum(r.q75)})` : null,
               `${nf.format(r.detections)} detections`,
             ].filter(Boolean).join('\n'),
           })),
@@ -108,29 +96,21 @@
     return () => { cancelled = true }
   })
 
-  function exportCsv() {
-    if (!d || !live.inside) return
-    const stamp = new Date(d.fetched_at * 1000).toISOString().slice(0, 16).replace(/[:T]/g, '')
-    download(`${slug(session.aoi?.label ?? 'area')}-live-hotspots-${stamp}.csv`, liveCsv(d, live.inside, session.aoi?.label ?? 'area'), 'text/csv')
-  }
 </script>
 
 {#if live.available && session.aoi}
-  <section class="now" aria-labelledby="now-h" aria-busy={live.phase === 'loading'}>
-    <p class="eyebrow">Live · last 7 days</p>
+  <section class="now" id="now" aria-labelledby="now-h" aria-busy={live.phase === 'loading'}>
     <div class="top">
-      <h2 id="now-h" class="when"><span class="now-dot" aria-hidden="true"></span>Now <span class="chip prov" title="FIRMS near-real-time data, not yet screened like the calendar">Near-real-time · provisional</span></h2>
+      <h2 id="now-h" class="q-title">What is burning right now?</h2>
       {#if d}
-        <div class="actions">
-          <button class="btn" onclick={() => live.retry()} disabled={live.phase === 'loading'} title="Live data refreshes every 10 minutes">{live.phase === 'loading' ? 'Refreshing…' : 'Refresh'}</button>
-          <button class="btn" onclick={exportCsv} disabled={!d.n}>Live hotspots CSV</button>
-        </div>
+        <button class="btn" onclick={() => live.retry()} disabled={live.phase === 'loading'} title="Live data refreshes every 10 minutes">{live.phase === 'loading' ? 'Refreshing…' : 'Refresh'}</button>
       {/if}
     </div>
+    <p class="stamp"><span class="now-dot" aria-hidden="true"></span>Last 7 days to <span class="num">{stamp}</span> · a different time frame from the sections above · <Term id="provisional">provisional</Term></p>
 
     {#if live.phase === 'too-large'}
       <p class="msg" role="status">
-        This area is too large for the live proxy: its bounding box covers <span class="num">{live.tooLarge?.area}</span> square degrees,
+        This area is too large for the live feed: its bounding box covers <span class="num">{live.tooLarge?.area}</span> square degrees,
         the limit is <span class="num">{live.tooLarge?.limit}</span> (about 30° × 30°). Draw a smaller area or pick a story preset to see what is burning now.
       </p>
     {:else if !d && live.phase === 'error'}
@@ -138,56 +118,33 @@
     {:else if !d || !pace}
       <div class="skel" role="status" aria-label="Loading live detections"></div>
     {:else}
-      <p class="sentence">
-        Last 7 days: <strong class="num">{nf.format(pace.detTotal)}</strong> detections{dnNote}
-        <span class="muted">(NOAA-20 <span class="num">{nf.format(pace.detBySat[SAT_N20])}</span>, NOAA-21 <span class="num">{nf.format(pace.detBySat[SAT_N21])}</span>, MODIS <span class="num">{nf.format(pace.detBySat[SAT_TERRA] + pace.detBySat[SAT_AQUA])}</span>)</span>
-        {#if pace.ratio != null} · running at <strong class="num">{fmtRatio(pace.ratio)}</strong> the normal pace for {partOf}-{monthName}{/if}
+      <p class="lead">
+        {#if pace.ratio != null}
+          Burning at <strong class="num">{fmtRatio(pace.ratio)}</strong> the normal daily pace for {partOf}-{monthName}.
+        {:else if pace.pace != null}
+          About <strong class="num">{fmtNum(pace.pace)}</strong> {unit} a day; there is no normal to compare with for {monthName} here.
+        {:else}
+          No complete day with VIIRS data yet in this window.
+        {/if}
+        <span class="num">{nf.format(pace.detTotal)}</span> satellite detections{dnNote} in the last 7 days.
       </p>
 
-      <div class="answer">
-        {#if ratioBig != null}
-          <div class="hero">
-            <span class="big num">{ratioBig}<span class="x">×</span></span>
-            <span class="cap">the normal daily pace for {monthName}</span>
-          </div>
-        {:else}
-          <div class="hero">
-            <span class="big num">{pace.pace == null ? '—' : fmtNum(pace.pace)}</span>
-            <span class="cap">{unit} per day</span>
-          </div>
+      <div class="facts">
+        {#if pace.level}
+          <span class="level {tone}">
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+              {#if tone === 'critical'}<path d="M6 1 11 6 6 11 1 6z" fill="currentColor" />
+              {:else if tone === 'serious' || tone === 'warning'}<path d="M6 1.5 11 10.5H1z" fill="currentColor" />
+              {:else if tone === 'info'}<path d="M6 10.5 1 1.5h10z" fill="currentColor" />
+              {:else}<circle cx="6" cy="6" r="4" fill="currentColor" />{/if}
+            </svg>
+            {LEVEL_LABEL[pace.level]} pace
+          </span>
         {/if}
-        <div class="facts">
-          {#if pace.level}
-            <span class="level {tone}">
-              <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-                {#if tone === 'critical'}<path d="M6 1 11 6 6 11 1 6z" fill="currentColor" />
-                {:else if tone === 'serious' || tone === 'warning'}<path d="M6 1.5 11 10.5H1z" fill="currentColor" />
-                {:else if tone === 'info'}<path d="M6 10.5 1 1.5h10z" fill="currentColor" />
-                {:else}<circle cx="6" cy="6" r="4" fill="currentColor" />{/if}
-              </svg>
-              {LEVEL_LABEL[pace.level]} pace
-            </span>
-          {/if}
-          <p class="detail small">
-            {#if pace.pace == null}
-              No complete day with VIIRS data yet in this window.
-            {:else}
-              <span class="num">{fmtNum(pace.pace)}</span> {unit}/day over the last <span class="num">{pace.nComplete}</span> complete days
-              {#if pace.calibration !== 'none'}
-                {#if (pace.normalPace ?? 0) > 0}
-                  vs normal <span class="num">{fmtNum(pace.normalPace)}</span>
-                  {#if pace.normalBand}(q25–q75 <span class="num">{fmtNum(pace.normalBand[0])}–{fmtNum(pace.normalBand[1])}</span>){/if}
-                {:else}
-                  · <strong>no normal defined for this month</strong> (the record shows no activity here in {monthName})
-                {/if}
-              {/if}
-            {/if}
-          </p>
-          <p class="detail small muted">
-            {#if latest}Latest acquisition <span class="num">{latest.utc}</span> · <span class="num">{latest.age}</span>{:else}No detections in the queried box in the last 7 days{/if}
-            · fetched <span class="num">{ago(live.now / 1000 - d.fetched_at)}</span>{#if d.stale} · <span class="warn">cached copy, FIRMS busy</span>{/if}
-          </p>
-        </div>
+        <p class="detail small muted">
+          {#if latest}Latest detection <span class="num">{latest.utc}</span> ({latest.age}){:else}No detections in the queried box in the last 7 days{/if}
+          · fetched <span class="num">{ago(live.now / 1000 - d.fetched_at)}</span>{#if d.stale} · <span class="warn">cached copy, FIRMS busy</span>{/if}
+        </p>
       </div>
 
       {#if failed.length}
@@ -207,16 +164,16 @@
         <ul class="keys">
           <li><span class="sw bar"></span>Live, complete day</li>
           <li><span class="sw hollow"></span>Partial day (not in the pace)</li>
-          {#if showNormal}<li><span class="sw band"></span>Normal q25–q75 · <span class="sw med"></span>median, per day of {monthName}</li>{/if}
+          {#if showNormal}<li><span class="sw band"></span><span>Normal range (<Term id="iqr">middle half</Term>)</span></li><li><span class="sw med"></span>Normal, per day of {monthName}</li>{/if}
         </ul>
       </figure>
 
-      <details class="tbl">
+      <details class="tbl more">
         <summary class="small">Daily values (table)</summary>
         <div class="scroll">
           <table class="small">
             <caption class="sr-only">Daily live values by local-solar date</caption>
-            <thead><tr><th scope="col">Local-solar date</th><th scope="col">NOAA-20 cell-days</th><th scope="col">NOAA-21 cell-days</th><th scope="col">VIIRS mean</th><th scope="col">{unit}</th>{#if showNormal}<th scope="col">Normal (q25–q75)</th>{/if}<th scope="col">Detections</th></tr></thead>
+            <thead><tr><th scope="col">Local-solar date</th><th scope="col">NOAA-20 cell-days</th><th scope="col">NOAA-21 cell-days</th><th scope="col">VIIRS mean</th><th scope="col">{unit}</th>{#if showNormal}<th scope="col">Normal (middle half)</th>{/if}<th scope="col">Detections</th></tr></thead>
             <tbody>
               {#each pace.days as r (r.day)}
                 <tr class:partial={!r.complete}>
@@ -234,30 +191,32 @@
         </div>
       </details>
 
+      <details class="more">
+        <summary>How the pace is worked out</summary>
+        <div class="more-body">
+          <p>
+            In {unit} a day: <span class="num">{pace.pace == null ? '—' : fmtNum(pace.pace)}</span> over the last <span class="num">{pace.nComplete}</span> complete days{#if (pace.normalPace ?? 0) > 0}, against a normal of <span class="num">{fmtNum(pace.normalPace)}</span>{#if pace.normalBand} (middle half <span class="num">{fmtNum(pace.normalBand[0])}–{fmtNum(pace.normalBand[1])}</span>){/if}{/if}.
+            Detections by satellite: NOAA-20 <span class="num">{nf.format(pace.detBySat[SAT_N20])}</span>, NOAA-21 <span class="num">{nf.format(pace.detBySat[SAT_N21])}</span>, MODIS <span class="num">{nf.format(pace.detBySat[SAT_TERRA] + pace.detBySat[SAT_AQUA])}</span>.
+          </p>
       <p class="fine muted">
         Near-real-time, provisional: not yet screened for static heat sources (gas flares, industry) — the calendar updates when science-quality data arrives.
         Pace = distinct (0.0125° sub-cell, local-solar date, day|night) from NOAA-20 and NOAA-21 nominal/high-confidence detections inside the area,
         averaged over the satellites that reported each day (never summed). {kText}
         Normal = climatological median for {monthName} ÷ days in the month. MODIS is counted, not used for the pace.
       </p>
+        </div>
+      </details>
     {/if}
   </section>
 {/if}
 
 <style>
   .now { padding: var(--sec-pad); border-bottom: 1px solid var(--rule); }
-  .top { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
-  .when { font-size: var(--fs-xl); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-  .now-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
-  .sentence { font-size: var(--fs-base); margin: 12px 0 0; max-width: 72ch; }
-  .sentence strong { font-weight: 600; }
-  .answer { display: grid; grid-template-columns: auto 1fr; gap: 8px 32px; align-items: end; margin-top: 12px; }
-  .hero { display: grid; gap: 4px; }
-  .big { font-size: clamp(2.6rem, 5vw, 3.8rem); line-height: 0.9; font-weight: 600; letter-spacing: -0.05em; color: var(--ink); font-variant-numeric: proportional-nums; }
-  .x { font-size: 0.55em; color: var(--accent); margin-left: 2px; }
-  .cap { color: var(--ink-2); font-size: var(--fs-md); }
-  .facts { display: grid; gap: 8px; justify-items: start; padding-bottom: 2px; }
+  .top { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .stamp { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; margin: 6px 0 0; font-size: var(--fs-base); color: var(--ink-3); max-width: none; }
+  .now-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); margin-right: 2px; }
+  .lead strong { font-size: var(--fs-xl); font-weight: 600; }
+  .facts { display: flex; gap: 8px 16px; align-items: center; flex-wrap: wrap; }
   .detail { margin: 0; color: var(--ink-2); }
   .detail.muted { color: var(--ink-3); }
   .msg { margin: 10px 0 0; color: var(--ink-2); max-width: 72ch; }
@@ -285,5 +244,4 @@
   tbody th { font-weight: 400; font-family: var(--font-num); }
   tr.partial { color: var(--ink-3); }
   .fine { margin: 12px 0 0; max-width: 80ch; line-height: 1.5; font-size: var(--fs-sm); }
-  @media (max-width: 720px) { .answer { grid-template-columns: 1fr; } }
 </style>

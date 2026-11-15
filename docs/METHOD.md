@@ -228,6 +228,85 @@ Computed by the kernel on the harmonized monthly series of the area (`stats.rs`,
 - **Season.** Peak month, the shortest circular window holding 80 % of the annual median profile, and a second peak if a local maximum above half the main peak lies more than two months away.
 - **Seam** (per area). Over months where both streams exist, the raw VIIRS-to-MODIS ratio, the harmonized ratio and their correlation.
 
+### Global fire clock (pulse view)
+
+The fire clock is standard pyrogeography (Giglio et al. 2006; Archibald et al. 2013), shown here on the harmonized
+record rather than claimed as a finding. Per 0.5 deg cell (`overview.py`, `season.png`): the **mean** of each calendar
+month over 2003-2022 (the median of clim.png is zero in every month for episodic regimes such as boreal forest, where a
+cell burns in a few years only); colour = the calendar month with the largest mean (peak month, not the circular mean,
+which falls between the two seasons of a bimodal regime); **concentration** = resultant length of the circular mean of
+the 12 monthly values (0 = spread over the year, 1 = one month), drawn as lightness/paleness on a cyclic map built for
+colour-vision deficiency rather than as a second hue; **season length** = the shortest run of consecutive months holding
+80 % of the annual total. A **second season** is flagged where, on the 3 x 3-pooled cycle (>= 20 AFCD-M a year), another
+local maximum >= 0.15 x the main peak lies >= 3 months away and the cycle dips to <= 0.5 x that second peak on both arcs
+between them; such cells are hatched in the second season's colour. This flags 22.7 % of fire-active cells, close to
+the ~25 % of fire-active land that Benali et al. (2017) found bimodal by fitting circular distributions. Colour map: Crameri's
+cyclic **romaO** (Scientific colour maps, MIT licence), January at blue, July at ochre; on the light theme its OKLab
+lightness is compressed to 0.36-0.68 so the pale end stays visible. Cells under ~1 AFCD-M a year fade out.
+
+### Trend across the hand-over
+
+Per 0.5 deg cell, Theil-Sen slope of the annual harmonized totals over the complete years 2001-2025 (a year is complete
+when every month's served-stream coverage is >= 0.5; all 25 qualify in the 2026-11-15 build), computed on the 3 x 3
+(1.5 deg) moving-window sums for robustness and expressed as % of the window's 2003-2022 mean per year; cells need a
+window mean >= 10 AFCD-M a year and >= 8 years with fire. Significance: Mann-Kendall (tie- and continuity-corrected
+normal approximation; serial correlation not modelled, and the 1.5 deg windows overlap, so neighbouring tests are
+dependent) with a Benjamini-Hochberg false-discovery rate of 5 % across the 45 746 tested cells (Wilks 2016) — 29 % are
+significant. The map draws significant cells solid and the rest muted and hatched. Because no published trend exists
+for a spliced MODIS -> VIIRS active-fire *count* record, the same analysis is run on the MODIS-derived stream alone
+(`meq`, which continues through 2025) as a seam test.
+
+Regional summary (`overview/meta.json` -> `trend`, GFED-style basis regions as lat/lon boxes; "total" = Theil-Sen of
+the region's annual total; build of 2026-11-15):
+
+| Region | Total %/yr (p) | MODIS-only | Cell mean %/yr | Sig. falling / rising (area share) | vs MODIS-only: sign agreement, slope r |
+|---|---|---|---|---|---|
+| Boreal North America | +4.0 (0.03) | +4.0 | +0.3 | 0.02 / 0.04 | 0.94, 0.98 |
+| Temperate North America | +0.8 (0.20) | +0.5 | +0.1 | 0.08 / 0.11 | 0.89, 0.96 |
+| Central America | -0.8 (0.17) | -0.7 | -0.3 | 0.11 / 0.04 | 0.92, 0.96 |
+| N. Hemisphere South America | -0.9 (0.36) | -1.1 | -0.8 | 0.16 / 0.02 | 0.87, 0.97 |
+| S. Hemisphere South America | -1.6 (0.02) | -1.5 | -1.0 | 0.24 / 0.08 | 0.95, 0.98 |
+| Europe | -4.5 (<0.001) | -4.5 | -2.2 | 0.35 / 0.05 | 0.95, 0.99 |
+| Middle East and North Africa | +1.4 (0.14) | +1.1 | +1.1 | 0.05 / 0.22 | 0.89, 0.95 |
+| N. Hemisphere Africa | -1.1 (<0.001) | -1.4 | -0.0 | 0.29 / 0.14 | 0.94, 0.99 |
+| S. Hemisphere Africa | -0.0 (0.83) | -0.1 | -0.4 | 0.10 / 0.12 | 0.92, 0.97 |
+| Boreal Asia | -2.2 (0.05) | -2.1 | -1.9 | 0.28 / 0.01 | 0.96, 1.00 |
+| Central Asia | -1.6 (<0.001) | -1.6 | -0.1 | 0.26 / 0.24 | 0.96, 0.98 |
+| Southeast Asia | -0.8 (0.15) | -0.8 | +0.4 | 0.25 / 0.25 | 0.96, 0.98 |
+| Equatorial Asia | -4.0 (0.003) | -4.1 | -3.2 | 0.37 / 0.00 | 0.97, 0.97 |
+| Australia and New Zealand | -1.1 (0.23) | -1.1 | -1.1 | 0.07 / 0.01 | 0.93, 0.96 |
+
+Against the literature. The harmonized record reproduces the published *declines* in savanna, grassland and cropland
+burning (Andela et al. 2017): Sahel-Sudan savanna -1.3 %/yr (p < 0.001), Cerrado -2.0 %/yr (p = 0.03), Kazakh steppe
+-7.1 %/yr (p < 0.001), and the Northern-Hemisphere-Africa, Southern-Hemisphere-South-America and Central-Asia totals; the
+eastern-China cropland box falls (-0.9 %/yr) but not significantly. For the extratropical forest *increases* (Zheng et
+al. 2021; Jones et al. 2022, 2024) it agrees for boreal North America (+4.0 %/yr; Canadian boreal box +5.8 %/yr, p =
+0.01, largely carried by 2023) and in sign for East-Siberian taiga (+1.9 %/yr, n.s.) and the western US (+1.0 %/yr,
+n.s.), but **not** for the Boreal Asia box as a whole (-2.2 %/yr), which is dominated by the declining agricultural and
+steppe-margin burning of southern Siberia and the Amur region (cf. the large 2003 and 2008 fire years) rather than by
+taiga. Active-fire cell-days measure fire *occurrence*, not emissions or burned area, so a muted forest signal is
+expected where fewer but larger fires burn. Punjab-Haryana, a known MODIS overpass-time / orbit-drift artefact zone,
+shows no trend (-0.3 %/yr, n.s.).
+
+Seam test. A splice artefact would appear as a step in 2023: the worldwide trend is -1.16 %/yr over 2001-2025,
+-1.32 %/yr over 2001-2022 (MODIS years only) and -1.18 %/yr for the MODIS-only stream over 2001-2025; the harmonized /
+MODIS-only global annual ratio is 1.015 (2023), 1.000 (2024) and 1.073 (2025, the year the drifting Terra and Aqua
+orbits weaken MODIS). Cell trends agree in sign with the MODIS-only trends over 94 % of the tested area (slope
+correlation 0.98); the agreement is partly by construction, since 22 of the 25 years are identical.
+
+### Watchlist ("where is fire unusual this month?")
+
+`watch.py` (schema/watch.md): for the latest month whose served-stream coverage is >= 0.5, and for the three months
+ending there, each 0.5 deg cell is compared with the same calendar month(s) of the 2003-2022 baseline (target year
+excluded). Cells with >= 5 AFCD-M, at or above the 90th baseline percentile and >= 2 x the baseline median (median
+floored at 1) form 8-connected clusters (longitude wraps), scored by excess activity (sum of value minus median).
+For the top 15, the cluster's *own* summed series gives the ratio to normal, the baseline percentile (resolution ~5 %
+with 20 years) and the rank among all years of the record. Because clusters are selected for being unusual, their ranks
+lean to the top by construction. Historical checks (`watch --month`): June 2023 puts British Columbia/Alberta and
+Quebec first (~170-250 x normal, highest of 26 Junes); December 2019 and January 2020 put south-east Australia first
+(~200-370 x normal); August 2019 is led by Siberia, with an arc-of-deforestation cluster third at only 3.7 x normal,
+and the arc as a fixed box ranks 11th of 26 Augusts (1.2 x the 2003-2022 median; 2005, 2010 and 2007 were higher).
+
 ## 16. Known limitations and what would improve it
 
 | Limitation | Effect | Improvement |
@@ -342,6 +421,17 @@ Out-of-time bias, 2022 / 2023 / 2024 / 2025: production +1.2 / +1.5 / 0.0 / +7.3
 - Schroeder, W., Oliva, P., Giglio, L., Csiszar, I. A. (2014). The New VIIRS 375 m active fire detection data product: Algorithm description and initial assessment. *Remote Sensing of Environment* 143, 85-96. doi:10.1016/j.rse.2013.12.008
 - Dinerstein, E., Olson, D., Joshi, A., et al. (2017). An Ecoregion-Based Approach to Protecting Half the Terrestrial Realm. *BioScience* 67(6), 534-545. doi:10.1093/biosci/bix014
 - Chen, Y., Hall, J., van Wees, D., et al. (2023). Multi-decadal trends and variability in burned area from the fifth version of the Global Fire Emissions Database (GFED5). *Earth System Science Data* 15(11), 5227-5259. doi:10.5194/essd-15-5227-2023
+- Giglio, L., Csiszar, I., Justice, C. O. (2006). Global distribution and seasonality of active fires as observed with the Terra and Aqua Moderate Resolution Imaging Spectroradiometer (MODIS) sensors. *Journal of Geophysical Research: Biogeosciences* 111, G02016. doi:10.1029/2005JG000142
+- Archibald, S., Lehmann, C. E. R., Gómez-Dans, J. L., Bradstock, R. A. (2013). Defining pyromes and global syndromes of fire regimes. *PNAS* 110(16), 6442-6447. doi:10.1073/pnas.1211466110
+- Benali, A., Mota, B., Carvalhais, N., et al. (2017). Bimodal fire regimes unveil a global-scale anthropogenic fingerprint. *Global Ecology and Biogeography* 26(7), 799-811. doi:10.1111/geb.12586
+- Crameri, F. (2018). Scientific colour maps (romaO used here). Zenodo. doi:10.5281/zenodo.1243862 (MIT licence); Crameri, F., Shephard, G. E., Heron, P. J. (2020). The misuse of colour in science communication. *Nature Communications* 11, 5444. doi:10.1038/s41467-020-19160-7
+- Andela, N., Morton, D. C., Giglio, L., et al. (2017). A human-driven decline in global burned area. *Science* 356(6345), 1356-1362. doi:10.1126/science.aal4108
+- Zheng, B., Ciais, P., Chevallier, F., et al. (2021). Increasing forest fire emissions despite the decline in global burned area. *Science Advances* 7(39), eabh2646. doi:10.1126/sciadv.abh2646
+- Jones, M. W., Abatzoglou, J. T., Veraverbeke, S., et al. (2022). Global and regional trends and drivers of fire under climate change. *Reviews of Geophysics* 60, e2020RG000726. doi:10.1029/2020RG000726
+- Jones, M. W., Veraverbeke, S., Andela, N., et al. (2024). Global rise in forest fire emissions linked to climate change in the extratropics. *Science* 386, eadl5889. doi:10.1126/science.adl5889
+- Wilks, D. S. (2016). "The stippling shows statistically significant grid points": How research results are routinely overstated and overinterpreted, and what to do about it. *Bulletin of the American Meteorological Society* 97(12), 2263-2273. doi:10.1175/BAMS-D-15-00267.1
+- Benjamini, Y., Hochberg, Y. (1995). Controlling the false discovery rate: a practical and powerful approach to multiple testing. *Journal of the Royal Statistical Society B* 57(1), 289-300.
+- van der Werf, G. R., Randerson, J. T., Giglio, L., et al. (2017). Global fire emissions estimates during 1997-2016. *Earth System Science Data* 9, 697-720. doi:10.5194/essd-9-697-2017
 - Pettitt, A. N. (1979). A non-parametric approach to the change-point problem. *Applied Statistics* 28(2), 126-135. doi:10.2307/2346729
 
 Bibliographic details were checked against Crossref. Sen's slope estimator and the Mann-Kendall test are standard methods (Sen 1968; Mann 1945; Kendall 1975) and are not cited with details here.

@@ -16,14 +16,14 @@
 </footer>
 
 <style>
-  .foot { padding: 28px 0 8px; max-width: 78ch; }
-  .copy { font-size: var(--fs-md); color: var(--ink-2); margin: 0 0 6px; }
+  .foot { padding: 28px 0 8px; max-width: var(--measure); }
+  .copy { font-size: var(--fs-base); color: var(--ink-2); margin: 0 0 6px; }
   .copy a { color: var(--ink); }
   .links { display: flex; gap: 8px; align-items: center; margin: 0 0 14px; color: var(--ink-faint); }
   .lk {
     background: none; border: 0; padding: 2px 0; cursor: pointer; color: var(--ink-3);
-    font-family: var(--font-display); font-weight: 500; font-size: var(--fs-xs); letter-spacing: var(--track-label); text-transform: uppercase;
+    font-size: var(--fs-base); text-decoration: underline; text-decoration-color: var(--rule-strong); text-underline-offset: 3px;
   }
   .lk:hover { color: var(--ink); }
-  .ack { font-size: var(--fs-sm); color: var(--ink-3); line-height: 1.5; margin: 0 0 6px; }
+  .ack { font-size: var(--fs-base); color: var(--ink-3); line-height: 1.5; margin: 0 0 6px; }
 </style>

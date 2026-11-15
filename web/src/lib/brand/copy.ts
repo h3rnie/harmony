@@ -12,7 +12,9 @@ export const COPYRIGHT_YEAR = 2026
 export const openAbout = () => dispatchEvent(new CustomEvent('harmony:open-about'))
 
 /** Open the Method section and scroll to it. */
-export function openMethod(smooth = true) {
+export function openMethod(smooth = true, tries = 12) {
+  // The method sits in a section that mounts just after first paint; wait for it briefly.
+  if (!document.getElementById('method') && tries > 0) { setTimeout(() => openMethod(smooth, tries - 1), 150); return }
   dispatchEvent(new CustomEvent('harmony:open-method'))
   requestAnimationFrame(() => document.getElementById('method')?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' }))
 }

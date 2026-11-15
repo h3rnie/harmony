@@ -14,13 +14,12 @@
   import { renderCellLayer, type RenderedOverlay } from './cellOverlay'
   import { normalizeRings, polygonFromGeoJSON, ringsBbox, type Aoi } from '../geo'
   import { PRESETS, type Preset } from '../presets'
-  import { fmtArea, fmtNum, fmtRatio, monthShort } from '../format'
+  import { fmtNum, fmtRatio, monthShort } from '../format'
   import CoordinatesPopover from './CoordinatesPopover.svelte'
   import MapLegend from './MapLegend.svelte'
   import type { ClimOverlay } from '../pulse/climOverlay'
   import { live, fmtAge, WINDOW_HOURS } from '../live/store.svelte'
   import { liveGeoJson, livePaint, popupNode } from '../live/liveLayer'
-  import LiveControl from '../live/LiveControl.svelte'
 
   const STYLE_URL = { dark: 'https://tiles.openfreemap.org/styles/dark', light: 'https://tiles.openfreemap.org/styles/positron' }
   const OWN_PREFIXES = ['td', 'h-']
@@ -33,6 +32,7 @@
   type DrawMode = 'none' | 'polygon' | 'rectangle' | 'circle' | 'select'
   let drawMode = $state<DrawMode>('none')
   let presetsOpen = $state(false)
+  let drawOpen = $state(false)
   let coordsOpen = $state(false)
   let dropActive = $state(false)
   let notice = $state<string | null>(null)
@@ -42,8 +42,27 @@
   let fileInput: HTMLInputElement
   let fitNext = true
   let liveShown = $state(0)
+  let panelWidth = $state(800)
   let livePopup: Popup | undefined
   let lastFittedKey = ''
+  /** The viewer's live-dots choice for this area; null = default (on only when the month in view is the latest). */
+  let liveChoice = $state<boolean | null>(null)
+  const latestInView = $derived(session.analysis != null && session.focus === session.analysis.current.m)
+  const liveOn = $derived(liveChoice ?? latestInView)
+
+  // Fewer basemap labels: keep countries and cities, hold back regions, towns and roads until zoomed in (audit P11).
+  const LABEL_MINZOOM: [RegExp, number][] = [
+    [/^(label_state|place_state)$/, 7], [/^(label_town|place_town)$/, 8], [/^(label_village|place_village)$/, 10],
+    [/^(label_other|place_other|place_suburb)$/, 10], [/^highway_name_/, 10], [/^water_name_line_label$/, 7],
+  ]
+  function quietLabels() {
+    if (!map) return
+    for (const l of map.getStyle().layers) {
+      if (l.type !== 'symbol' || OWN_PREFIXES.some((p) => l.id.startsWith(p))) continue
+      const rule = LABEL_MINZOOM.find(([re]) => re.test(l.id))
+      if (rule && (l.minzoom ?? 0) < rule[1]) map.setLayerZoomRange(l.id, rule[1], l.maxzoom ?? 24)
+    }
+  }
 
   const HINTS: Record<DrawMode, string> = {
     none: '',
@@ -107,6 +126,7 @@
     if (!map.getLayer('h-live-pts')) map.addLayer({ id: 'h-live-pts', type: 'circle', source: 'h-live', paint: livePaint(themeState.theme) })
     // terra-draw layers must stay above ours
     for (const l of map.getStyle().layers) if (l.id.startsWith('td')) map.moveLayer(l.id)
+    quietLabels()
     pushAoi()
     pushOverlay()
     pushClim()
@@ -117,7 +137,7 @@
     if (!map || !map.getLayer('h-live-pts')) return
     const src = map.getSource('h-live') as GeoJSONSource | undefined
     const d = live.data, inside = live.inside, w = live.window
-    const fc = d && inside && w !== 'off' && session.aoi ? liveGeoJson(d, inside, live.now / 1000, WINDOW_HOURS[w]) : { type: 'FeatureCollection' as const, features: [] }
+    const fc = d && inside && w !== 'off' && liveOn && session.aoi ? liveGeoJson(d, inside, live.now / 1000, WINDOW_HOURS[w]) : { type: 'FeatureCollection' as const, features: [] }
     src?.setData(fc)
     liveShown = fc.features.length
     for (const [k, v] of Object.entries(livePaint(themeState.theme) ?? {})) map.setPaintProperty('h-live-pts', k as 'circle-color', v as never)
@@ -183,7 +203,7 @@
       const rings = normalizeRings(f.geometry.coordinates as number[][][])
       if (drawMode === 'select') {
         fitNext = false
-        session.setAoi({ rings, shape: { kind: 'polygon' }, label: session.aoi?.label ?? 'Drawn area' }, { keepFocus: true })
+        session.setAoi({ rings, shape: { kind: 'polygon' }, label: session.aoi?.label ?? 'Drawn area' }, { keepFocus: true, edit: true })
         return
       }
       const label = drawMode === 'circle' ? 'Drawn circle' : drawMode === 'rectangle' ? 'Drawn rectangle' : 'Drawn polygon'
@@ -200,6 +220,7 @@
     draw.setMode(mode)
     drawMode = mode
     presetsOpen = false
+    drawOpen = false
     coordsOpen = false
     pushAoi()
   }
@@ -261,6 +282,7 @@
       if (drawMode !== 'none') endDraw()
       presetsOpen = false
       coordsOpen = false
+      drawOpen = false
     }
   }
 
@@ -295,6 +317,14 @@
         clearTimeout(timer)
         setupDraw()
         mapReady = true
+        // Start the attribution collapsed to its (i) button: one less panel over the data; it stays one click away.
+        const collapse = () => {
+          const attrib = container.querySelector('.maplibregl-ctrl-attrib')
+          if (!attrib?.classList.contains('maplibregl-compact')) return
+          attrib.classList.remove('maplibregl-compact-show')
+          map?.off('idle', collapse)
+        }
+        map!.on('idle', collapse)
         if (session.aoi) fitAoi(session.aoi)
       }
     })
@@ -326,6 +356,9 @@
     draw?.stop()
     map?.remove()
   })
+
+  // A new area starts from the default live-dots choice.
+  $effect(() => { void session.aoi; untrack(() => (liveChoice = null)) })
 
   // AOI changes -> outline + camera
   $effect(() => {
@@ -361,7 +394,7 @@
 
   // Live data / window / clock / theme -> live detections layer
   $effect(() => {
-    void live.data; void live.inside; void live.window; void live.now; void themeState.theme; void session.aoi
+    void live.data; void live.inside; void live.window; void live.now; void themeState.theme; void session.aoi; void liveOn
     if (!mapReady) return
     untrack(() => pushLive())
   })
@@ -392,6 +425,7 @@
 </script>
 
 <div
+  bind:clientWidth={panelWidth}
   class="map-panel"
   role="region"
   aria-label="Area of interest map"
@@ -403,49 +437,32 @@
 
   <div class="toolbar" role="toolbar" aria-label="Area tools">
     <div class="group">
-      <button class="tool" class:on={presetsOpen} aria-expanded={presetsOpen} aria-controls="preset-menu" onclick={() => { presetsOpen = !presetsOpen; coordsOpen = false }}>
+      <button class="tool" class:on={presetsOpen} aria-expanded={presetsOpen} aria-controls="preset-menu" onclick={() => { presetsOpen = !presetsOpen; coordsOpen = false; drawOpen = false }}>
         <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 2.5h10M3 8h10M3 13.5h6" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/></svg>
         <span>Stories</span>
       </button>
     </div>
-    <div class="group" aria-label="Draw">
-      <button class="tool" aria-pressed={drawMode === 'polygon'} title="Draw a polygon" onclick={() => startDraw('polygon')} disabled={!mapReady}>
-        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 12.5 2.5 5 8 2.5l5.5 3.5-1.5 6.5z" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linejoin="round"/></svg>
-        <span class="lbl">Polygon</span>
-      </button>
-      <button class="tool" aria-pressed={drawMode === 'rectangle'} title="Draw a rectangle" onclick={() => startDraw('rectangle')} disabled={!mapReady}>
-        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="4" width="11" height="8" stroke="currentColor" stroke-width="1.3" fill="none"/></svg>
-        <span class="lbl">Rectangle</span>
-      </button>
-      <button class="tool" aria-pressed={drawMode === 'circle'} title="Draw a circle" onclick={() => startDraw('circle')} disabled={!mapReady}>
-        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5" stroke="currentColor" stroke-width="1.3" fill="none"/></svg>
-        <span class="lbl">Circle</span>
-      </button>
-      <button class="tool" aria-pressed={drawMode === 'select'} title="Edit the current area" onclick={startEdit} disabled={!mapReady || !session.aoi}>
-        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="m10.5 2.5 3 3-8 8H2.5v-3z" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linejoin="round"/></svg>
-        <span class="lbl">{drawMode === 'select' ? 'Done' : 'Edit'}</span>
-      </button>
-      <button class="tool" title="Clear the area" onclick={clearAoi} disabled={!session.aoi && drawMode === 'none'}>
-        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-        <span class="lbl">Clear</span>
-      </button>
-    </div>
     <div class="group">
-      <button class="tool" class:on={coordsOpen} aria-expanded={coordsOpen} aria-controls="coords-pop" onclick={() => { coordsOpen = !coordsOpen; presetsOpen = false }}>
-        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2" fill="currentColor"/><path d="M8 1.5v3M8 11.5v3M1.5 8h3M11.5 8h3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
-        <span class="lbl">Coordinates</span>
-      </button>
-      <button class="tool" title="Load a GeoJSON polygon (or drop a file on the map)" onclick={() => fileInput.click()}>
-        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 11V2.5M4.5 6 8 2.5 11.5 6M2.5 11v2.5h11V11" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <span class="lbl">GeoJSON</span>
-      </button>
+      {#if drawMode === 'none'}
+        <button class="tool" class:on={drawOpen} aria-expanded={drawOpen} aria-controls="draw-menu" disabled={!mapReady}
+          onclick={() => { drawOpen = !drawOpen; presetsOpen = false; coordsOpen = false }}>
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 12.5 2.5 5 8 2.5l5.5 3.5-1.5 6.5z" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linejoin="round"/></svg>
+          <span>{session.aoi ? 'Area' : 'Draw area'}</span>
+          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="m2 3.5 3 3 3-3" stroke="currentColor" stroke-width="1.3" fill="none"/></svg>
+        </button>
+      {:else}
+        <button class="tool on" onclick={endDraw}>
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 8.5 3 3 6-7" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span>{drawMode === 'select' ? 'Done editing' : 'Cancel drawing'}</span>
+        </button>
+      {/if}
       <input bind:this={fileInput} name="geojson" type="file" accept=".geojson,.json,application/geo+json,application/json" class="sr-only" tabindex="-1" aria-label="GeoJSON file" onchange={(e) => { const f = (e.currentTarget as HTMLInputElement).files?.[0]; if (f) loadFile(f); (e.currentTarget as HTMLInputElement).value = '' }} />
     </div>
   </div>
 
   {#if presetsOpen}
     <div class="popover presets" id="preset-menu" role="dialog" aria-label="Story presets">
-      <p class="eyebrow">Story presets</p>
+      <p class="pm-h">Stories</p>
       <ul>
         {#each PRESETS as p (p.id)}
           <li>
@@ -456,6 +473,29 @@
           </li>
         {/each}
       </ul>
+    </div>
+  {/if}
+
+  {#if drawOpen}
+    <div class="popover draw-menu" id="draw-menu" role="dialog" aria-label="Choose an area">
+      <p class="pm-h">Draw an area to analyse</p>
+      <ul>
+        <li><button class="preset" onclick={() => startDraw('polygon')}><span class="pt">Polygon</span><span class="ps">Click the corners; click the first one again to finish</span></button></li>
+        <li><button class="preset" onclick={() => startDraw('rectangle')}><span class="pt">Rectangle</span><span class="ps">Click two opposite corners</span></button></li>
+        <li><button class="preset" onclick={() => startDraw('circle')}><span class="pt">Circle</span><span class="ps">Click the centre, then the edge</span></button></li>
+      </ul>
+      <p class="pm-h sep">Or</p>
+      <ul>
+        <li><button class="preset" onclick={() => { drawOpen = false; coordsOpen = true }}><span class="pt">Enter coordinates</span><span class="ps">A point and radius, or a bounding box</span></button></li>
+        <li><button class="preset" onclick={() => { drawOpen = false; fileInput.click() }}><span class="pt">Load a GeoJSON file</span><span class="ps">A polygon; you can also drop the file on the map</span></button></li>
+      </ul>
+      {#if session.aoi}
+        <p class="pm-h sep">This area</p>
+        <ul>
+          <li><button class="preset" onclick={() => { drawOpen = false; startEdit() }}><span class="pt">Edit the outline</span><span class="ps">Drag the corners, then press Done editing</span></button></li>
+          <li><button class="preset" onclick={() => { drawOpen = false; clearAoi() }}><span class="pt">Clear the area</span><span class="ps">Back to the stories</span></button></li>
+        </ul>
+      {/if}
     </div>
   {/if}
 
@@ -474,14 +514,6 @@
     </div>
   {/if}
 
-  {#if session.aoiInfo && session.aoi}
-    <div class="aoi-chip">
-      <span class="eyebrow">Area</span>
-      <strong>{session.aoi.label}</strong>
-      <span class="num muted">{fmtArea(session.aoiInfo.areaKm2)}{session.analysis ? ` · ${session.analysis.aoi.nCells.toLocaleString('en-US')} cells @ L${session.analysis.aoi.level}` : ''}</span>
-    </div>
-  {/if}
-
   {#if overlay && session.aoi}
     <MapLegend
       mode={session.overlay}
@@ -489,10 +521,12 @@
       month={focusLabel}
       {readout}
       onmode={(m) => session.setOverlay(m)}
+      {liveOn}
+      liveShown={liveShown}
+      onlive={(on) => (liveChoice = on)}
+      compact={panelWidth < 480}
     />
   {/if}
-
-  <LiveControl shown={liveShown} />
 
   {#if clim && !session.aoi}
     <p class="clim-legend small"><span class="swatch" aria-hidden="true"></span>{clim.label}</p>
@@ -525,17 +559,19 @@
   }
   .tool:last-of-type { border-right: 0; }
   .tool:hover:not(:disabled) { color: var(--ink); background: var(--surface-2); }
-  .tool[aria-pressed='true'], .tool.on { color: var(--ink); background: var(--surface-3); box-shadow: inset 0 -2px 0 var(--ink-2); }
+  .tool.on { color: var(--ink); background: var(--surface-3); box-shadow: inset 0 -2px 0 var(--ink-2); }
   .tool:focus-visible { outline-offset: -2px; }
   .tool:disabled { opacity: 0.4; cursor: not-allowed; }
-  @container map (max-width: 900px) { .lbl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } }
 
   .popover {
     position: absolute; top: 58px; left: 12px; z-index: 4; width: min(360px, calc(100% - 24px));
     background: var(--surface); border: 1px solid var(--rule-strong); border-radius: var(--radius); box-shadow: var(--shadow);
     padding: 12px;
   }
-  .presets ul { list-style: none; margin: 6px 0 0; padding: 0; }
+  .presets ul, .draw-menu ul { list-style: none; margin: 6px 0 0; padding: 0; }
+  .pm-h { margin: 0; font-size: var(--fs-sm); color: var(--ink-3); }
+  .pm-h.sep { margin-top: 10px; }
+  .draw-menu { max-height: calc(100% - 70px); overflow-y: auto; }
   .preset {
     display: grid; width: 100%; text-align: left; gap: 2px; padding: 8px 10px; background: transparent; border: 0;
     border-top: 1px solid var(--rule); cursor: pointer; color: var(--ink);
@@ -553,13 +589,6 @@
   .notice { bottom: auto; top: 60px; display: flex; gap: 10px; align-items: center; color: var(--ink); border-color: var(--warning); }
   .x { background: none; border: 0; color: var(--ink-2); font-size: 1.2rem; cursor: pointer; line-height: 1; }
 
-  .aoi-chip {
-    position: absolute; left: 12px; top: 60px; z-index: 2; display: grid; gap: 1px; max-width: 60%;
-    background: var(--overlay-bg); border-left: 2px solid var(--accent);
-    padding: 6px 10px; border-radius: 0 var(--radius) var(--radius) 0; font-size: var(--fs-sm); backdrop-filter: blur(6px);
-  }
-  .aoi-chip strong { font-size: var(--fs-base); font-weight: 600; }
-  .aoi-chip .eyebrow { line-height: 1.1; }
   .clim-legend {
     position: absolute; left: 12px; bottom: 40px; z-index: 2; margin: 0; display: flex; align-items: center; gap: 8px;
     color: var(--ink-2); background: var(--overlay-bg); padding: 4px 10px; font-size: var(--fs-sm);

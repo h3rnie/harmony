@@ -2,14 +2,29 @@
 //!
 //! Values are AOI-weighted sums `Σ w_i x_i` in AFCD units (tile values are ×100). Raw hotspot
 //! counts are weighted the same way, so naive and harmonized curves describe the same area.
+//!
+//! Two ways to build the harmonized value (`schema/data-contract.md`, "Series formula"):
+//! * **fused** (default): per stratum × day|night group, a precision-weighted combination of the
+//!   MODIS-derived value (drift-corrected in the drift era) and calibrated VIIRS, with variances
+//!   from the sensor error model in `meta.json`, summed over groups;
+//! * **switch**: MODIS before `switchM`, calibrated VIIRS from it (the original record).
+//!
+//! Bounds cover every covered month: on a shifted log scale (`(H + 0.5)·exp(∓q σ) − 0.5`, so a
+//! zero can be covered), `q` from the split-conformal table.
+//! A `meta.json` without the error model gives exactly the legacy record and intervals.
 
 use serde::{Deserialize, Serialize, Serializer};
 
-use crate::meta::{Meta, StratumMeta};
+use crate::meta::{ErrModel, Meta, StratumMeta};
+use crate::months::{moy, year_of};
 use crate::store::Store;
 
 pub const Z80: f64 = 1.2816;
 pub const Z95: f64 = 1.96;
+/// Fixed-point iterations of the pooled level used to evaluate the stream variances.
+const FUSE_ITER: usize = 3;
+/// Largest admissible error correlation between the two streams.
+const MAX_CORR: f64 = 0.99;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -28,6 +43,24 @@ impl Dn {
             Dn::Night => dn == 1,
         }
     }
+}
+
+/// How the harmonized value is built.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Mode {
+    #[default]
+    Fused,
+    Switch,
+}
+
+/// Unit of the MODIS-equivalent values (the lens).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Unit {
+    #[default]
+    Modis,
+    Viirs,
 }
 
 /// `SourceCode` in types.ts.
@@ -56,16 +89,49 @@ pub fn source_for(meta: &Meta, m: i32, switch_m: i32) -> Source {
     first.or(second).unwrap_or(Source::None)
 }
 
-/// Contract bounds `H·exp(∓z σ_log)` with `σ_log = √Var / max(H, 0.5)`:
-/// `[lo80, hi80, lo95, hi95]`.
-pub fn bounds(h: f64, var: f64) -> [f64; 4] {
+/// Bounds `H·exp(∓q σ_log)` with `σ_log = √Var / max(H, 0.5)`: `[lo80, hi80, lo95, hi95]`.
+pub fn bounds_q(h: f64, var: f64, q80: f64, q95: f64) -> [f64; 4] {
     let sigma = var.max(0.0).sqrt() / h.max(0.5);
-    let at = |z: f64| [h * (-z * sigma).exp(), h * (z * sigma).exp()];
-    let ([lo80, hi80], [lo95, hi95]) = (at(Z80), at(Z95));
+    let at = |q: f64| {
+        let s = q * sigma;
+        if s.is_finite() {
+            [h * (-s).exp(), h * s.exp()]
+        } else {
+            [0.0, f64::MAX]
+        }
+    };
+    let ([lo80, hi80], [lo95, hi95]) = (at(q80), at(q95));
     [lo80, hi80, lo95, hi95]
 }
 
-/// VIIRS-derived variance (contract):
+/// Offset of the shifted log used by the error-model bounds (AFCD).
+pub const LOG_SHIFT: f64 = 0.5;
+
+/// Error-model bounds on the shifted log scale, so a zero can be covered: with `c = 0.5`,
+/// `σ = √Var / (H + c)`, bounds `max(0, (H + c)·exp(−q σ) − c)` and `(H + c)·exp(q σ) − c`:
+/// `[lo80, hi80, lo95, hi95]`.
+pub fn bounds_shifted(h: f64, var: f64, q80: f64, q95: f64) -> [f64; 4] {
+    let c = LOG_SHIFT;
+    let hc = h.max(0.0) + c;
+    let sigma = var.max(0.0).sqrt() / hc;
+    let at = |q: f64| {
+        let s = q * sigma;
+        if s.is_finite() {
+            [(hc * (-s).exp() - c).max(0.0), (hc * s.exp() - c).max(0.0)]
+        } else {
+            [0.0, f64::MAX]
+        }
+    };
+    let ([lo80, hi80], [lo95, hi95]) = (at(q80), at(q95));
+    [lo80, hi80, lo95, hi95]
+}
+
+/// Legacy contract bounds (normal quantiles): `bounds_q(h, var, 1.2816, 1.96)`.
+pub fn bounds(h: f64, var: f64) -> [f64; 4] {
+    bounds_q(h, var, Z80, Z95)
+}
+
+/// Legacy VIIRS-derived variance:
 /// `ci² · [Σ relvar·S² + Σ (S + α·Q)]` over stratum × dn groups, with `S = Σ w kv`
 /// (AFCD) and `Q = Σ w² kvsq`. Items are `(relvar, alpha, S, Q)`.
 pub fn viirs_variance(groups: impl IntoIterator<Item = (f64, f64, f64, f64)>, ci_scale: f64) -> f64 {
@@ -76,10 +142,167 @@ pub fn viirs_variance(groups: impl IntoIterator<Item = (f64, f64, f64, f64)>, ci
     ci_scale * ci_scale * sum
 }
 
-/// Terra-bridge variance: `ci² · Σ relvar_bridge·S²` with `S = Σ w meq`; no dispersion term.
+/// Legacy Terra-bridge variance: `ci² · Σ relvar_bridge·S²` with `S = Σ w meq`; no dispersion term.
 pub fn bridge_variance(groups: impl IntoIterator<Item = (f64, f64)>, ci_scale: f64) -> f64 {
     let sum: f64 = groups.into_iter().map(|(relvar, s)| relvar * s * s).sum();
     ci_scale * ci_scale * sum
+}
+
+/// Variance law of one stream: `Var(μ) = rho μ² + phi μ`.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct StreamVar {
+    pub rho: f64,
+    pub phi: f64,
+}
+
+impl StreamVar {
+    pub fn var(&self, mu: f64) -> f64 {
+        (self.rho * mu * mu + self.phi * mu).max(0.0)
+    }
+
+    /// `Var(μ) / μ`, finite at μ = 0.
+    fn per_mu(&self, mu: f64) -> f64 {
+        (self.rho * mu + self.phi).max(0.0)
+    }
+}
+
+/// A fused value: estimate, variance and the weight of the MODIS stream.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Fused {
+    pub h: f64,
+    pub var: f64,
+    pub w: f64,
+}
+
+fn finite0(x: f64) -> f64 {
+    if x.is_finite() {
+        x.max(0.0)
+    } else {
+        0.0
+    }
+}
+
+/// Weight of MODIS for the two-stream estimate at level μ (from `Var/μ`, so μ = 0 is the
+/// `phi` limit); `c_rho μ²` is the error covariance, clamped to `MAX_CORR · √(Var_M Var_V)`.
+fn weight(mu: f64, sm: StreamVar, sv: StreamVar, c_rho: f64) -> f64 {
+    let (a, b) = (sm.per_mu(mu), sv.per_mu(mu));
+    let c = (c_rho * mu).min(MAX_CORR * (a * b).sqrt()).max(0.0);
+    let den = a + b - 2.0 * c;
+    if !(den.is_finite() && den > 1e-300) {
+        return 0.5;
+    }
+    let w = (b - c) / den;
+    if w.is_finite() {
+        w.clamp(0.0, 1.0)
+    } else {
+        0.5
+    }
+}
+
+/// Precision-weighted combination of a MODIS value `m` and a VIIRS value `v` (same unit) with
+/// variance laws `sm`, `sv` and covariance `c_rho μ²`. The variances are evaluated at a common
+/// level μ (start `(m + v)/2`, then `FUSE_ITER` fixed-point steps), so neither stream's own noise
+/// decides its weight.
+pub fn fuse(m: f64, v: f64, sm: StreamVar, sv: StreamVar, c_rho: f64) -> Fused {
+    let (m, v, c_rho) = (finite0(m), finite0(v), finite0(c_rho));
+    let mut mu = 0.5 * (m + v);
+    let mut w = 0.5;
+    for _ in 0..FUSE_ITER {
+        w = weight(mu, sm, sv, c_rho);
+        mu = w * m + (1.0 - w) * v;
+    }
+    let (a, b) = (sm.var(mu), sv.var(mu));
+    let c = (c_rho * mu * mu).min(MAX_CORR * (a * b).sqrt()).max(0.0);
+    let var = (w * w * a + (1.0 - w) * (1.0 - w) * b + 2.0 * w * (1.0 - w) * c).max(0.0);
+    Fused { h: mu, var: if var.is_finite() { var } else { 0.0 }, w }
+}
+
+/// Streams and parameters serving one month.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Plan {
+    pub m: i32,
+    pub use_m: bool,
+    pub use_v: bool,
+    /// MODIS months before Aqua use the bridge parameters.
+    pub bridge: bool,
+    /// Index into `meta.drift.years` when the drift correction applies (fused mode).
+    pub drift_idx: Option<usize>,
+    /// VIIRS error row (number of satellites − 1).
+    pub era: usize,
+    /// The month has a value but no complete-enough stream contributes to it.
+    pub partial: bool,
+}
+
+impl Plan {
+    pub fn covered(&self) -> bool {
+        self.use_m || self.use_v
+    }
+}
+
+/// Which streams serve month `m`. `model` = the error model is present; without it, both modes
+/// follow the switch.
+pub fn plan(meta: &Meta, m: i32, mode: Mode, switch_m: i32, model: bool) -> Plan {
+    let (mok, vok, mfull, vfull) = (meta.modis_ok(m), meta.viirs_ok(m), meta.modis_full(m), meta.viirs_full(m));
+    let bridge = m < meta.aqua_start_m;
+    let era = meta.viirs_era(m);
+    if mode == Mode::Switch || !model {
+        let src = source_for(meta, m, switch_m);
+        let (use_m, use_v) = (matches!(src, Source::Bridge | Source::Modis), src == Source::Viirs);
+        let partial = (use_m && !mfull) || (use_v && !vfull);
+        return Plan { m, use_m, use_v, bridge, drift_idx: None, era, partial };
+    }
+    // Fused: a partial stream is dropped when the other one is complete enough.
+    let use_m = mok && (mfull || !vfull);
+    let use_v = vok && (vfull || !mfull);
+    let partial = (use_m || use_v) && !((use_m && mfull) || (use_v && vfull));
+    let drift_idx = if mok { meta.drift.as_ref().and_then(|d| d.index(year_of(m))) } else { None };
+    Plan { m, use_m, use_v, bridge, drift_idx, era, partial }
+}
+
+/// Estimate of one stratum × dn group (or one tile row) for a month.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GroupEst {
+    pub h: f64,
+    pub var: f64,
+    /// MODIS weight of this group (1 MODIS only, 0 VIIRS only).
+    pub w: f64,
+    /// MODIS value after the drift correction (the raw value when none applies).
+    pub madj: f64,
+}
+
+/// Group estimate under the error model (`meq`, `kv` in AFCD; `d` = 0 day, 1 night).
+pub fn estimate(meta: &Meta, plan: &Plan, p: &StratumMeta, d: usize, meq: f64, kv: f64) -> GroupEst {
+    let d = d.min(1);
+    let (meq, kv) = (finite0(meq), finite0(kv));
+    let err: ErrModel = p.err.unwrap_or_default();
+    let ms = if plan.bridge { err.bridge } else { err.modis };
+    let rho_m0 = ms.rho[d];
+    let mut sm = StreamVar { rho: rho_m0, phi: ms.phi[d] };
+    let mut madj = meq;
+    let mut drifted = false;
+    if let (Some(idx), Some(dr)) = (plan.drift_idx, meta.drift.as_ref()) {
+        if let Some(row) = dr.row(p.biome) {
+            let lf = row.log_f[d].get(idx).copied().filter(|x| x.is_finite()).unwrap_or(0.0).clamp(-5.0, 5.0);
+            let sd = row.log_sd[d].get(idx).copied().filter(|x| x.is_finite()).unwrap_or(0.0).max(0.0);
+            madj = meq * (-lf).exp();
+            sm.rho += sd * sd + (dr.attr_frac * lf).powi(2);
+            drifted = true;
+        }
+    }
+    let ve = err.viirs[plan.era.min(2)];
+    let rho_v0 = ve.rho[d];
+    let relvar = p.relvar[d];
+    let sv = StreamVar { rho: rho_v0 + relvar, phi: ve.phi[d] };
+    let c_rho = meta.kappa[d] * (rho_m0 * rho_v0).sqrt() + if drifted { relvar } else { 0.0 };
+    match (plan.use_m, plan.use_v) {
+        (true, true) => {
+            let f = fuse(madj, kv, sm, sv, c_rho);
+            GroupEst { h: f.h, var: f.var, w: f.w, madj }
+        }
+        (true, false) => GroupEst { h: madj, var: sm.var(madj), w: 1.0, madj },
+        (false, true) => GroupEst { h: kv, var: sv.var(kv), w: 0.0, madj },
+        (false, false) => GroupEst { h: 0.0, var: 0.0, w: 0.0, madj },
+    }
 }
 
 /// Per-month values over the whole record (`index 0 = m_first`).
@@ -97,6 +320,10 @@ pub struct Monthly {
     pub v: Vec<Option<f64>>,
     pub nmod: Vec<f64>,
     pub nvii: Vec<f64>,
+    /// MODIS share of the harmonized value (0..1); `None` without a value or when it is 0.
+    pub w_modis: Vec<Option<f64>>,
+    /// Drift-corrected MODIS where MODIS exists (equal to `meq` when no correction applies).
+    pub madj: Vec<Option<f64>>,
     pub provisional: Vec<bool>,
     /// The month has a value but the stream serving it covers less than
     /// [`MIN_COVERAGE`](crate::meta::MIN_COVERAGE) of it: drawn, never used in a statistic.
@@ -104,6 +331,10 @@ pub struct Monthly {
     /// MODIS / calibrated VIIRS coverage is complete enough (for the seam).
     pub modis_full: Vec<bool>,
     pub viirs_full: Vec<bool>,
+    /// The error model and the conformal table produced the bounds.
+    pub conformal: bool,
+    /// The fused value was used (mode fused with the error model present).
+    pub fused: bool,
 }
 
 impl Monthly {
@@ -156,10 +387,33 @@ struct Group {
     meq: f64,
 }
 
+/// `[q80, q95]` multipliers on σ_log for a month: H-weighted over its groups' biome groups, the
+/// global row when H = 0, `z · ci_scale` where the table has no valid entry.
+fn month_q(meta: &Meta, parts: &[(i32, f64)], h: f64) -> [f64; 2] {
+    let legacy = [Z80 * meta.ci_scale, Z95 * meta.ci_scale];
+    let Some(c) = meta.conformal.as_ref() else { return legacy };
+    let class = c.class(h);
+    let one = |biome: Option<i32>| {
+        let q = c.q(biome, class);
+        [q[0].unwrap_or(legacy[0]), q[1].unwrap_or(legacy[1])]
+    };
+    if h <= 0.0 {
+        return one(None);
+    }
+    let mut acc = [0.0; 2];
+    for &(biome, hg) in parts {
+        let q = one(Some(biome));
+        acc[0] += hg * q[0];
+        acc[1] += hg * q[1];
+    }
+    [acc[0] / h, acc[1] / h]
+}
+
 /// One pass over the stored rows: monthly totals for the `dn` filter, the harmonized series for
-/// `switch_m`, and the contract interval per month.
-pub fn aggregate(meta: &Meta, store: &Store, dn: Dn, switch_m: i32) -> Monthly {
+/// `mode` (`switch_m` in switch mode) and its bounds per month.
+pub fn aggregate(meta: &Meta, store: &Store, dn: Dn, mode: Mode, switch_m: i32) -> Monthly {
     let n = meta.n_months();
+    let model = meta.has_err_model();
 
     // Compact the strata present in the store so the group table stays small.
     let mut slot_of: Vec<u32> = Vec::new();
@@ -215,35 +469,86 @@ pub fn aggregate(meta: &Meta, store: &Store, dn: Dn, switch_m: i32) -> Monthly {
         v: Vec::with_capacity(n),
         nmod: Vec::with_capacity(n),
         nvii: Vec::with_capacity(n),
+        w_modis: Vec::with_capacity(n),
+        madj: Vec::with_capacity(n),
         provisional: Vec::with_capacity(n),
         partial: Vec::with_capacity(n),
         modis_full: Vec::with_capacity(n),
         viirs_full: Vec::with_capacity(n),
+        conformal: model && meta.conformal.is_some(),
+        fused: model && mode == Mode::Fused,
     };
+    let mut parts: Vec<(i32, f64)> = Vec::with_capacity(ns * 2);
     for (i, &[meq, kv, v, nmod, nvii]) in tot.iter().enumerate() {
         let m = meta.m_first + i as i32;
-        let src = source_for(meta, m, switch_m);
+        let pl = plan(meta, m, mode, switch_m, model);
         let gs = &groups[i * ns * 2..(i + 1) * ns * 2];
         let param = |k: usize| (&params[k / 2], k % 2);
-        let (h, band) = match src {
-            Source::None => (None, None),
-            Source::Modis => (Some(meq), None),
-            Source::Bridge => {
-                let terms = gs.iter().enumerate().map(|(k, g)| {
-                    let (p, d) = param(k);
-                    (p.relvar_bridge[d], g.meq)
-                });
-                (Some(meq), Some(bounds(meq, bridge_variance(terms, meta.ci_scale))))
+        let (h, band, w_modis, madj) = if model {
+            let (mut h, mut var, mut wh, mut madj) = (0.0, 0.0, 0.0, 0.0);
+            parts.clear();
+            for (k, g) in gs.iter().enumerate() {
+                if g.meq <= 0.0 && g.kv <= 0.0 {
+                    continue;
+                }
+                let (p, d) = param(k);
+                let e = estimate(meta, &pl, p, d, g.meq, g.kv);
+                h += e.h;
+                var += e.var;
+                wh += e.w * e.h;
+                madj += e.madj;
+                parts.push((p.biome, e.h));
             }
-            Source::Viirs => {
+            // A single uncorrected stream: its exact total (sums over groups differ in the last bits).
+            if pl.drift_idx.is_none() {
+                madj = meq;
+                match (pl.use_m, pl.use_v) {
+                    (true, false) => (h, wh) = (meq, meq),
+                    (false, true) => (h, wh) = (kv, 0.0),
+                    _ => {}
+                }
+            }
+            if pl.covered() {
+                let q = month_q(meta, &parts, h);
+                let w = (h > 0.0).then(|| (wh / h).clamp(0.0, 1.0));
+                (Some(h), Some(bounds_shifted(h, var, q[0], q[1])), w, madj)
+            } else {
+                (None, None, None, madj)
+            }
+        } else {
+            // Legacy record and intervals (no error model in meta.json).
+            let (h, band) = if pl.use_m {
+                if pl.bridge {
+                    let terms = gs.iter().enumerate().map(|(k, g)| {
+                        let (p, d) = param(k);
+                        (p.relvar_bridge[d], g.meq)
+                    });
+                    (Some(meq), Some(bounds(meq, bridge_variance(terms, meta.ci_scale))))
+                } else {
+                    (Some(meq), None)
+                }
+            } else if pl.use_v {
                 let terms = gs.iter().enumerate().map(|(k, g)| {
                     let (p, d) = param(k);
                     (p.relvar[d], p.alpha[d], g.kv, g.kvsq_w2)
                 });
                 (Some(kv), Some(bounds(kv, viirs_variance(terms, meta.ci_scale))))
-            }
+            } else {
+                (None, None)
+            };
+            let w = h.filter(|&h| h > 0.0).map(|_| if pl.use_m { 1.0 } else { 0.0 });
+            (h, band, w, meq)
         };
-        out.source.push(src);
+        let source = if !pl.covered() {
+            Source::None
+        } else if pl.use_v && (!pl.use_m || w_modis.is_some_and(|w| w < 0.5)) {
+            Source::Viirs
+        } else if pl.bridge {
+            Source::Bridge
+        } else {
+            Source::Modis
+        };
+        out.source.push(source);
         out.h.push(h);
         out.band.push(band);
         out.meq.push(meta.modis_ok(m).then_some(meq));
@@ -251,17 +556,73 @@ pub fn aggregate(meta: &Meta, store: &Store, dn: Dn, switch_m: i32) -> Monthly {
         out.v.push(meta.viirs_ok(m).then_some(v));
         out.nmod.push(nmod);
         out.nvii.push(nvii);
+        out.w_modis.push(w_modis);
+        out.madj.push(meta.modis_ok(m).then_some(madj));
         out.provisional.push(meta.provisional(m));
-        let (modis_full, viirs_full) = (meta.modis_full(m), meta.viirs_full(m));
-        out.partial.push(match src {
-            Source::None => false,
-            Source::Bridge | Source::Modis => !modis_full,
-            Source::Viirs => !viirs_full,
-        });
-        out.modis_full.push(modis_full);
-        out.viirs_full.push(viirs_full);
+        out.partial.push(pl.partial);
+        out.modis_full.push(meta.modis_full(m));
+        out.viirs_full.push(meta.viirs_full(m));
     }
     out
+}
+
+/// The reference-sensor lens: per calendar month, the factor dividing MODIS-equivalent values.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Lens {
+    pub factor: [f64; 12],
+    /// Some calendar month did not have its own factor (a fallback level was used).
+    pub fallback: bool,
+}
+
+/// `f_k = Σ kv / Σ v` of calendar month k over the record's months inside `fit` (fallback: all
+/// `fit` months pooled, then all months with `v > 0` pooled, else 1).
+pub fn lens(mo: &Monthly, fit: Option<[i32; 2]>) -> Lens {
+    let mut by = [[0.0f64; 2]; 12];
+    let (mut fit_all, mut all) = ([0.0f64; 2], [0.0f64; 2]);
+    for i in 0..mo.len() {
+        let (Some(kv), Some(v)) = (mo.kv[i], mo.v[i]) else { continue };
+        if !(kv.is_finite() && v.is_finite() && v > 0.0) {
+            continue;
+        }
+        let m = mo.m_first + i as i32;
+        all[0] += kv;
+        all[1] += v;
+        if fit.is_some_and(|[a, b]| (a..=b).contains(&m)) {
+            fit_all[0] += kv;
+            fit_all[1] += v;
+            by[moy(m)][0] += kv;
+            by[moy(m)][1] += v;
+        }
+    }
+    let ok = |s: [f64; 2]| (s[0] > 0.0 && s[1] > 0.0).then(|| s[0] / s[1]).filter(|f| f.is_finite() && *f > 0.0);
+    let mut fallback = false;
+    let factor = std::array::from_fn(|k| {
+        ok(by[k]).unwrap_or_else(|| {
+            fallback = true;
+            ok(fit_all).or(ok(all)).unwrap_or(1.0)
+        })
+    });
+    Lens { factor, fallback }
+}
+
+/// Divides every MODIS-equivalent value of the record by the lens factor of its calendar month.
+pub fn apply_lens(mo: &mut Monthly, l: &Lens) {
+    for i in 0..mo.len() {
+        let f = l.factor[moy(mo.m_first + i as i32)];
+        let f = if f.is_finite() && f > 0.0 { f } else { 1.0 };
+        let div = |x: &mut Option<f64>| {
+            if let Some(v) = x {
+                *v /= f;
+            }
+        };
+        div(&mut mo.h[i]);
+        div(&mut mo.meq[i]);
+        div(&mut mo.kv[i]);
+        div(&mut mo.madj[i]);
+        if let Some(b) = &mut mo.band[i] {
+            b.iter_mut().for_each(|x| *x /= f);
+        }
+    }
 }
 
 /// `Series` in types.ts, for the display range.
@@ -285,6 +646,10 @@ pub struct Series {
     /// The month has a value but its serving stream covers < 50 % of it (e.g. the month in
     /// progress): drawn, but excluded from every statistic.
     pub partial: Vec<bool>,
+    /// MODIS share of the harmonized value (0..1); null without a value or when it is 0.
+    pub modis_weight: Vec<Option<f64>>,
+    /// Drift-corrected MODIS where MODIS exists (equals `modis_eq` when no correction applies).
+    pub modis_adj: Vec<Option<f64>>,
 }
 
 /// Slices the record to the inclusive display `range`; months outside the record are null/0.
@@ -310,6 +675,8 @@ pub fn series(mo: &Monthly, range: (i32, i32)) -> (Vec<i32>, Series) {
         s.source.push(i.map_or(Source::None, |i| mo.source[i]));
         s.provisional.push(i.is_some_and(|i| mo.provisional[i]));
         s.partial.push(i.is_some_and(|i| mo.partial[i]));
+        s.modis_weight.push(i.and_then(|i| mo.w_modis[i]));
+        s.modis_adj.push(i.and_then(|i| mo.madj[i]));
     }
     (months, s)
 }
@@ -317,6 +684,8 @@ pub fn series(mo: &Monthly, range: (i32, i32)) -> (Vec<i32>, Series) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const SM: StreamVar = StreamVar { rho: 0.01, phi: 1.0 };
 
     #[test]
     fn interval_formula_hand_computed() {
@@ -337,5 +706,73 @@ mod tests {
         assert!((small[1] - 0.1 * (1.2816 * 0.2f64).exp()).abs() < 1e-12);
         // Bridge: 1 · (0.01·50²) = 25
         assert!((bridge_variance([(0.01, 50.0)], 1.0) - 25.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn conformal_bounds_hand_computed() {
+        // Shifted log: H = 100, Var = 350 → σ = √350 / 100.5 = 0.186152;
+        // 80 %: 100.5·e^(∓1.7σ) − 0.5 = 72.737 / 137.412; 95 %: 100.5·e^(∓2.9σ) − 0.5 = 58.076 / 171.931.
+        let var = StreamVar { rho: 0.02, phi: 1.5 }.var(100.0);
+        assert!((var - 350.0).abs() < 1e-9);
+        let b = bounds_shifted(100.0, var, 1.7, 2.9);
+        let s = 350f64.sqrt() / 100.5;
+        assert!((b[0] - (100.5 * (-1.7 * s).exp() - 0.5)).abs() < 1e-9, "{b:?}");
+        assert!((b[0] - 72.737).abs() < 1e-3 && (b[1] - 137.412).abs() < 1e-3, "{b:?}");
+        assert!((b[2] - 58.076).abs() < 1e-3 && (b[3] - 171.931).abs() < 1e-3, "{b:?}");
+        // A zero value with positive variance has a zero lower bound and a positive upper bound.
+        let z = bounds_shifted(0.0, 1.0, 1.2816, 1.96);
+        assert!(z[0] == 0.0 && z[2] == 0.0 && (z[1] - (0.5 * (1.2816f64 / 0.5).exp() - 0.5)).abs() < 1e-12);
+        assert_eq!(bounds_shifted(0.0, 0.0, 1.3, 2.0), [0.0; 4]);
+        assert!(bounds_shifted(5.0, f64::NAN, 1.3, 2.0).iter().all(|x| x.is_finite()));
+        // Plain log scale (legacy form, kept for reference).
+        let b = bounds_q(100.0, var, 1.7, 2.9);
+        let s = 350f64.sqrt() / 100.0;
+        assert!((b[0] - 100.0 * (-1.7 * s).exp()).abs() < 1e-9 && (b[0] - 72.757).abs() < 1e-3, "{b:?}");
+        assert!((b[1] - 137.443).abs() < 1e-3 && (b[2] - 58.127).abs() < 1e-3 && (b[3] - 172.037).abs() < 1e-3, "{b:?}");
+        // Zero value and zero variance: a degenerate, finite interval.
+        assert_eq!(bounds_q(0.0, 0.0, 1.3, 2.0), [0.0; 4]);
+        assert!(bounds_q(5.0, f64::NAN, 1.3, 2.0).iter().all(|x| x.is_finite()));
+    }
+
+    #[test]
+    fn fusion_weight_limits() {
+        // Equal variance laws: equal weights, the mean.
+        let f = fuse(40.0, 60.0, SM, SM, 0.0);
+        assert!((f.w - 0.5).abs() < 1e-12 && (f.h - 50.0).abs() < 1e-9, "{f:?}");
+        // Var of the mean of two independent equal-variance streams = Var/2 at μ = 50.
+        assert!((f.var - 0.5 * SM.var(50.0)).abs() < 1e-9);
+        // Extreme imbalance: the precise stream dominates.
+        let noisy = StreamVar { rho: 10.0, phi: 1e4 };
+        let f = fuse(40.0, 60.0, SM, noisy, 0.0);
+        assert!(f.w > 0.999 && (f.h - 40.0).abs() < 0.05, "{f:?}");
+        let f = fuse(40.0, 60.0, noisy, SM, 0.0);
+        assert!(f.w < 0.001 && (f.h - 60.0).abs() < 0.05, "{f:?}");
+        // Fused variance never exceeds the better stream's.
+        let other = StreamVar { rho: 0.05, phi: 2.0 };
+        let f = fuse(40.0, 60.0, SM, other, 0.0);
+        assert!(f.var <= SM.var(f.h).min(other.var(f.h)) + 1e-9 && f.h > 40.0 && f.h < 60.0, "{f:?}");
+        // μ = 0: the phi limit phi_V / (phi_M + phi_V).
+        let f = fuse(0.0, 0.0, StreamVar { rho: 0.3, phi: 1.0 }, StreamVar { rho: 0.1, phi: 3.0 }, 0.0);
+        assert!((f.w - 0.75).abs() < 1e-12 && f.h == 0.0 && f.var == 0.0, "{f:?}");
+        // All-zero parameters: equal weights, no NaN.
+        let f = fuse(10.0, 20.0, StreamVar::default(), StreamVar::default(), 0.0);
+        assert!((f.w - 0.5).abs() < 1e-12 && (f.h - 15.0).abs() < 1e-12 && f.var == 0.0);
+        // Non-finite input never propagates.
+        let f = fuse(f64::NAN, f64::INFINITY, SM, SM, f64::NAN);
+        assert!(f.h.is_finite() && f.var.is_finite() && f.w.is_finite());
+    }
+
+    #[test]
+    fn common_mode_reduces_benefit_and_is_clamped() {
+        let (a, b) = (StreamVar { rho: 0.04, phi: 0.0 }, StreamVar { rho: 0.04, phi: 0.0 });
+        let ind = fuse(100.0, 100.0, a, b, 0.0);
+        let cor = fuse(100.0, 100.0, a, b, 0.02); // correlation 0.5
+        assert!((ind.var - 0.5 * 400.0).abs() < 1e-9);
+        assert!((cor.var - 0.75 * 400.0).abs() < 1e-9, "{cor:?}"); // (1 + ρ)/2 · σ²
+        // Covariance above the admissible bound is clamped (correlation 0.99), weights stay in [0, 1].
+        let huge = fuse(100.0, 50.0, StreamVar { rho: 0.01, phi: 0.0 }, StreamVar { rho: 0.04, phi: 0.0 }, 10.0);
+        assert!((0.0..=1.0).contains(&huge.w) && huge.var.is_finite() && huge.var >= 0.0, "{huge:?}");
+        // With a strongly correlated, noisier second stream, the weight leaves the noisier one entirely.
+        assert_eq!(huge.w, 1.0);
     }
 }

@@ -2,7 +2,8 @@
   import type { Analysis } from '../kernel/types'
   import { linear, niceMax, niceTicks, tickLabel } from '../charts/scale'
   import { fmtNum, fmtP, ordinal } from '../format'
-  import { trendLine, trendWords } from '../analysisUtil'
+  import { trendLine } from '../analysisUtil'
+  import Term from './Term.svelte'
 
   let { a }: { a: Analysis } = $props()
 
@@ -19,10 +20,15 @@
   const line = $derived(trendLine(a))
   const xOfYear = (yr: number) => x(yrs.indexOf(yr))
   const t = $derived(a.trend)
+  const pct = $derived(Math.abs(t.slopePctPerYear))
+  const pctText = $derived(pct < 1 ? pct.toFixed(1) : String(Math.round(pct)))
   const sentence = $derived(
-    t.direction === 'none'
-      ? `No significant trend over ${t.years[0]}–${t.years[1]} (${fmtP(t.pValue)}). Year-to-year variability dominates.`
-      : `Activity is ${trendWords(a)} over ${t.years[0]}–${t.years[1]} (${fmtP(t.pValue)}, Mann–Kendall τ = ${t.tau.toFixed(2)}).`,
+    t.direction === 'none' || !Number.isFinite(t.slopePctPerYear)
+      ? `No clear trend since ${t.years[0]}: the ups and downs from year to year are larger than any steady change.`
+      : `Burning has ${t.direction === 'up' ? 'risen' : 'fallen'} about ${pctText} % a year since ${t.years[0]} (${t.pValue < 0.05 ? 'likely a real trend' : 'could be chance'}).`,
+  )
+  const answer = $derived(
+    t.direction === 'none' ? 'Not clearly.' : t.direction === 'up' ? (t.pValue < 0.05 ? 'Yes.' : 'Possibly.') : 'No.',
   )
   const ciPct = $derived.by(() => {
     const med = a.trend.slopePerYear !== 0 ? a.trend.slopePctPerYear / a.trend.slopePerYear : 0
@@ -36,13 +42,9 @@
   }
 </script>
 
-<section class="trend" aria-labelledby="trend-h">
-  <p class="eyebrow">05 · Trend</p>
-  <h2 id="trend-h">{t.direction === 'none' ? 'No significant trend' : t.direction === 'up' ? 'Rising' : 'Falling'}</h2>
-  <p class="lede">{sentence}
-    {#if Number.isFinite(t.slopePctPerYear)}Theil–Sen slope <span class="num">{t.slopePctPerYear >= 0 ? '+' : '−'}{Math.abs(t.slopePctPerYear).toFixed(1)} %/yr</span>
-      (95 % CI <span class="num">{ciPct[0].toFixed(1)} to {ciPct[1].toFixed(1)}</span>).{/if}
-  </p>
+<section class="trend" id="trend" aria-labelledby="trend-h">
+  <h2 id="trend-h" class="q-title">Is it getting worse?</h2>
+  <p class="lead"><strong>{answer}</strong> {sentence}</p>
 
   <div class="chart" bind:clientWidth={width}>
     <svg {width} height={H} role="img" aria-label={`Annual totals ${yrs[0]}–${yrs[n - 1]} with Theil–Sen trend line. ${sentence}`} onpointerleave={() => (hover = null)}>
@@ -77,15 +79,24 @@
     {/if}
   </div>
   <ul class="keys">
-    <li><span class="sw bar-sw"></span>Annual total (AFCD-M)</li>
-    <li><span class="sw partial-sw"></span>Incomplete year</li>
-    <li><span class="sw tl-sw"></span>Theil–Sen trend</li>
+    <li><span class="sw bar-sw"></span><span>Total for the year (<Term id="afcdm" />)</span></li>
+    <li><span class="sw partial-sw"></span>Year not finished</li>
+    <li><span class="sw tl-sw"></span>Trend line</li>
   </ul>
+  <details class="more">
+    <summary>Details</summary>
+    <div class="more-body">
+      <p>
+        {#if Number.isFinite(t.slopePctPerYear)}<Term id="theilsen" /> <span class="num">{t.slopePctPerYear >= 0 ? '+' : '−'}{Math.abs(t.slopePctPerYear).toFixed(1)} %</span> a year
+          (95 % confidence <span class="num">{ciPct[0].toFixed(1)} to {ciPct[1].toFixed(1)}</span>), {t.years[0]}–{t.years[1]}, complete years only.{/if}
+        <Term id="mannkendall" /> τ = <span class="num">{t.tau.toFixed(2)}</span>, <Term id="pvalue">{fmtP(t.pValue)}</Term>.
+      </p>
+    </div>
+  </details>
 </section>
 
 <style>
   .trend { padding: var(--sec-pad); border-bottom: 1px solid var(--rule); }
-  .lede { color: var(--ink-2); max-width: 68ch; margin: 8px 0 12px; }
   .chart { position: relative; }
   svg { display: block; overflow: visible; }
   .grid { stroke: var(--rule); }

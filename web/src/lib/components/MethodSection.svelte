@@ -2,6 +2,10 @@
   import { onMount } from 'svelte'
   import { loadValidation } from '../data/tileReader'
   import { session } from '../session.svelte'
+  import { GLOSSARY } from './glossary'
+
+  /** Inside the "How we know" chapter the title is a subsection (h3); on the landing page it stands alone (h2). */
+  let { chapter = false }: { chapter?: boolean } = $props()
 
   let validation = $state<unknown>(null)
   let vError = $state<string | null>(null)
@@ -63,13 +67,12 @@
 </script>
 
 <section class="method" id="method" aria-labelledby="method-h">
-  <p class="eyebrow">09 · Method</p>
-  <h2 id="method-h">
+  <svelte:element this={chapter ? 'h3' : 'h2'} id="method-h" class="sub-title">
     <button class="disclosure" aria-expanded={open} aria-controls="method-body" onclick={() => (open = !open)}>
       <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" class:open><path d="M4 2l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" /></svg>
-      How the record is harmonized
+      How the record is built, validation and glossary
     </button>
-  </h2>
+  </svelte:element>
   {#if open}
     <div id="method-body" class="body">
       <p class="unit"><strong>The unit — AFCD-M.</strong> One <em>active-fire cell-day</em> is a distinct 0.0125° sub-cell, local-solar day and overpass (day or night) with at least one accepted detection. Counting cell-days rather than pixels collapses the many 375 m VIIRS pixels of one fire toward MODIS-like units; VIIRS cell-days are then scaled to <em>MODIS-equivalent</em> (the “-M”).</p>
@@ -86,7 +89,7 @@
       {#if validation}
         {#if headline.length}
           <dl class="head-nums">
-            {#each headline as [k, v] (k)}<div><dt class="eyebrow">{k}</dt><dd class="num">{fmt(v)}</dd></div>{/each}
+            {#each headline as [k, v] (k)}<div><dt class="hn">{k}</dt><dd class="num">{fmt(v)}</dd></div>{/each}
           </dl>
         {/if}
         <details>
@@ -105,6 +108,11 @@
         <p class="muted small">Validation results (leave-one-year-out 2012–2021 and the 2023–2026 out-of-time test) appear here once the pipeline publishes <code>validation.json</code>{vError ? ` (${vError})` : ''}.</p>
       {/if}
 
+      <h3>Glossary</h3>
+      <dl class="gloss">
+        {#each Object.values(GLOSSARY) as g (g.term)}<div><dt>{g.term}</dt><dd>{g.text}</dd></div>{/each}
+      </dl>
+
       <h3>Caveats</h3>
       <ul class="caveats">
         <li>Counts measure <strong>fire detections, not burned area</strong> or emissions.</li>
@@ -114,6 +122,9 @@
         <li>Recent months are <strong>provisional</strong> (near-real-time) and may change when science-quality data arrive.</li>
         <li>Areas with no MODIS fire history are shrunk toward their stratum’s calibration.</li>
       </ul>
+      <p class="small muted">
+        {#if session.isMock}This session runs on synthetic demo data.{:else}Every number on the page is computed in your browser by Harmony’s Rust kernel (compiled to WebAssembly) from the published data tiles.{/if}
+      </p>
       {#if session.meta?.sources?.length}
         <h3>Sources</h3>
         <ul class="caveats">
@@ -125,17 +136,21 @@
 </section>
 
 <style>
-  .method { padding: var(--sec-pad); border-bottom: 1px solid var(--rule); scroll-margin-top: calc(var(--header-h) + 80px); }
+  .method { padding: 22px 0 24px; border-bottom: 1px solid var(--rule); scroll-margin-top: calc(var(--header-h) + 64px); }
   .disclosure { display: inline-flex; align-items: center; gap: 8px; background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--ink); cursor: pointer; }
   .disclosure svg { transition: transform 0.2s; }
   .disclosure svg.open { transform: rotate(90deg); }
-  .body { margin-top: 12px; max-width: 74ch; }
+  .body { margin-top: 12px; max-width: var(--measure); }
+  .gloss { display: grid; gap: 8px; margin: 0; }
+  .gloss dt { font-weight: 600; color: var(--ink); }
+  .gloss dd { margin: 0; color: var(--ink-2); }
   .unit { color: var(--ink-2); }
   .steps { padding-left: 1.3em; display: grid; gap: 8px; color: var(--ink-2); }
   .steps strong, .unit strong { color: var(--ink); }
-  h3 { margin: 18px 0 8px; font-size: var(--fs-base); }
+  .body h3 { margin: 18px 0 8px; font-size: var(--fs-base); }
   .head-nums { display: flex; flex-wrap: wrap; gap: 10px 26px; margin: 0 0 10px; }
   .head-nums dd { margin: 0; font-size: var(--fs-stat); font-weight: 600; }
+  .hn { font-size: var(--fs-sm); color: var(--ink-3); }
   .vt-wrap { max-height: 360px; overflow: auto; margin-top: 8px; }
   .vt { width: 100%; font-size: var(--fs-sm); }
   .vt th, .vt td { text-align: left; padding: 2px 6px; border-bottom: 1px solid var(--rule); font-weight: 400; }

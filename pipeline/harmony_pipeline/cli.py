@@ -3,8 +3,9 @@
   uv run python -m harmony_pipeline.cli all [--countries Argentina Bolivia ...] [--force]
   uv run python -m harmony_pipeline.cli <stage> [--force]
 
-Stages run in order: normalize, availability, static_mask, afcd, strata, calibrate, tiles, points,
-overview, verify. `ml` (ML challenger, ml_challenger.py) is not part of `all`; run it by name.
+Stages run in order: normalize, availability, static_mask, afcd, strata, calibrate, harmonize, tiles, points,
+overview, watch, verify. `watch --month YYYY-MM` runs the watchlist for a past month (written to
+data/work/watch/). `ml` (ML challenger, ml_challenger.py) is not part of `all`; run it by name.
 `--countries` selects a regional run (normalize only; later stages follow the run
 manifest data/work/run.json). Without it the run is global. Each stage skips work whose outputs are
 newer than its inputs unless --force. fetch-country / fetch-api download raw data (not part of all).
@@ -16,8 +17,8 @@ import importlib
 import sys
 import time
 
-STAGES = ["normalize", "availability", "static_mask", "afcd", "strata", "calibrate",
-          "build_tiles", "build_points", "overview", "verify"]
+STAGES = ["normalize", "availability", "static_mask", "afcd", "strata", "calibrate", "harmonize",
+          "build_tiles", "build_points", "overview", "watch", "verify"]
 ALIASES = {"tiles": "build_tiles", "points": "build_points", "static-mask": "static_mask",
            "mask": "static_mask", "cube": "afcd",
            "ml": "ml_challenger"}           # ml: not part of `all` (run explicitly)
@@ -28,6 +29,8 @@ def run_stage(name: str, args) -> float:
     t0 = time.time()
     if name == "normalize":
         mod.main(countries=args.countries, force=args.force, sensors=args.sensors, years=args.years)
+    elif name == "watch":
+        mod.main(force=args.force, month=args.month)
     else:
         mod.main(force=args.force)
     return time.time() - t0
@@ -39,6 +42,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--countries", nargs="+", help="regional run: FIRMS country names (e.g. Argentina)")
     ap.add_argument("--sensors", nargs="+", help="normalize only: subset of sensors")
     ap.add_argument("--years", nargs="+", type=int, help="normalize only: subset of years")
+    ap.add_argument("--month", help="watch only: analyse this past month (YYYY-MM) instead of the latest")
     ap.add_argument("--from", dest="start", help="all: start at this stage")
     ap.add_argument("--force", action="store_true", help="recompute even if outputs are up to date")
     argv = sys.argv[1:] if argv is None else argv

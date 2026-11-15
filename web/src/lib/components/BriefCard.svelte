@@ -9,6 +9,7 @@
   import { aiStatus } from '../brief/status.svelte'
   import { LEVEL_LABEL, yearOf } from '../format'
   import AskHarmony from './AskHarmony.svelte'
+  import { briefLead } from './briefLead.svelte'
 
   let { a }: { a: Analysis } = $props()
 
@@ -53,6 +54,14 @@
     if (streamingNow) return { headline: partial.headline, paras: [partial.summary], watch: [] as string[], caveat: '', level: null }
     return { headline: '', paras: local ? [local] : [], watch: [] as string[], caveat: '', level: null }
   })
+  // Lift the AI brief's opening line into the answer card; the rule-based first sentence repeats the card, so it stays here.
+  $effect(() => {
+    const text = showingAi ? (ai!.brief.headline || ai!.brief.summary.split(/(?<=\.)\s/)[0] || '') : ''
+    briefLead.text = text
+    briefLead.key = showingAi ? key : ''
+  })
+  $effect(() => () => { briefLead.text = ''; briefLead.key = '' })
+
   const plain = $derived(
     [shown.headline, ...shown.paras, shown.watch.length ? 'Watch: ' + shown.watch.join('; ') + '.' : '', shown.caveat].filter(Boolean).join(' '),
   )
@@ -132,16 +141,16 @@
   }
 </script>
 
-<section class="brief" aria-labelledby="brief-h">
-  <p class="eyebrow">07 · Situation brief</p>
+<section class="brief" id="brief" aria-labelledby="brief-h">
   <div class="head">
-    <h2 id="brief-h">For the duty officer</h2>
+    <h2 id="brief-h" class="q-title">In plain words</h2>
     <span class="src" class:ai={showingAi || streamingNow}>
       {#if showingAi}AI-written brief · {ai!.meta.model}{#if mostlyCached(ai!.meta)}{' · cached context'}{/if}
       {:else if streamingNow}AI-written brief · writing…
       {:else}Rule-based brief{#if phase === 'loading'} · asking the model…{/if}{/if}
     </span>
   </div>
+  <p class="sub">A brief for the duty officer, written from the numbers on this page.</p>
   <div class="text" aria-live="polite" aria-busy={phase === 'streaming'}>
     {#if shown.headline}<p class="headline">{shown.headline}</p>{/if}
     {#each shown.paras as para, i (i)}<p>{para}</p>{/each}
@@ -165,22 +174,23 @@
       {busy ? 'Writing…' : 'Regenerate'}
     </button>
   </div>
-  <p class="small muted">Generated from the statistics on this page only. Detections are not burned area; check local reports before acting.</p>
+  <p class="muted">Detections are not burned area; check local reports before acting.</p>
 
   <AskHarmony {a} />
 </section>
 
 <style>
-  .brief { padding: 26px 0 22px; border-bottom: 1px solid var(--rule); }
+  .brief { padding: var(--sec-pad); border-bottom: 1px solid var(--rule); }
   .head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-  .src { font-size: 0.74rem; color: var(--ink-3); border: 1px solid var(--rule-strong); border-radius: 999px; padding: 1px 9px; }
+  .src { font-size: var(--fs-sm); color: var(--ink-3); border: 1px solid var(--rule-strong); border-radius: 999px; padding: 1px 9px; }
   .src.ai { color: var(--ink-2); }
-  .text { margin: 12px 0 6px; padding: 4px 0 4px 16px; border-left: 2px solid var(--accent); font-size: 1.04rem; line-height: 1.62; max-width: 70ch; }
+  .text { margin: 12px 0 6px; padding: 4px 0 4px 16px; border-left: 2px solid var(--accent); font-size: var(--fs-base); line-height: 1.6; max-width: var(--measure); }
   .text p { margin: 0 0 0.6em; }
-  .headline { font-weight: 650; font-size: 1.12rem; line-height: 1.35; }
-  .watch { margin: 0 0 0.7em; padding-left: 1.1em; font-size: 0.96rem; color: var(--ink-2); }
+  .headline { font-weight: 650; font-size: var(--fs-lg); line-height: 1.35; }
+  .watch { margin: 0 0 0.7em; padding-left: 1.1em; font-size: var(--fs-base); color: var(--ink-2); }
   .watch li { margin: 0 0 0.2em; }
-  .caveat { font-size: 0.92rem; color: var(--ink-2); }
+  .caveat { font-size: var(--fs-base); color: var(--ink-2); }
+  .sub { color: var(--ink-3); font-size: var(--fs-base); margin: 4px 0 0; }
   .lvl { margin: 0 0 8px 18px; }
   .err { color: var(--ink-2); margin: 0 0 8px; }
   .actions { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }

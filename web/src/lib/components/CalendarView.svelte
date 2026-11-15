@@ -7,8 +7,38 @@
   import { MONTHS_LONG, MONTHS_SHORT, fmtCell, fmtNum, fmtRatio, ordinal, toM } from '../format'
   import { monthStats, seriesIndex, SOURCE_LABEL } from '../analysisUtil'
   import type { SourceCode } from '../kernel/types'
+  import type { CalMode } from '../urlState'
+  import type { Snippet } from 'svelte'
+  import AnalysisSettings from './AnalysisSettings.svelte'
+  import Term from './Term.svelte'
+  import { HINT_KEY } from './livePace'
 
-  let { a }: { a: Analysis } = $props()
+  let {
+    a,
+    tools,
+    units,
+  }: {
+    a: Analysis
+    /** Insertion point: extra header tools next to the mode switch (e.g. a "Listen" sonification button). */
+    tools?: Snippet
+    /** Insertion point passed through to the settings popover (units lens). */
+    units?: Snippet
+  } = $props()
+
+  /** Calendar colour modes shown in the header. Append here to add a mode (e.g. 'uncertainty'). */
+  const MODES: { v: CalMode; label: string }[] = [
+    { v: 'activity', label: 'Activity' },
+    { v: 'anomaly', label: 'Compared with normal' },
+    { v: 'percentile', label: 'Rank among years' },
+  ]
+  const lead = $derived.by(() => {
+    const se = a.season
+    const top = a.records.topYears[0]
+    const when = se.lengthMonths >= 12
+      ? `Fires occur all year here, most in ${MONTHS_LONG[se.peakMonth - 1]}.`
+      : `Most burning here happens from ${MONTHS_LONG[se.startMonth - 1]} to ${MONTHS_LONG[se.endMonth - 1]}, peaking in ${MONTHS_LONG[se.peakMonth - 1]}.`
+    return top ? `${when} The most active year was ${top.year}.` : when
+  })
 
   let showNumbers = $state(false)
   let showTable = $state(false)
@@ -70,7 +100,7 @@
     const s = monthStats(a, cell.m)
     if (!s) return name
     const parts = [`${name}: ${fmtNum(s.value)} AFCD-M`]
-    if (s.ratio != null) parts.push(`${fmtRatio(s.ratio)} the median`)
+    if (s.ratio != null) parts.push(`${fmtRatio(s.ratio)} the normal`)
     if (s.percentile != null) parts.push(`${ordinal(Math.round(s.percentile))} percentile`)
     parts.push(SOURCE_LABEL[cell.src])
     if (cell.prov) parts.push('provisional')
@@ -89,6 +119,7 @@
     const cell = grid[r]?.[c]
     if (!cell || cell.empty) return
     activeR = r; activeC = c
+    try { localStorage.setItem(HINT_KEY, '1') } catch { /* private mode */ }
     session.setFocus(cell.m)
   }
   async function move(r: number, c: number) {
@@ -140,17 +171,20 @@
   )
 </script>
 
-<section class="cal-section" aria-labelledby="cal-h">
+<section class="cal-section" id="when" aria-labelledby="cal-h">
   <div class="head">
-    <div>
-      <p class="eyebrow">02 · Burning calendar</p>
-      <h2 id="cal-h">Every month since {a.calendar.years[0]}</h2>
-    </div>
+    <h2 id="cal-h" class="q-title">When does it burn?</h2>
     <div class="opts">
-      <label class="chk"><input type="checkbox" name="cell-numbers" bind:checked={showNumbers} /> Numbers</label>
-      <button class="btn" aria-pressed={showTable} onclick={() => (showTable = !showTable)}>{showTable ? 'View as calendar' : 'View as table'}</button>
+      <label class="mode">Colour by
+        <select name="calendar-mode" value={mode} onchange={(e) => session.setCalMode((e.currentTarget as HTMLSelectElement).value as CalMode)}>
+          {#each MODES as md (md.v)}<option value={md.v}>{md.label}</option>{/each}
+        </select>
+      </label>
+      {#if tools}{@render tools()}{/if}
+      <AnalysisSettings {units} />
     </div>
   </div>
+  <p class="lead">{lead}</p>
 
   {#if !showTable}
     <div class="wrap" bind:this={wrapEl}>
@@ -217,10 +251,10 @@
             </div>
           {/each}
           <div class="row median" role="row">
-            <span class="yl" role="rowheader">Median</span>
+            <span class="yl" role="rowheader">Normal</span>
             {#each medianRow as cell, c (c)}
               <span class="cal-cell med" role="gridcell" style:background={cell.fill} style:color={cell.ink}
-                aria-label={`${MONTHS_LONG[c]} baseline median: ${fmtNum(cell.v)} AFCD-M`}>
+                aria-label={`${MONTHS_LONG[c]} normal (baseline median): ${fmtNum(cell.v)} AFCD-M`}>
                 {#if showNumbers}<span class="n num" aria-hidden="true">{cell.label}</span>{/if}
               </span>
             {/each}
@@ -233,10 +267,10 @@
         <div class="tip" class:below={tip.below} style:left={`${tip.x}px`} style:top={`${tip.y}px`} role="tooltip">
           <p class="tt">{MONTHS_LONG[tipStats.month - 1]} {tipStats.year}{tipCell.partial ? ' · partial month' : tipStats.provisional ? ' · provisional' : ''}</p>
           <dl>
-            <dt>Harmonized</dt><dd class="num">{fmtNum(tipStats.value)} AFCD-M</dd>
-            {#if tipStats.lo80 != null && tipStats.hi80 != null}<dt>80 % interval</dt><dd class="num">{fmtNum(tipStats.lo80)} – {fmtNum(tipStats.hi80)}</dd>{/if}
-            <dt>Median</dt><dd class="num">{fmtNum(tipStats.median)}</dd>
-            <dt>Ratio</dt><dd class="num">{fmtRatio(tipStats.ratio)}</dd>
+            <dt>Activity</dt><dd class="num">{fmtNum(tipStats.value)} AFCD-M</dd>
+            {#if tipStats.lo80 != null && tipStats.hi80 != null}<dt>Likely range</dt><dd class="num">{fmtNum(tipStats.lo80)} – {fmtNum(tipStats.hi80)}</dd>{/if}
+            <dt>Normal</dt><dd class="num">{fmtNum(tipStats.median)}</dd>
+            <dt>vs normal</dt><dd class="num">{fmtRatio(tipStats.ratio)}</dd>
             <dt>Percentile</dt><dd class="num">{tipStats.percentile == null ? '—' : ordinal(Math.round(tipStats.percentile))}</dd>
             {#if tipStats.rank != null}<dt>Rank</dt><dd class="num">{ordinal(tipStats.rank)} of {tipStats.of}</dd>{/if}
             <dt>Source</dt><dd>{SOURCE_LABEL[tipCell.src]}</dd>
@@ -249,21 +283,35 @@
       <div class="ramp">
         <div class="bar" style:background={`linear-gradient(90deg, ${legendStops})`}></div>
         <div class="ticks num">{#each legendTicks as t, i (i)}<span>{t}</span>{/each}</div>
-        <p class="cap">{legendCaption}</p>
+        <p class="cap">
+          {#if mode === 'activity'}<Term id="afcdm" /> per month (log scale)
+          {:else if mode === 'anomaly'}Ratio to the <Term id="normal">normal</Term> for the same month (log scale)
+          {:else}<Term id="percentile" /> among the years that define normal{/if}
+        </p>
       </div>
-      <ul class="keys">
-        <li><span class="sw terra-sw"><span class="mk terra"></span></span>Terra-only, bridged (2000–02)</li>
-        <li><span class="sw viirs-sw"><span class="mk viirs"></span></span>Calibrated VIIRS (from {switchYear})</li>
-        <li><span class="sw prov-sw"></span>Provisional (near real-time)</li>
-        <li><span class="sw cur-sw"></span>Latest month</li>
-        <li><span class="sw focus-sw"></span>Shown on map</li>
-      </ul>
+      <div class="opts2">
+        <label class="chk"><input type="checkbox" name="cell-numbers" bind:checked={showNumbers} /> Show numbers</label>
+        <button class="btn" aria-pressed={showTable} onclick={() => (showTable = !showTable)}>View as table</button>
+      </div>
     </div>
-    <p class="note small muted">Era marks never change the colour scale: every cell is in the same MODIS-equivalent unit. Click a month to map it.</p>
+    <details class="more">
+      <summary>Reading the calendar</summary>
+      <div class="more-body">
+        <p>Each row is a year, newest at the top; each cell is one month. Click a month to show it on the map and in the answer above. The bar on the right is the year’s total.</p>
+        <ul class="keys">
+          <li><span class="sw cur-sw"></span>Latest month</li>
+          <li><span class="sw focus-sw"></span>Shown on the map</li>
+          <li><span class="sw prov-sw"></span><span><Term id="provisional">Provisional</Term> or partial month</span></li>
+          <li><span class="sw terra-sw"><span class="mk terra"></span></span>Terra-only years, bridged (2000–02)</li>
+          <li><span class="sw viirs-sw"><span class="mk viirs"></span></span>Calibrated VIIRS (from {switchYear})</li>
+        </ul>
+        <p>Era marks never change the colours: every cell is in the same <Term id="modiseq">MODIS-equivalent</Term> unit.</p>
+      </div>
+    </details>
   {:else}
     <div class="table-wrap">
       <table class="cal-table">
-        <caption class="small muted">Harmonized activity by month ({mode === 'activity' ? 'AFCD-M' : mode === 'anomaly' ? 'ratio to median' : 'percentile'}); * provisional</caption>
+        <caption class="small muted"><button class="btn back" onclick={() => (showTable = false)}>View as calendar</button> Harmonized activity by month ({mode === 'activity' ? 'AFCD-M' : mode === 'anomaly' ? 'ratio to median' : 'percentile'}); * provisional</caption>
         <thead>
           <tr><th scope="col">Year</th>{#each MONTHS_SHORT as mo (mo)}<th scope="col">{mo}</th>{/each}<th scope="col">Total</th></tr>
         </thead>
@@ -289,8 +337,12 @@
 
 <style>
   .cal-section { padding: var(--sec-pad); border-bottom: 1px solid var(--rule); }
-  .head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
-  .opts { display: flex; gap: 12px; align-items: center; }
+  .head { display: flex; justify-content: space-between; align-items: center; gap: 10px 12px; flex-wrap: wrap; }
+  .opts { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .mode { display: inline-flex; align-items: center; gap: 8px; font-size: var(--fs-sm); color: var(--ink-3); }
+  .mode select { min-height: 34px; font-size: var(--fs-sm); color: var(--ink); }
+  .opts2 { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .back { margin-right: 8px; }
   .chk { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
   .wrap { position: relative; container-type: inline-size; }
   .grid { display: grid; gap: 2px; }
@@ -302,11 +354,11 @@
   .row.header { animation: none; }
   .row.switch .cal-cell { box-shadow: 0 -2px 0 0 var(--bg), 0 -3px 0 0 var(--ink-3); }
   .yl { font-size: var(--fs-xs); color: var(--ink-3); align-self: center; text-align: right; padding-right: 6px; }
-  .mh { font-size: var(--fs-xs); color: var(--ink-3); text-align: center; text-transform: uppercase; letter-spacing: 0.06em; }
+  .mh { font-size: var(--fs-xs); color: var(--ink-3); text-align: center; }
   .mh .ini { display: none; }
-  .ah { font-size: var(--fs-xs); color: var(--ink-3); padding-left: 6px; text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap; overflow: hidden; }
+  .ah { font-size: var(--fs-xs); color: var(--ink-3); padding-left: 6px; white-space: nowrap; overflow: hidden; }
   .cal-cell {
-    position: relative; height: 18px; border-radius: 2px; cursor: pointer; display: grid; place-items: center; overflow: hidden;
+    position: relative; height: 19px; border-radius: 2px; cursor: pointer; display: grid; place-items: center; overflow: hidden;
     outline-offset: 1px;
   }
   .nums .cal-cell { height: 22px; }
@@ -355,18 +407,17 @@
   .tip dt { color: var(--ink-3); }
   .tip dd { margin: 0; text-align: right; }
 
-  .legend { display: flex; flex-wrap: wrap; gap: 14px 28px; align-items: flex-start; margin-top: 14px; }
+  .legend { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 14px 28px; align-items: flex-start; margin-top: 14px; }
   .ramp { width: min(300px, 100%); }
   .ramp .bar { height: 10px; border-radius: 2px; }
   .ticks { display: flex; justify-content: space-between; font-size: var(--fs-xs); color: var(--ink-3); margin-top: 2px; }
-  .cap { font-size: var(--fs-xs); color: var(--ink-3); margin: 2px 0 0; }
-  .keys { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 4px 18px; flex: 1; font-size: var(--fs-sm); color: var(--ink-2); }
+  .cap { font-size: var(--fs-sm); color: var(--ink-2); margin: 4px 0 0; }
+  .keys { list-style: none; margin: 8px 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px 18px; font-size: var(--fs-sm); color: var(--ink-2); }
   .keys li { display: flex; align-items: center; gap: 8px; }
   .sw { position: relative; width: 18px; height: 12px; border-radius: 2px; background: var(--surface-3); color: var(--ink); flex: none; }
   .prov-sw { background: repeating-linear-gradient(135deg, var(--surface-3) 0 3px, var(--hatch) 3px 4.5px); }
   .cur-sw { background: transparent; box-shadow: inset 0 0 0 2px var(--accent); }
   .focus-sw { background: transparent; box-shadow: inset 0 0 0 2px var(--ink); }
-  .note { margin: 10px 0 0; }
 
   .table-wrap { overflow-x: auto; max-height: 560px; overflow-y: auto; border-top: 1px solid var(--rule); }
   .cal-table { width: 100%; font-size: var(--fs-sm); }

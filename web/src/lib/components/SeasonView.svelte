@@ -2,7 +2,8 @@
   import type { Analysis } from '../kernel/types'
   import { session } from '../session.svelte'
   import { linear, linePath, bandPath, niceMax, niceTicks, tickLabel } from '../charts/scale'
-  import { MONTHS_INITIAL, MONTHS_SHORT, fmtNum, fmtRatio, ordinal } from '../format'
+  import { MONTHS_INITIAL, MONTHS_LONG, MONTHS_SHORT, fmtNum, fmtRatio, ordinal, rankFromEnds } from '../format'
+  import Term from './Term.svelte'
 
   let { a }: { a: Analysis } = $props()
 
@@ -45,6 +46,13 @@
   const yy = $derived(linear([0, yMax], [H - M.b, M.t]))
   const yxs = $derived(Array.from({ length: 12 }, (_, i) => yx(i + 1)))
 
+  const lead = $derived.by(() => {
+    if (yt.ratio == null) return `${yt.year} so far: no normal to compare with for January to ${MONTHS_LONG[yt.throughMonth - 1]}.`
+    const r = yt.ratio
+    const word = r >= 1.5 ? 'well above' : r >= 1.15 ? 'above' : r > 0.87 ? 'close to' : r > 0.67 ? 'below' : 'well below'
+    return `${yt.year} so far is ${word} normal: ${fmtRatio(r)} the usual activity for January to ${MONTHS_LONG[yt.throughMonth - 1]}, the ${rankFromEnds(yt.rank, yt.of)} start to a year in ${yt.of}.`
+  })
+
   let hs = $state<number | null>(null)
   let hy = $state<number | null>(null)
   const pick = (e: PointerEvent, width: number, x: (v: number) => number) => {
@@ -56,14 +64,14 @@
   }
 </script>
 
-<section class="season" aria-labelledby="season-h">
-  <p class="eyebrow">04 · Season & year to date</p>
-  <h2 id="season-h">How {curYear} is unfolding</h2>
+<section class="season" id="unusual" aria-labelledby="season-h">
+  <h2 id="season-h" class="q-title">Is this year unusual?</h2>
+  <p class="lead">{lead}</p>
 
   <div class="pair">
     <figure>
       <figcaption>
-        <span>Monthly activity vs the {session.effectiveBaseline.join('–')} envelope</span>
+        <span>Month by month, against the normal range ({session.effectiveBaseline.join('–')})</span>
         <label class="cmp">Compare with
           <select name="compare-year" bind:value={() => cmpYear, (v) => (compare = v)} aria-label="Comparison year">
             {#each yearsDesc as y (y)}<option value={y}>{y}</option>{/each}
@@ -91,23 +99,23 @@
             <p class="tt">{MONTHS_SHORT[hs]}</p>
             <p><span class="sw cur"></span>{curYear}<span class="num">{fmtNum(cur[hs])}</span></p>
             <p><span class="sw cmp"></span>{cmpYear}<span class="num">{fmtNum(cmp[hs])}</span></p>
-            <p><span class="sw med"></span>Median<span class="num">{fmtNum(c.median[hs])}</span></p>
-            <p class="muted">IQR<span class="num">{fmtNum(c.q25[hs])}–{fmtNum(c.q75[hs])}</span></p>
+            <p><span class="sw med"></span>Normal<span class="num">{fmtNum(c.median[hs])}</span></p>
+            <p class="muted">Middle half<span class="num">{fmtNum(c.q25[hs])}–{fmtNum(c.q75[hs])}</span></p>
           </div>
         {/if}
       </div>
       <ul class="keys">
         <li><span class="sw cur"></span>{curYear}</li>
         <li><span class="sw cmp"></span>{cmpYear}</li>
-        <li><span class="sw med"></span>Median</li>
-        <li><span class="sw env"></span>25–75 % / 10–90 %</li>
+        <li><span class="sw med"></span>Normal (median)</li>
+        <li><span class="sw env"></span><span><Term id="iqr">Middle half</Term> / 10–90 % of years</span></li>
       </ul>
     </figure>
 
     <figure>
       <figcaption>
-        <span>Cumulative activity, {yt.year} through {MONTHS_SHORT[yt.throughMonth - 1]}</span>
-        <span class="num ytd-k">{fmtRatio(yt.ratio)} median · {ordinal(yt.rank)} of {yt.of}</span>
+        <span>Running total, {yt.year} through {MONTHS_SHORT[yt.throughMonth - 1]}</span>
+        <span class="num ytd-k">{fmtRatio(yt.ratio)} normal · {ordinal(yt.rank)} of {yt.of}</span>
       </figcaption>
       <div class="chart" bind:clientWidth={w2}>
         <svg width={w2} height={H} role="img" onpointermove={(e) => (hy = pick(e, w2, yx))} onpointerleave={() => (hy = null)}
@@ -130,15 +138,15 @@
           <div class="tip" style:left={`${Math.min(w2 - 170, Math.max(0, yxs[hy] + 8))}px`}>
             <p class="tt">Through {MONTHS_SHORT[hy]}</p>
             {#if yt.current[hy] != null}<p><span class="sw cur"></span>{yt.year}<span class="num">{fmtNum(yt.current[hy])}</span></p>{/if}
-            <p><span class="sw med"></span>Median<span class="num">{fmtNum(yt.median[hy])}</span></p>
+            <p><span class="sw med"></span>Normal<span class="num">{fmtNum(yt.median[hy])}</span></p>
             <p class="muted">Range<span class="num">{fmtNum(yt.min[hy])}–{fmtNum(yt.max[hy])}</span></p>
           </div>
         {/if}
       </div>
       <ul class="keys">
         <li><span class="sw cur"></span>{yt.year}</li>
-        <li><span class="sw med"></span>Median</li>
-        <li><span class="sw env"></span>25–75 % / min–max</li>
+        <li><span class="sw med"></span>Normal (median)</li>
+        <li><span class="sw env"></span>Middle half / lowest–highest</li>
       </ul>
     </figure>
   </div>
@@ -146,12 +154,11 @@
 
 <style>
   .season { padding: var(--sec-pad); border-bottom: 1px solid var(--rule); }
-  h2 { margin-bottom: 12px; }
   .pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 22px 28px; }
   figure { margin: 0; min-width: 0; }
-  figcaption { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: var(--fs-md); color: var(--ink-2); margin-bottom: 6px; min-height: 32px; }
+  figcaption { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: var(--fs-base); color: var(--ink-2); margin-bottom: 6px; min-height: 32px; }
   .cmp { display: inline-flex; gap: 6px; align-items: center; font-size: var(--fs-sm); color: var(--ink-3); }
-  .cmp select { min-height: 26px; font-family: var(--font-num); font-size: var(--fs-sm); }
+  .cmp select { min-height: 30px; font-family: var(--font-num); font-size: var(--fs-sm); }
   .ytd-k { color: var(--ink); font-size: var(--fs-sm); }
   .chart { position: relative; }
   svg { display: block; overflow: visible; }
