@@ -12,5 +12,7 @@ ignoredBuiltDependencies:
 
 # zod below 4.6.6 has a memory-exhaustion advisory (GHSA, validating oversized collections). @vercel/config asks
 # for zod 3, but the app imports only its types, so nothing here runs zod 3 code paths.
+# path-to-regexp 6.1.0 (pinned by @vercel/routing-utils) builds backtracking regular expressions; 6.3.0 is the fix.
 overrides:
   zod: ^4.6.6
+  path-to-regexp@6.1.0: 6.3.0

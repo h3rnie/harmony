@@ -6,6 +6,7 @@ settings:
 
 overrides:
   zod: ^4.6.6
+  path-to-regexp@6.1.0: 6.3.0
 
 importers:
 
@@ -913,9 +914,6 @@ packages:
   onnxruntime-web@1.31.1:
     resolution: {integrity: sha512-5GeH+bWQ+HxM10z7erGlsWqryrwMbSvm/1tkIsKTT48g0fI19VXVVC435t4t7VsPdSQeS7NmuZPXrQ73k82URw==}
 
-  path-to-regexp@6.1.0:
-    resolution: {integrity: sha512-h9DqehX3zZZDCEm+xbfU0ZmwCGFCAAraPJWMXJ4+v32NjZJilVg3k1TcKsRgIb8IQ/izZSaydDc1OhJCZvs2Dw==}
-
   path-to-regexp@6.3.0:
     resolution: {integrity: sha512-Yhpw4T9C6hPpgPeA28us07OJeqZ5EzQTkbfwuhsUg0c237RomFoETJgmp2sa3F/41gfLE6G5cqcYwznmeEeOlQ==}
 
@@ -1588,7 +1586,7 @@ snapshots:
 
   '@vercel/routing-utils@6.6.1':
     dependencies:
-      path-to-regexp: 6.1.0
+      path-to-regexp: 6.3.0
       path-to-regexp-updated: path-to-regexp@6.3.0
     optionalDependencies:
       ajv: 6.15.0
@@ -1971,8 +1969,6 @@ snapshots:
       onnxruntime-common: 1.31.1
       platform: 1.3.6
       protobufjs: 7.6.6
-
-  path-to-regexp@6.1.0: {}
 
   path-to-regexp@6.3.0: {}
 
