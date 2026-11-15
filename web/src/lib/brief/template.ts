@@ -12,36 +12,6 @@ export interface BriefInput {
   analysis: Analysis
 }
 
-/** Compact, model-friendly summary sent to /api/brief (no raw series). */
-export function briefStats(i: BriefInput) {
-  const a = i.analysis
-  const s = monthStats(a, i.focusM)
-  const r = (v: number | null | undefined, d = 2) => (v == null || !Number.isFinite(v) ? null : +v.toFixed(d))
-  return {
-    area: i.area,
-    areaKm2: Math.round(i.areaKm2),
-    unit: 'AFCD-M (MODIS-equivalent active-fire cell-days per month; detections, not burned area)',
-    recordStartYear: i.firstYear,
-    baselineYears: i.baseline,
-    focusMonth: s && {
-      month: monthLong(i.focusM), value: r(s.value, 1), interval80: s.lo80 == null ? null : [r(s.lo80, 1), r(s.hi80, 1)],
-      median: r(s.median, 1), ratio: r(s.ratio), percentile: r(s.percentile, 0), rank: s.rank, of: s.of,
-      level: s.level, provisional: s.provisional, isLatestMonth: s.isCurrent,
-    },
-    yearToDate: { year: a.ytd.year, throughMonth: MONTHS_LONG[a.ytd.throughMonth - 1], ratio: r(a.ytd.ratio), rank: a.ytd.rank, of: a.ytd.of },
-    season: {
-      peak: MONTHS_LONG[a.season.peakMonth - 1], start: MONTHS_LONG[a.season.startMonth - 1], end: MONTHS_LONG[a.season.endMonth - 1],
-      share: r(a.season.concentration), secondPeak: a.season.secondPeak ? MONTHS_LONG[a.season.secondPeak - 1] : null,
-    },
-    trend: { years: a.trend.years, pctPerYear: r(a.trend.slopePctPerYear, 1), pValue: r(a.trend.pValue, 3), direction: a.trend.direction },
-    outlook: {
-      method: a.outlook.method, skill: r(a.outlook.skill),
-      months: a.outlook.months.map((m, k) => ({ month: monthLong(m), median: r(a.outlook.median[k], 1), lo80: r(a.outlook.lo80[k], 1), hi80: r(a.outlook.hi80[k], 1), normal: r(a.outlook.climatology[k], 1) })),
-    },
-    seam: { rawViirsToModis: r(a.seam.ratioNaive), harmonizedRatio: r(a.seam.ratioHarmonized), r: r(a.seam.r) },
-  }
-}
-
 export function templateBrief(i: BriefInput): string[] {
   const a = i.analysis
   const s = monthStats(a, i.focusM)

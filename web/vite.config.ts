@@ -3,6 +3,7 @@ import { defineConfig, type Connect, type Plugin } from 'vite'
 import sirv from 'sirv'
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { briefPlugin } from './server/briefPlugin.ts'
 
 // Pipeline output, served at /data/ during `vite` and `vite preview` (HTTP Range supported by sirv).
 // Production builds are a static SPA that reads VITE_DATA_BASE (default "/data").
@@ -61,7 +62,8 @@ function harmonyData(): Plugin {
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [harmonyData(), svelte()],
+  // /api/brief reads ANTHROPIC_API_KEY server-side from <repo root>/.env.local | .env | process env.
+  plugins: [harmonyData(), briefPlugin({ envDir: fileURLToPath(new URL('..', import.meta.url)) }), svelte()],
   build: {
     target: 'es2022',
     chunkSizeWarningLimit: 1600,

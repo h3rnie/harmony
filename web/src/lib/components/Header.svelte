@@ -35,6 +35,10 @@
     {#if through}
       <span class="badge fresh"><span class="dot" aria-hidden="true"></span>Data through <span class="num">{through}</span></span>
     {/if}
+    <button class="btn pulse-btn" onclick={() => dispatchEvent(new CustomEvent('harmony:open-pulse'))} title="26 years of global fire seasons on a globe">
+      <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.3" /><path d="M1.8 8h12.4M8 1.8c-2.4 2.6-2.4 9.8 0 12.4M8 1.8c2.4 2.6 2.4 9.8 0 12.4" fill="none" stroke="currentColor" stroke-width="1.1" /></svg>
+      Global pulse
+    </button>
     <a class="link" href="#method" onclick={(e) => {
       e.preventDefault()
       dispatchEvent(new CustomEvent('harmony:open-method'))
@@ -70,6 +74,8 @@
   .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--good); }
   .link { font-size: 0.86rem; color: var(--ink-2); }
   .icon { padding: 0; width: 32px; justify-content: center; }
+  .pulse-btn { border-color: color-mix(in srgb, var(--accent) 55%, var(--rule-strong)); color: var(--accent-ink); }
+  .pulse-btn:hover { background: var(--accent-soft); }
   @media (max-width: 860px) { .tagline { display: none; } }
   @media (max-width: 560px) { .badge.live, .link { display: none; } .badge { font-size: 0.7rem; padding: 2px 7px; } }
 </style>

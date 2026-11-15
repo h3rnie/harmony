@@ -4,8 +4,11 @@
   import { themeState } from '../theme.svelte'
   import { FIRMS_ACK } from '../config'
   import { aoiGeoJson, calendarCsv, calendarSvg, download, seriesCsv, slug, svgToPng, type ExportContext } from '../export/exporters'
-  import { exportHotspotsCsv } from '../export/hotspots'
-  import { ringsBbox } from '../geo'
+  import {
+    DEFAULT_MAX_ROWS, fmtBytes, isAbort, loadPointsIndex, planHotspots, runHotspots,
+    type HotspotPlan, type HotspotProgress,
+  } from '../export/hotspots'
+  import { onDestroy } from 'svelte'
 
   let { a }: { a: Analysis } = $props()
   let status = $state<string | null>(null)
@@ -44,10 +47,112 @@
     download(`${base}-calendar.png`, await svgToPng(svg, width, height), 'image/png')
   })
   const geo = run('Area GeoJSON', () => download(`${base}.geojson`, aoiGeoJson(ctx!), 'application/geo+json'))
-  const hot = run('Hotspots CSV', async () => {
-    const o = session.options
-    const blob = await exportHotspotsCsv({ rings: session.aoi!.rings, bbox: ringsBbox(session.aoi!.rings), range: o.range })
-    download(`${base}-hotspots.csv`, blob, 'text/csv')
+
+  // ---- Hotspots CSV: estimate -> confirm -> progress -> summary ----
+  type Hot =
+    | { phase: 'idle' }
+    | { phase: 'planning'; p: HotspotProgress | null }
+    | { phase: 'estimate'; plan: HotspotPlan; tooLarge: boolean }
+    | { phase: 'running'; plan: HotspotPlan; p: HotspotProgress | null; limited: boolean }
+    | { phase: 'done'; summary: string; note: string | null; blob: Blob; name: string }
+    | { phase: 'error'; message: string }
+  let hot = $state<Hot>({ phase: 'idle' })
+  let hotAvail = $state<'checking' | 'yes' | 'no'>('checking')
+  let hotAvailMsg = $state('')
+  let live = $state('')
+  let hotCtl: AbortController | null = null
+  let lastPct = -1
+  let exportBtn = $state<HTMLButtonElement | null>(null)
+  const nf = new Intl.NumberFormat('en-US')
+
+  $effect(() => {
+    const ctl = new AbortController()
+    loadPointsIndex(ctl.signal).then(
+      () => { hotAvail = 'yes' },
+      (e) => { if (!ctl.signal.aborted) { hotAvail = 'no'; hotAvailMsg = (e as Error).message } },
+    )
+    return () => ctl.abort()
+  })
+
+  function hotReset() {
+    hotCtl?.abort()
+    hotCtl = null
+    hot = { phase: 'idle' }
+    live = ''
+    lastPct = -1
+  }
+  // A different area or date range invalidates any estimate or running export.
+  $effect(() => {
+    session.aoi
+    session.options.range[0]
+    session.options.range[1]
+    return () => { if (hot.phase !== 'idle' && hot.phase !== 'done') hotReset() }
+  })
+  onDestroy(() => hotCtl?.abort())
+
+  async function hotEstimate() {
+    if (!session.aoi || hotAvail !== 'yes') return
+    hotCtl?.abort()
+    const ctl = (hotCtl = new AbortController())
+    hot = { phase: 'planning', p: null }
+    live = 'Checking which hotspot files cover this area.'
+    try {
+      const [mFrom, mTo] = session.options.range
+      const plan = await planHotspots({
+        rings: session.aoi.rings, mFrom, mTo, label: session.aoi.label, signal: ctl.signal,
+        onProgress: (p) => { if (hot.phase === 'planning') hot = { phase: 'planning', p } },
+      })
+      const tooLarge = plan.estRows > DEFAULT_MAX_ROWS
+      hot = { phase: 'estimate', plan, tooLarge }
+      live = plan.files.length === 0
+        ? 'No hotspots were archived for this area and date range.'
+        : tooLarge
+          ? `The scan covers up to ${nf.format(plan.estRows)} rows, over the ${nf.format(DEFAULT_MAX_ROWS)} row limit. Narrow the area or dates, or export the first ${nf.format(DEFAULT_MAX_ROWS)} rows.`
+          : `Estimate ready: roughly ${nf.format(plan.likelyRows)} hotspots in ${plan.files.length} files. Export or cancel.`
+      queueMicrotask(() => exportBtn?.focus())
+    } catch (e) {
+      if (ctl.signal.aborted || isAbort(e)) return
+      hot = { phase: 'error', message: (e as Error).message }
+      live = `Hotspot export failed. ${(e as Error).message}`
+    }
+  }
+
+  async function hotRun(plan: HotspotPlan, limited: boolean) {
+    hotCtl?.abort()
+    const ctl = (hotCtl = new AbortController())
+    hot = { phase: 'running', plan, p: null, limited }
+    live = 'Exporting hotspots.'
+    lastPct = -1
+    try {
+      const res = await runHotspots(plan, {
+        signal: ctl.signal,
+        rowLimit: limited ? DEFAULT_MAX_ROWS : undefined,
+        onProgress: (p) => {
+          if (hot.phase !== 'running') return
+          hot = { ...hot, p }
+          const pct = Math.floor((10 * Math.min(1, p.bytesFetched / Math.max(1, plan.estDownloadBytes)))) * 10
+          if (pct !== lastPct) { lastPct = pct; live = `Exporting hotspots, ${pct} percent. ${nf.format(p.rows)} rows written.` }
+        },
+      })
+      const name = `${base}-hotspots.csv`
+      download(name, res.blob, 'text/csv')
+      const summary = `${nf.format(res.rows)} hotspots · ${fmtBytes(res.csvBytes)} · ${res.files} ${res.files === 1 ? 'file' : 'files'}`
+      hot = {
+        phase: 'done', summary, blob: res.blob, name,
+        note: res.truncated ? `Truncated at ${nf.format(DEFAULT_MAX_ROWS)} rows. Narrow the area or dates for the rest.` : null,
+      }
+      live = `Hotspot export finished. ${summary}.`
+    } catch (e) {
+      if (ctl.signal.aborted || isAbort(e)) { hot = { phase: 'idle' }; live = 'Hotspot export cancelled.'; return }
+      hot = { phase: 'error', message: (e as Error).message }
+      live = `Hotspot export failed. ${(e as Error).message}`
+    }
+  }
+  function hotCancel() { hotReset(); live = 'Hotspot export cancelled.' }
+  const hotProgress = $derived.by(() => {
+    if (hot.phase === 'planning') return hot.p && hot.p.filesTotal ? hot.p.filesDone / hot.p.filesTotal : 0
+    if (hot.phase === 'running') return hot.p ? Math.min(1, hot.p.bytesFetched / Math.max(1, hot.plan.estDownloadBytes)) : 0
+    return 0
   })
 </script>
 
@@ -59,7 +164,14 @@
       <h3>Tables</h3>
       <button class="btn" disabled={busy} onclick={csvCal}>Calendar CSV</button>
       <button class="btn" disabled={busy} onclick={csvSeries}>Full series CSV</button>
-      <button class="btn" disabled={busy} onclick={hot}>Hotspots CSV</button>
+      <button
+        class="btn" disabled={busy || hot.phase === 'planning' || hot.phase === 'running'}
+        aria-disabled={hotAvail !== 'yes' || !ctx}
+        aria-describedby={hotAvail === 'no' ? 'hot-why' : undefined}
+        title={hotAvail === 'no' ? hotAvailMsg : hotAvail === 'checking' ? 'Checking for the hotspot archive…' : 'Every MODIS and VIIRS detection inside the area and date range'}
+        onclick={() => { if (hotAvail === 'yes' && ctx) hotEstimate() }}
+      >Hotspots CSV</button>
+      {#if hotAvail === 'no'}<span id="hot-why" class="sr-only">{hotAvailMsg}</span>{/if}
     </div>
     <div>
       <h3>Figures</h3>
@@ -72,6 +184,68 @@
       <button class="btn" onclick={async () => { try { await navigator.clipboard.writeText(location.href); status = 'Link to this view copied.' } catch { status = 'Copy the address bar to share this view.' } }}>Copy share link</button>
     </div>
   </div>
+  {#if hot.phase !== 'idle'}
+    <div class="hot" role="group" aria-labelledby="hot-h">
+      <h3 id="hot-h">Hotspots CSV</h3>
+      {#if hot.phase === 'planning'}
+        <p class="small">Checking which files cover this area{hot.p ? ` (${hot.p.filesDone} of ${hot.p.filesTotal})` : ''}…</p>
+        <progress class="bar" max="1" value={hotProgress} aria-label="Reading file indexes"></progress>
+        <div class="row"><button class="btn" onclick={hotCancel}>Cancel</button></div>
+      {:else if hot.phase === 'estimate'}
+        {@const pl = hot.plan}
+        {#if pl.files.length === 0}
+          <p class="small">No hotspots are archived for this area and date range.</p>
+          <div class="row"><button class="btn" onclick={hotReset} bind:this={exportBtn}>Close</button></div>
+        {:else}
+          <p class="est">
+            <strong>Roughly {nf.format(pl.likelyRows)} hotspots</strong>
+            <span class="dot">·</span> {pl.files.length} {pl.files.length === 1 ? 'file' : 'files'}
+            <span class="dot">·</span> ~{fmtBytes(pl.estDownloadBytes)} to download
+            <span class="dot">·</span> ~{fmtBytes(pl.estCsvBytes)} CSV
+          </p>
+          <p class="small muted">
+            Scans {pl.keptGroups} of {pl.totalGroups} row groups, up to {nf.format(pl.estRows)} rows. Rows outside the outline or the months are dropped while writing, so the count is usually far lower.
+            {#if pl.groupsWithoutStats}{pl.groupsWithoutStats} groups carry no range statistics and are read in full.{/if}
+          </p>
+          {#if hot.tooLarge}
+            <p class="small warn" role="alert">
+              The scan could return more than {nf.format(DEFAULT_MAX_ROWS)} rows. Narrow the area or the date range, or export only the first {nf.format(DEFAULT_MAX_ROWS)} rows.
+            </p>
+            <div class="row">
+              <button class="btn primary" bind:this={exportBtn} onclick={() => hotRun(pl, true)}>Export first {nf.format(DEFAULT_MAX_ROWS)} rows anyway</button>
+              <button class="btn" onclick={hotCancel}>Cancel</button>
+            </div>
+          {:else}
+            <div class="row">
+              <button class="btn primary" bind:this={exportBtn} onclick={() => hotRun(pl, false)}>Export</button>
+              <button class="btn" onclick={hotCancel}>Cancel</button>
+            </div>
+          {/if}
+        {/if}
+      {:else if hot.phase === 'running'}
+        <p class="small" aria-hidden="true">
+          {nf.format(hot.p?.rows ?? 0)} rows written <span class="dot">·</span> {fmtBytes(hot.p?.bytesFetched ?? hot.plan.metaBytes)} fetched
+          <span class="dot">·</span> file {Math.min(hot.plan.files.length, (hot.p?.filesDone ?? 0) + 1)} of {hot.plan.files.length}
+        </p>
+        <progress class="bar" max="1" value={hotProgress} aria-label="Exporting hotspots"></progress>
+        <div class="row"><button class="btn" onclick={hotCancel}>Cancel</button></div>
+      {:else if hot.phase === 'done'}
+        <p class="est"><strong>{hot.summary}</strong></p>
+        {#if hot.note}<p class="small warn">{hot.note}</p>{/if}
+        <div class="row">
+          <button class="btn" onclick={() => { if (hot.phase === 'done') download(hot.name, hot.blob, 'text/csv') }}>Save again</button>
+          <button class="btn" onclick={hotReset}>Close</button>
+        </div>
+      {:else if hot.phase === 'error'}
+        <p class="small warn" role="alert">{hot.message}</p>
+        <div class="row">
+          <button class="btn" onclick={hotEstimate}>Try again</button>
+          <button class="btn" onclick={hotReset}>Close</button>
+        </div>
+      {/if}
+    </div>
+  {/if}
+  <p class="sr-only" aria-live="polite" aria-atomic="true">{live}</p>
   <p class="status small" role="status">{status ?? ''}</p>
   {#if session.isMock}<p class="small warn">Demo mode: exports contain synthetic numbers and say so in their header.</p>{/if}
   <p class="small muted ack">Exports include this acknowledgement: “{FIRMS_ACK}”</p>
@@ -84,5 +258,16 @@
   h3 { width: 100%; font-size: 0.78rem; font-weight: 500; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 2px; }
   .status { min-height: 1.4em; margin: 10px 0 0; color: var(--ink-2); }
   .warn { color: var(--warning); }
+  .hot { margin-top: 14px; padding: 12px 14px; max-width: 64ch; background: var(--surface); border: 1px solid var(--rule-strong); border-radius: var(--radius); }
+  .hot h3 { margin-bottom: 6px; }
+  .hot p { margin: 0 0 8px; }
+  .hot .est { color: var(--ink); }
+  .hot .dot { color: var(--ink-faint); margin: 0 0.2em; }
+  .hot .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .bar { display: block; width: 100%; height: 6px; appearance: none; -webkit-appearance: none; border: 0; border-radius: 3px; background: var(--surface-3); overflow: hidden; }
+  .bar::-webkit-progress-bar { background: var(--surface-3); }
+  .bar::-webkit-progress-value { background: var(--accent); transition: width 0.2s; }
+  .bar::-moz-progress-bar { background: var(--accent); }
+  .btn[aria-disabled='true'] { opacity: 0.45; cursor: not-allowed; }
   .ack { max-width: 72ch; }
 </style>

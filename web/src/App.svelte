@@ -16,10 +16,45 @@
   import BriefCard from './lib/components/BriefCard.svelte'
   import ExportsPanel from './lib/components/ExportsPanel.svelte'
   import MethodSection from './lib/components/MethodSection.svelte'
+  import type { Component } from 'svelte'
+
+  // Global fire pulse: full-viewport view, lazy-loaded; `#view=pulse&t=YYYY-MM` keeps it shareable.
+  let Pulse = $state.raw<Component<{ onclose: () => void }> | null>(null)
+  let pulseOpen = $state(false)
+  let pulseOpener: HTMLElement | null = null
+  const hashView = () => new URLSearchParams(location.hash.slice(1)).get('view')
+
+  async function openPulse() {
+    if (pulseOpen) return
+    pulseOpener = document.activeElement as HTMLElement | null
+    if (hashView() !== 'pulse') {
+      const q = new URLSearchParams(location.hash.slice(1))
+      q.set('view', 'pulse')
+      history.replaceState(null, '', `${location.pathname}${location.search}#${q.toString().replace(/%2C/g, ',')}`)
+    }
+    Pulse ??= (await import('./lib/pulse/PulseView.svelte')).default
+    pulseOpen = true
+  }
+  function closePulse() {
+    pulseOpen = false
+    const q = new URLSearchParams(location.hash.slice(1))
+    if (q.has('view') || q.has('t')) {
+      q.delete('view'); q.delete('t')
+      const h = q.toString().replace(/%2C/g, ',')
+      history.replaceState(null, '', `${location.pathname}${location.search}${h ? `#${h}` : ''}`)
+    }
+    pulseOpener?.focus()
+  }
 
   onMount(() => {
     themeState.apply()
     session.boot()
+    if (hashView() === 'pulse') openPulse()
+    const onOpen = () => openPulse()
+    const onHash = () => { if (hashView() === 'pulse') openPulse() }
+    addEventListener('harmony:open-pulse', onOpen)
+    addEventListener('hashchange', onHash)
+    return () => { removeEventListener('harmony:open-pulse', onOpen); removeEventListener('hashchange', onHash) }
   })
 
   const a = $derived(session.analysis)
@@ -93,6 +128,10 @@
     </footer>
   </div>
 </main>
+
+{#if pulseOpen && Pulse}
+  <Pulse onclose={closePulse} />
+{/if}
 
 <div class="sr-only" aria-live="polite" aria-atomic="true">{session.announce}</div>
 

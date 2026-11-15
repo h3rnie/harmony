@@ -12,7 +12,7 @@ data/dist/
   tiles/L2/0_0.parquet            1 deg cells, one global file
   points/index.json
   points/{px}_{py}/{year}.parquet raw hotspots, 10 deg tiles
-  overview/…                      global 0.25 deg grids (see below)
+  overview/…                      global 0.5 deg PNG atlases for the pulse view (see below)
 ```
 
 ## Grid
@@ -78,7 +78,8 @@ Terra-bridged months use `relvar_bridge` with meq in place of kv (dispersion ter
 
 ## Points archive (CSV export)
 `points/{px}_{py}/{year}.parquet` with `px = floor((lon+180)/10)`, `py = floor((lat+90)/10)`; Parquet v1 ZSTD,
-row groups <= 50 000 rows, sorted by (L0 cell, acq_time_utc) so row-group min/max on latitude/longitude prune well.
+row groups <= 50 000 rows, sorted by (1 deg block = floor(lat), floor(lon); UTC month; L0 cell; acq_time_utc)
+so row-group min/max statistics prune by area (latitude/longitude) and by date (acq_time_utc).
 
 | column | type | notes |
 |---|---|---|
@@ -99,8 +100,35 @@ row groups <= 50 000 rows, sorted by (L0 cell, acq_time_utc) so row-group min/ma
 `points/index.json`: `{ "px_py": { "2023": [bytes, rows], … }, … }`.
 
 ## Overview grids
-`overview/meta.json` + little-endian Float32 rasters 1440 x 720 (row 0 = south), NaN = no data:
-`clim_{01..12}.f32` median harmonized AFCD-M per 0.25 deg cell by month-of-year (baseline 2003–2022),
-`latest.f32` harmonized value for the latest complete month, `latest_ratio.f32` latest / climatological median,
-`annual_{yyyy}.f32` yearly totals; `monthly.u16` optional full stack for the global animation
-(months m_first..m_last, Uint16 = round(10·sqrt(value)), 1440 x 720 each).
+Small 8-bit grayscale PNGs (decoded natively by the browser) written by `overview.py` from `meta.json` and the
+L1 tiles only, so they equal what the app computes. Value `x` = harmonized AFCD-M in a 0.5 deg cell for one month,
+day + night, all strata: `meq` before `default_switch_m`, `kv` from it (L1 cells summed 2 x 2).
+
+```
+overview/meta.json
+overview/pulse/{year}.png    2880 x 1080 atlas, 4 cols x 3 rows of months (Jan top-left, row-major)
+overview/clim.png            same layout: per-cell median over 2003–2022 of each calendar month (zeros included)
+overview/land.png            1440 x 720 land fraction x 255 (RESOLVE Ecoregions 2017, 2 x 2 supersampled)
+```
+- Each month is a 720 x 360 equirectangular image: row 0 = 90 N, column 0 = 180 W, 0.5 deg cells
+  (`x = floor((lon + 180) / 0.5)`, `y = floor((90 - lat) / 0.5)`). Months outside `m_first..m_last` are all zero.
+- Encoding `u = round(255 · min(1, sqrt(x / cap)))`, with `u >= 1` wherever `x > 0`; decode `x = cap · (u / 255)²`
+  (≈1 % precision near the cap, coarser at low values: the overview is for display, the tiles are the record).
+- `cap` = 99.9th percentile of the non-zero cell-months (a robust global constant).
+
+`meta.json`:
+```jsonc
+{
+  "version": 2, "data_through": "2026-11-05", "scope": "global" | "regional: …",
+  "cap": 708.0, "cap_quantile": 99.9, "encoding": "…",
+  "grid": { "cell_deg": 0.5, "width": 720, "height": 360, "row0": "north (90 N)", "col0": "180 W" },
+  "atlas": { "cols": 4, "rows": 3, "order": "row-major, January top-left", "width": 2880, "height": 1080 },
+  "pulse": "pulse/{year}.png", "years": [2000, 2026],
+  "m_first": 10, "m_last": 322, "last_month_partial": true,
+  "m_last_data": 312,                    // last month with any activity (timeline end)
+  "default_switch_m": 276,
+  "clim": { "file": "clim.png", "baseline": [2003, 2022], "stat": "median incl. zero months" },
+  "land": { "file": "land.png", "width": 1440, "height": 720, "value": "…" },
+  "global_monthly": [ … ]                // sum of x over all cells, one per month m_first..m_last
+}
+```

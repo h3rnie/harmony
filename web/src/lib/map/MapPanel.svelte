@@ -17,6 +17,7 @@
   import { fmtArea, fmtNum, fmtRatio, monthShort } from '../format'
   import CoordinatesPopover from './CoordinatesPopover.svelte'
   import MapLegend from './MapLegend.svelte'
+  import type { ClimOverlay } from '../pulse/climOverlay'
 
   const STYLE_URL = { dark: 'https://tiles.openfreemap.org/styles/dark', light: 'https://tiles.openfreemap.org/styles/positron' }
   const OWN_PREFIXES = ['td', 'h-']
@@ -34,6 +35,7 @@
   let notice = $state<string | null>(null)
   let overlay = $state.raw<RenderedOverlay | null>(null)
   let readout = $state<string | null>(null)
+  let clim = $state.raw<ClimOverlay | null>(null)
   let fileInput: HTMLInputElement
   let fitNext = true
   let lastFittedKey = ''
@@ -88,6 +90,9 @@
     if (!map.getLayer('h-cells')) {
       map.addLayer({ id: 'h-cells', type: 'raster', source: 'h-cells', paint: { 'raster-opacity': 0, 'raster-resampling': 'nearest', 'raster-opacity-transition': { duration: themeState.reducedMotion ? 0 : 450, delay: 0 } } })
     }
+    // Landing climatology (lazy, from the global overview) sits under the analysis cells.
+    if (!map.getSource('h-clim')) map.addSource('h-clim', { type: 'image', coordinates: [[0, 1], [1, 1], [1, 0], [0, 0]] })
+    if (!map.getLayer('h-clim')) map.addLayer({ id: 'h-clim', type: 'raster', source: 'h-clim', paint: { 'raster-opacity': 0, 'raster-resampling': 'linear', 'raster-opacity-transition': { duration: themeState.reducedMotion ? 0 : 450, delay: 0 } } }, 'h-cells')
     if (!map.getSource('h-aoi')) map.addSource('h-aoi', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
     if (!map.getLayer('h-aoi-fill')) map.addLayer({ id: 'h-aoi-fill', type: 'fill', source: 'h-aoi', paint: { 'fill-color': accent, 'fill-opacity': 0.05 } })
     if (!map.getLayer('h-aoi-casing')) map.addLayer({ id: 'h-aoi-casing', type: 'line', source: 'h-aoi', paint: { 'line-color': cssVar('--bg') || '#000', 'line-width': 4, 'line-opacity': 0.6 } })
@@ -96,6 +101,14 @@
     for (const l of map.getStyle().layers) if (l.id.startsWith('td')) map.moveLayer(l.id)
     pushAoi()
     pushOverlay()
+    pushClim()
+  }
+
+  function pushClim() {
+    if (!map || !map.getLayer('h-clim')) return
+    const src = map.getSource('h-clim') as ImageSource | undefined
+    if (clim && src) src.updateImage({ image: clim.canvas, coordinates: clim.coordinates })
+    map.setPaintProperty('h-clim', 'raster-opacity', clim && !session.aoi ? 0.85 : 0)
   }
 
   function pushAoi() {
@@ -286,6 +299,7 @@
     if (!mapReady) return
     untrack(() => {
       pushAoi()
+      pushClim()
       if (!aoi) { overlay = null; pushOverlay(); return }
       const key = JSON.stringify(aoi.rings[0].slice(0, 4))
       if (fitNext && key !== lastFittedKey) fitAoi(aoi)
@@ -309,6 +323,16 @@
       overlay = renderCellLayer(layer, level, mode, theme)
       pushOverlay()
     })
+  })
+
+  // Theme -> landing climatology for the current calendar month (shown only while no area is selected)
+  $effect(() => {
+    const theme = themeState.theme
+    if (!mapReady) return
+    import('../pulse/climOverlay')
+      .then((m) => m.renderClimOverlay(new Date().getMonth() + 1, theme))
+      .then((o) => { clim = o; pushClim() })
+      .catch((e) => console.warn('climatology overlay unavailable', e))
   })
 
   // Theme -> basemap
@@ -427,6 +451,10 @@
     />
   {/if}
 
+  {#if clim && !session.aoi}
+    <p class="clim-legend small"><span class="swatch" aria-hidden="true"></span>{clim.label}</p>
+  {/if}
+
   {#if basemapFailed}
     <p class="basemap-note small muted">Basemap unavailable — showing graticule only.</p>
   {/if}
@@ -486,6 +514,13 @@
     padding: 6px 10px; border-radius: 0 var(--radius) var(--radius) 0; font-size: 0.82rem; backdrop-filter: blur(6px);
   }
   .aoi-chip strong { font-size: 0.92rem; }
+  .clim-legend {
+    position: absolute; left: 12px; bottom: 40px; z-index: 2; margin: 0; display: flex; align-items: center; gap: 8px;
+    color: var(--ink-2); background: color-mix(in srgb, var(--surface) 80%, transparent); padding: 4px 10px;
+    border-radius: var(--radius); backdrop-filter: blur(6px);
+  }
+  .swatch { width: 44px; height: 6px; border-radius: 2px; background: linear-gradient(90deg, #420a68, #932667, #dd513a, #fca50a, #fcffa4); }
+  :global([data-theme='light']) .swatch { background: linear-gradient(90deg, #fcffa4, #fca50a, #dd513a, #932667, #420a68); }
   .basemap-note { position: absolute; top: 60px; right: 12px; z-index: 2; margin: 0; }
   .drop {
     position: absolute; inset: 0; z-index: 5; display: grid; place-items: center; background: color-mix(in srgb, var(--bg) 70%, transparent);

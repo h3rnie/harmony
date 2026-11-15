@@ -1,7 +1,9 @@
 """Hotspot archive for CSV export: data/dist/points/{px}_{py}/{year}.parquet + points/index.json.
 
 px = floor((lon+180)/10), py = floor((lat+90)/10) (clamped at 180E / 90N); year = UTC acquisition year.
-Rows sorted by (L0 cell, acq_time_utc) so row-group min/max on latitude/longitude prune well; row
+Rows sorted by (1-degree block, UTC month, L0 cell, acq_time_utc) so row-group min/max statistics prune
+both by area (latitude/longitude) and by date (acq_time_utc) - a one-month export of a small area reads
+a few row groups instead of the whole tile-year; row
 groups <= 50 000 rows; Parquet v1, ZSTD. `used` = conf_ok AND type in (0, NULL) AND not static-masked.
 One UTC year is processed at a time (all sensors) to bound memory.
 """
@@ -40,7 +42,8 @@ def main(force: bool = False) -> None:
             for px, py, n in con.execute("SELECT px, py, count(*) FROM p GROUP BY ALL ORDER BY 1, 2").fetchall():
                 path = OUT_DIR / f"{px}_{py}" / f"{year}.parquet"
                 path.parent.mkdir(parents=True, exist_ok=True)
-                con.execute(f"""COPY (SELECT {COLS} FROM p WHERE px = {px} AND py = {py} ORDER BY l0, acq_time_utc)
+                con.execute(f"""COPY (SELECT {COLS} FROM p WHERE px = {px} AND py = {py}
+                    ORDER BY floor(latitude), floor(longitude), month(acq_time_utc), l0, acq_time_utc)
                     TO '{posix(path)}' (FORMAT parquet, COMPRESSION zstd, PARQUET_VERSION v1, ROW_GROUP_SIZE 49152)""")
                 index.setdefault(f"{px}_{py}", {})[year] = [path.stat().st_size, int(n)]
     write_json(INDEX, index, compact=True)
