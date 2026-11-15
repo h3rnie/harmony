@@ -54,7 +54,7 @@ html = f'''<!doctype html>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="canonical" href="https://harmony.hernie.me/demo">
 <meta property="og:title" content="Harmony — pitch deck">
-<meta property="og:description" content="Two satellites. One fire record. Seven slides for NASA Space Apps 2026.">
+<meta property="og:description" content="Two sensors. One fire record. Seven slides for NASA Space Apps 2026.">
 <meta property="og:image" content="https://harmony.hernie.me/og.png">
 <link rel="preload" href="/demo/fonts/schibsted-grotesk.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/demo/demo.css">

@@ -40,11 +40,11 @@ export const GLOSSARY: Record<TermId, GlossaryEntry> = {
   },
   mannkendall: {
     term: 'Mann–Kendall test',
-    text: 'Asks whether later years tend to be higher (or lower) than earlier ones. A p-value below 0.05 means the trend is unlikely to be chance.',
+    text: 'Asks whether later years tend to be higher (or lower) than earlier ones. A p-value below 0.05 means a pattern this consistent would be unusual by chance alone; persistence from year to year is not modelled.',
   },
   pvalue: {
     term: 'p-value',
-    text: 'The chance of seeing a trend this strong if there were really none. Below 0.05: likely a real trend. Above: could be chance.',
+    text: 'The chance of seeing a trend at least this strong if there were really none and the years were independent. Below 0.05 Harmony calls the trend statistically significant; that is not proof it is real. At 0.05 or above it reports no clear trend.',
   },
   iqr: {
     term: 'Interquartile range',
@@ -68,7 +68,7 @@ export const GLOSSARY: Record<TermId, GlossaryEntry> = {
   },
   seam: {
     term: 'The 2012 seam',
-    text: 'In 2012 the finer VIIRS sensor joined. Raw detection counts jump because it sees more small fires, not because more burned: about 4 times the MODIS count with one VIIRS satellite (2012–2017), about 8 times with two (2018–2022) and 12 to 14 times with three (from 2023).',
+    text: 'In 2012 the finer VIIRS sensor joined. Raw detection counts jump because it sees more small fires, not because more burned: about 4 times the MODIS count with one VIIRS satellite (2012–2017), about 8 times with two (2018–2022) and about 12 to 13 times with three (2023–2025).',
   },
   hearing: {
     term: 'Hearing the record',

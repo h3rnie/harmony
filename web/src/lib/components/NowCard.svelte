@@ -42,7 +42,6 @@
 
   const nowDate = $derived(new Date(live.now))
   const monthName = $derived(MONTHS_LONG[nowDate.getUTCMonth()])
-  const partOf = $derived(nowDate.getUTCDate() <= 10 ? 'early' : nowDate.getUTCDate() <= 20 ? 'mid' : 'late')
   const unit = $derived(pace?.calibration === 'none' ? 'VIIRS cell-days' : session.unitLabel)
   const tone = $derived(pace?.level ? LEVEL_TONE[pace.level] ?? 'neutral' : 'neutral')
   const failed = $derived(d ? LIVE_SOURCES.filter((s) => d.sources[s].error) : [])
@@ -137,7 +136,7 @@
     {:else}
       <p class="lead">
         {#if pace.ratio != null}
-          Burning at <strong class="num">{fmtRatio(pace.ratio)}</strong> the normal daily pace for {partOf}-{monthName}.
+          Burning at <strong class="num">{fmtRatio(pace.ratio)}</strong> the normal daily pace for {monthName}.
         {:else if pace.pace != null}
           About <strong class="num">{fmtNum(pace.pace)}</strong> {unit} a day; there is no normal to compare with for {monthName} here.
         {:else}
@@ -213,7 +212,7 @@
         <div class="more-body">
           <p>
             In {unit} a day: <span class="num">{pace.pace == null ? '—' : fmtNum(pace.pace)}</span> over the last <span class="num">{pace.nComplete}</span> complete days{#if (pace.normalPace ?? 0) > 0}, against a normal of <span class="num">{fmtNum(pace.normalPace)}</span>{#if pace.normalBand} (middle half <span class="num">{fmtNum(pace.normalBand[0])}–{fmtNum(pace.normalBand[1])}</span>){/if}{/if}.
-            Detections by satellite: NOAA-20 <span class="num">{nf.format(pace.detBySat[SAT_N20])}</span>, NOAA-21 <span class="num">{nf.format(pace.detBySat[SAT_N21])}</span>, MODIS <span class="num">{nf.format(pace.detBySat[SAT_TERRA] + pace.detBySat[SAT_AQUA])}</span>.
+            Detections by satellite: NOAA-20 <span class="num">{nf.format(pace.detBySat[SAT_N20])}</span>, NOAA-21 <span class="num">{nf.format(pace.detBySat[SAT_N21])}</span>, MODIS (Terra + Aqua) <span class="num">{nf.format(pace.detBySat[SAT_TERRA] + pace.detBySat[SAT_AQUA])}</span>.
           </p>
       <p class="fine muted">
         Near-real-time, provisional: not yet screened for static heat sources (gas flares, industry) — the calendar updates when science-quality data arrives.

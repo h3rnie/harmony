@@ -81,9 +81,9 @@ def build_meta(con, cal: dict) -> dict:
     sources = [
         {"name": "FIRMS MODIS C6.1 (MCD14ML) Terra+Aqua, country yearly files", "years": "2000-2025",
          "quality": "standard"},
-        {"name": "FIRMS VIIRS 375 m S-NPP (VNP14IMGTDL), country yearly files", "years": "2012-2025",
+        {"name": "FIRMS VIIRS 375 m S-NPP (VNP14IMGT), country yearly files", "years": "2012-2025",
          "quality": "standard"},
-        {"name": "FIRMS VIIRS 375 m NOAA-20 (VJ114IMGTDL), country yearly files", "years": "2018-2025",
+        {"name": "FIRMS VIIRS 375 m NOAA-20 (VJ114IMGT), country yearly files", "years": "2018-2025",
          "quality": "standard"},
         *({"name": f"FIRMS area API {s} (world, 5-day windows)", "years": span,
            "quality": "nrt" if s.endswith("NRT") else "standard"} for s, span in api.items()),

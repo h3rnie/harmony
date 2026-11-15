@@ -62,8 +62,8 @@ clamp(51–81 px) hero numeral.
 ## Copy
 
 - Name: **Harmony** (wordmark set as HARMONY).
-- Tagline: **Two satellites. One fire record.**
-- Mission: *Harmony joins two generations of fire-detecting satellites into one consistent record, so anyone
+- Tagline: **Two sensors. One fire record.**
+- Mission: *Harmony joins two generations of fire-detecting satellite sensors into one consistent record, so anyone
   responsible for a landscape can see when it burns, which years were extreme, and how this month compares with normal.*
 - Dedication: *For everyone who works the fire line, the dispatch desk and the long night after.*
 - Credit: Built by Toh Yu Heng · Singapore — https://hello.hernie.me

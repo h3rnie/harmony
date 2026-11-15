@@ -9,7 +9,7 @@ data/dist/
   tiles/index.json
   tiles/L0/{tx}_{ty}.parquet      0.05 deg cells, 2.5 deg tiles
   tiles/L1/{tx}_{ty}.parquet      0.25 deg cells, 10 deg tiles
-  tiles/L2/{tx}_{ty}.parquet      1 deg cells, 30 deg tiles (70 tiles in the 2026-11-15 build)
+  tiles/L2/{tx}_{ty}.parquet      1 deg cells, 30 deg tiles (68 tiles in the 2026-11-15 build)
   points/index.json
   points/{px}_{py}/{year}.parquet raw hotspots, 10 deg tiles
   overview/…                      global 0.5 deg PNG atlases for the pulse view (see below)
@@ -34,7 +34,7 @@ Parquet v1, ZSTD, sorted by (cell, stratum, m, dn). A row exists only if some va
 | stratum | UINT16 | index into `meta.strata` (a coarse cell may have several strata rows) |
 | m | UINT16 | month index |
 | dn | UINT8 | 0 = day, 1 = night |
-| meq | UINT32 | MODIS-derived AFCD x100. Native Terra+Aqua from 2002-07; Terra-only x bridge factor before. Already divided by MODIS month coverage. |
+| meq | UINT32 | MODIS-derived AFCD x100. Native Terra∪Aqua from 2002-07; Terra-only x bridge factor before. Already divided by MODIS month coverage. |
 | kv | UINT32 | VIIRS AFCD calibrated to MODIS-equivalent, x100 (= v x k_stratum(dn, month-of-year) x cell multiplier) |
 | kvsq | FLOAT | sum over the L0 cells in this row of (kv in AFCD units)^2 — for the dispersion term of the interval |
 | v | UINT32 | uncalibrated VIIRS AFCD x100: per-day mean over operating VIIRS satellites (NOAA-20/21 scaled to S-NPP) |
@@ -96,7 +96,7 @@ schema is unchanged.
   "biome": { "<biome>": { "log_f": [[day by year], [night by year]], "log_sd": [[…], […]] }, …,
              "all": { … } }        // fallback for a biome without its own entry
 },
-"conformal": {                     // split-conformal multipliers on sigma_log (Mondrian: biome group x size class)
+"conformal": {                     // conformal multipliers (leave-one-year-out scores) on sigma_log (Mondrian: biome group x size class)
   "size_edges": [5, 20, 100, 1000],          // class c holds edges[c-1] <= H < edges[c] (class 0: H < 5)
   "groups": [{ "name": "…", "biomes": [7] }, …],
   "q80": [[per size class] per group], "q95": [[…]], "n": [[…]],
@@ -193,7 +193,7 @@ Terra-bridged months use `relvar_bridge` with meq in place of kv (dispersion ter
 
 ## Points archive (CSV export)
 `points/{px}_{py}/{year}.parquet` with `px = floor((lon+180)/10)`, `py = floor((lat+90)/10)`; Parquet v1 ZSTD,
-row groups <= 50 000 rows, sorted by (1 deg block = floor(lat), floor(lon); UTC month; L0 cell; acq_time_utc)
+row groups <= 49 152 rows, sorted by (1 deg block = floor(lat), floor(lon); UTC month; L0 cell; acq_time_utc)
 so row-group min/max statistics prune by area (latitude/longitude) and by date (acq_time_utc).
 
 | column | type | notes |
@@ -205,7 +205,7 @@ so row-group min/max statistics prune by area (latitude/longitude) and by date (
 | confidence | VARCHAR | MODIS 0-100 as text; VIIRS l/n/h |
 | frp | FLOAT | MW |
 | daynight | VARCHAR | D / N |
-| type | TINYINT | 0 vegetation, 1 volcano, 2 static land, 3 offshore; NULL for NRT |
+| type | TINYINT | 0 presumed vegetation fire, 1 volcano, 2 static land, 3 offshore; NULL for NRT |
 | quality | VARCHAR | sp / nrt |
 | brightness, bright_2 | FLOAT | MODIS ch21/22 + ch31; VIIRS I4 + I5 |
 | scan, track | FLOAT | km |
@@ -216,7 +216,7 @@ so row-group min/max statistics prune by area (latitude/longitude) and by date (
 
 ## Overview grids
 Small 8-bit grayscale PNGs (decoded natively by the browser) written by `overview.py` from `meta.json` and the
-L1 tiles only, so they equal what the app computes. Value `x` = harmonized AFCD-M in a 0.5 deg cell for one month,
+L1 tiles only, so they equal what the app computes in switch mode (the default fused series differs, most from 2020 on). Value `x` = harmonized AFCD-M in a 0.5 deg cell for one month,
 day + night, all strata: `meq` before `default_switch_m`, `kv` from it (L1 cells summed 2 x 2).
 
 ```
@@ -240,7 +240,7 @@ overview/trend.png           720 x 1800: 5 layers of 720 x 360 stacked verticall
 | layer | content | encoding |
 |---|---|---|
 | 0, 1 | unit vector of the peak month, angle 2π·(month-1)/12 (cos, sin) | signed, lim 1; 128 where no fire (linear filtering stays circular) |
-| 2 | concentration: resultant length of the circular mean of the 12 monthly values | 255 · R |
+| 2 | concentration: mean resultant length of the 12 monthly values | 255 · R |
 | 3 | mean annual activity | `round(255 · sqrt(x / season.cap))`, >= 1 where x > 0 |
 | 4 | peak month | 1..12, 0 = no fire |
 | 5 | second season (bimodal cells) | 1..12, 0 = none |

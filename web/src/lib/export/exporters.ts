@@ -95,7 +95,7 @@ export function calendarCsv(ctx: ExportContext): string {
       ]))
     }
   })
-  const cols = '# Columns: partial = 1 for a month still in progress (drawn, not compared with normal or ranked); source = MODIS, VIIRS, Terra-bridged or Fused with the MODIS share'
+  const cols = '# Columns: partial = 1 for a month with data on fewer than 90 % of its days, the month in progress or an outage month (drawn, not compared with normal or ranked); source = MODIS, VIIRS, Terra-bridged or Fused with the MODIS share'
   return header(ctx, 'burning calendar') + cols + '\n' + ipNote(ip, unit) + lines.join('\n') + '\n'
 }
 
@@ -112,7 +112,7 @@ export function seriesCsv(ctx: ExportContext): string {
       s.provisional[i] ? 1 : 0, s.partial?.[i] || ipm === m ? 1 : 0, unit,
     ]))
   })
-  const cols = `# Columns: harmonized/lo*/hi*/modis_eq/modis_drift_corrected/viirs_cal in ${unit}; viirs_raw = uncalibrated VIIRS cell-days; *_count = accepted hotspot detections; source = stream carrying most weight; partial = month in progress (not used in statistics)`
+  const cols = `# Columns: harmonized/lo*/hi*/modis_eq/modis_drift_corrected/viirs_cal in ${unit}; viirs_raw = uncalibrated VIIRS cell-days; *_count = accepted hotspot detections; source = stream carrying most weight; partial = month in progress or outage month (not used in statistics)`
   return header(ctx, 'full monthly series') + cols + '\n' + ipNote(ip, unit) + lines.join('\n') + '\n'
 }
 

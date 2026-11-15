@@ -11,7 +11,7 @@
   import Term from './Term.svelte'
   import { briefLead } from './briefLead.svelte'
   import { addsFact } from './leadFacts'
-  import { goToSection, livePace, partOfMonth, HINT_KEY } from './livePace'
+  import { goToSection, livePace, HINT_KEY } from './livePace'
 
   let {
     a,
@@ -95,7 +95,7 @@
   })
   const analogLine = $derived(
     analogs ?? (analogParts
-      ? `${analogParts.year} so far most resembles ${analogParts.years}; ${analogParts.one ? 'that year' : 'those years'} went on to finish ${analogParts.ratios} normal for the rest of the year.`
+      ? `${analogParts.year} so far most resembles ${analogParts.years}; ${analogParts.one ? 'that year' : 'those years'} went on to finish ${analogParts.ratios} the typical rest of year.`
       : null),
   )
 
@@ -119,7 +119,7 @@
   const nowDate = $derived(new Date(live.now))
   const weekLine = $derived(
     pace && pace.ratio != null && pace.calibration !== 'none'
-      ? `This week: ${fmtRatio(pace.ratio)} the normal pace for ${partOfMonth(nowDate)}-${MONTHS_LONG[nowDate.getUTCMonth()]}`
+      ? `This week: ${fmtRatio(pace.ratio)} the normal pace for ${MONTHS_LONG[nowDate.getUTCMonth()]}`
       : null,
   )
 
@@ -225,7 +225,7 @@
       <div>
         <dt class="eyebrow">Trend</dt>
         <dd>{trendHead}</dd>
-        <dd class="sub">{#if trendSuppressed(a)}too little fire to measure one{:else}since {t.years[0]}{t.direction === 'none' ? '' : t.pValue < 0.05 ? ', likely real' : ', could be chance'}{/if}</dd>
+        <dd class="sub">{#if trendSuppressed(a)}too little fire to measure one{:else}since {t.years[0]}{t.direction === 'none' ? '' : t.pValue < 0.05 ? ', statistically significant' : ', not statistically significant'}{/if}</dd>
       </div>
       <div>
         <dt class="eyebrow">Record month</dt>

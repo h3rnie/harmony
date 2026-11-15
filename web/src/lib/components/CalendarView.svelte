@@ -30,7 +30,7 @@
   const MODES: { v: CalMode; label: string }[] = [
     { v: 'activity', label: 'Activity' },
     { v: 'anomaly', label: 'Compared with normal' },
-    { v: 'percentile', label: 'Rank among years' },
+    { v: 'percentile', label: 'Percentile among baseline years' },
     { v: 'uncertainty', label: 'Activity with confidence' },
   ]
   const sparse = $derived(isSparse(a))
@@ -91,7 +91,7 @@
   function labelFor(v: number | null, ratio: number | null, pct: number | null): string {
     if (v == null) return ''
     if (mode === 'activity' || mode === 'uncertainty') return fmtCell(v)
-    if (mode === 'anomaly') return ratio == null ? 'new' : ratio >= 10 ? String(Math.round(ratio)) : ratio.toFixed(1)
+    if (mode === 'anomaly') return ratio == null ? '—' : ratio >= 10 ? String(Math.round(ratio)) : ratio.toFixed(1)
     return pct == null ? '' : String(Math.round(pct))
   }
 

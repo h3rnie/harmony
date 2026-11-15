@@ -55,7 +55,7 @@
       <p class="unit"><strong>The unit — AFCD-M.</strong> One <em>active-fire cell-day</em> is a distinct 0.0125° sub-cell, local-solar day and overpass (day or night) with at least one accepted detection. Counting cell-days rather than pixels collapses the many 375 m VIIRS pixels of one fire toward MODIS-like units; VIIRS cell-days are then scaled to <em>MODIS-equivalent</em> (the “-M”).</p>
       <ol class="steps">
         <li><strong>Filter.</strong> MODIS confidence ≥ 30, VIIRS nominal/high, vegetation fires only; a static-source mask removes gas flares, volcanoes and industry. Science-quality rows supersede near-real-time; NRT months are flagged provisional.</li>
-        <li><strong>Common support.</strong> Detections become active-fire cell-days and are summed monthly into 0.05° cells aligned with the MODIS climate grid.</li>
+        <li><strong>Common support.</strong> Detections become active-fire cell-days and are summed monthly into 0.05° cells aligned with the MODIS Climate Modeling Grid (CMG).</li>
         <li><strong>Streams.</strong> MODIS Terra + Aqua; a Terra-only bridge for Nov 2000 – Jun 2002; VIIRS as the per-day mean over operating satellites (NOAA-20/21 first scaled to S-NPP; S-NPP ended on 2 Nov 2026). Satellite outages are handled from a daily availability table.</li>
         <li><strong>Strata.</strong> Biome × realm (RESOLVE Ecoregions 2017), so calibration respects how differently fires look in savanna, grassland, tropical forest and boreal forest.</li>
         <li><strong>Calibrate once, then freeze.</strong> A multiplicative VIIRS→MODIS ratio per stratum × day/night × month-of-year, fit on 2012–2021, with per-cell empirical-Bayes shrinkage.</li>
@@ -83,7 +83,7 @@
         {#if pett.length}
           <div class="vt-wrap"><table class="vt">
             <caption>Is there a step at the sensor change? Pettitt change-point test on the monthly global total; a small p at the event month means a seam</caption>
-            <thead><tr><th scope="col">Event</th><th scope="col">Raw counts: p, step (month found)</th><th scope="col">Harmonized: p, step (month found)</th></tr></thead>
+            <thead><tr><th scope="col">Event</th><th scope="col">Raw counts: p, step (month found)</th><th scope="col">Harmonized, switch series: p, step (month found)</th></tr></thead>
             <tbody>
               {#each pett as r (r.label)}
                 <tr><th scope="row">{r.label}</th><td class="num">{fmtP(r.n!.p)}, ×{Math.exp(r.n!.step_log).toFixed(2)} ({r.n!.change_month})</td><td class="num">{fmtP(r.h!.p)}, ×{Math.exp(r.h!.step_log).toFixed(2)} ({r.h!.change_month})</td></tr>

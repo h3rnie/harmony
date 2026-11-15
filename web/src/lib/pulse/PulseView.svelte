@@ -657,7 +657,7 @@
         {/if}
       {/if}
       {#if ringsOn}
-        <p class="small watchnote"><span class="ringkey" aria-hidden="true"></span>Rings: where fire is most unusual this month — hover for details, click to analyse.</p>
+        <p class="small watchnote"><span class="ringkey" aria-hidden="true"></span>Rings: where fire is most unusual in the watchlist month — hover for details, click to analyse.</p>
       {:else if watch && watchM != null && !still}
         <button class="linkbtn small" onclick={showUnusual}>Where is fire unusual in {MONTHS_LONG[moyOfM(watchM)]} {yearOfM(watchM)}? →</button>
       {/if}

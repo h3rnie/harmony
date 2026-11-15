@@ -177,7 +177,7 @@
     {/if}
     {#if shown.caveat}<p class="caveat">{shown.caveat}</p>{/if}
   </div>
-  {#if ai && shown.level}<p class="small muted lvl">Level: {LEVEL_LABEL[shown.level] ?? shown.level}</p>{/if}
+  {#if ai && shown.level && dossier?.month.ratio != null}<p class="small muted lvl">Level: {LEVEL_LABEL[shown.level] ?? shown.level}</p>{/if}
   {#if failed}
     <p class="small err" role="status">AI brief unavailable ({REASONS[failed] ?? 'service error'}); showing the rule-based brief instead.</p>
   {:else if available === false && !session.isMock}

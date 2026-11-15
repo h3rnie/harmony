@@ -41,7 +41,7 @@
   const sentence = $derived(
     suppressed ? `Too little fire here to measure a trend${isSparse(a) ? '' : ' with any confidence'}.` : t.direction === 'none' || !Number.isFinite(t.slopePctPerYear)
       ? `No clear trend since ${t.years[0]}: the ups and downs from year to year are larger than any steady change.`
-      : `Burning has ${t.direction === 'up' ? 'risen' : 'fallen'} about ${pctText} % a year since ${t.years[0]} (${t.pValue < 0.05 ? 'likely a real trend' : 'could be chance'}).`,
+      : `Burning has ${t.direction === 'up' ? 'risen' : 'fallen'} about ${pctText} % a year since ${t.years[0]} (${t.pValue < 0.05 ? 'statistically significant' : 'not statistically significant'}; percent of an average year’s total).`,
   )
   const answer = $derived(
     suppressed ? '' : t.direction === 'none' ? 'Not clearly.' : t.direction === 'up' ? (t.pValue < 0.05 ? 'Yes.' : 'Possibly.') : 'No.',

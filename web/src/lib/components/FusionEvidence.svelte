@@ -63,10 +63,10 @@
       ? `At 1° scale the fused record (${f.toFixed(3)}) beats Aqua alone (${aq.toFixed(3)}) and VIIRS alone (${vi.toFixed(3)})`
       : `At 1° scale the fused record (${f.toFixed(3)}) does not beat both single streams (Aqua ${aq.toFixed(3)}, VIIRS ${vi.toFixed(3)})`
     const avg = eq <= f
-      ? `, but a plain average does as well (${eq.toFixed(3)}): a gain of the measured weights over a simple average is not demonstrated.`
+      ? `, but a plain average does ${eq < f ? "slightly better" : "as well"} (${eq.toFixed(3)}): a gain of the measured weights over a simple average is not demonstrated.`
       : `, and a plain average is slightly worse (${eq.toFixed(3)}).`
     const sBest = CANDS.reduce((b, c) => (err(strat, c[0]) < err(strat, b[0]) ? c : b))
-    const second = sBest[0] === 'fused' ? '' : ` For whole strata, ${sBest[1].toLowerCase().replace(' (the old switch)', '')} is best (${err(strat, sBest[0]).toFixed(3)}).`
+    const second = sBest[0] === 'fused' ? '' : ` For whole strata, ${sBest[1].replace(' (the old switch)', '')} is best (${err(strat, sBest[0]).toFixed(3)}).`
     return first + avg + second
   })
   const era = $derived(fu?.modis_weight_by_era ?? null)

@@ -34,7 +34,7 @@
     if (noSkill) return `For ${span}, expect about the seasonal normal: Harmony cannot forecast this area better than its usual pattern.`
     const sumM = o.median.reduce((p, q) => p + q, 0), sumC = o.climatology.reduce((p, q) => p + q, 0)
     const r = sumC > 0 ? sumM / sumC : null
-    const word = r == null ? 'similar to' : r >= 1.5 ? 'well above' : r >= 1.15 ? 'above' : r > 0.87 ? 'close to' : r > 0.67 ? 'below' : 'well below'
+    const word = r == null ? 'similar to' : r >= 1.5 ? 'well above' : r >= 1.2 ? 'above' : r > 0.83 ? 'close to' : r > 0.67 ? 'below' : 'well below'
     return `${span} is likely to be ${word} normal${r == null ? '' : ` (about ${fmtRatio(r)})`}, if the current pattern carries on.`
   })
   const statement = $derived(
@@ -57,7 +57,7 @@
         {:else}
           <strong class="num">{fmtNum(o.median[i])} <span class="nl"><Term id="afcdm" /></span></strong>
         {/if}
-        <span class="small muted">{#if o.hi80[i] > 0}{#if i === 0}<Term id="likely">Likely range</Term>{:else}Likely range{/if} <span class="num">{fmtNum(o.lo80[i])}–{fmtNum(o.hi80[i])}</span>{:else}No detections expected{/if}</span>
+        <span class="small muted">{#if o.hi80[i] > 0}Expected range (80 %) <span class="num">{fmtNum(o.lo80[i])}–{fmtNum(o.hi80[i])}</span>{:else}No detections expected{/if}</span>
       </div>
     {/each}
   </div>
@@ -84,7 +84,7 @@
   </div>
   <ul class="keys">
     <li><span class="sw past-sw"></span>Recent months</li>
-    <li><span class="sw o-sw"></span>Outlook, with likely range</li>
+    <li><span class="sw o-sw"></span>Outlook, with expected range (80 %)</li>
     <li><span class="sw clim-sw"></span>Normal (median)</li>
   </ul>
   <details class="more">

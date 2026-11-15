@@ -57,7 +57,7 @@
     if (isSparse(a)) return `Too little fire here to say whether ${yt.year} is unusual; the charts show what was detected.`
     if (yt.ratio == null) return `${yt.year} so far: no normal to compare with for January to ${MONTHS_LONG[yt.throughMonth - 1]}.`
     const r = yt.ratio
-    const word = r >= 1.5 ? 'well above' : r >= 1.15 ? 'above' : r > 0.87 ? 'close to' : r > 0.67 ? 'below' : 'well below'
+    const word = r >= 1.5 ? 'well above' : r >= 1.2 ? 'above' : r > 0.83 ? 'close to' : r > 0.67 ? 'below' : 'well below'
     return `${yt.year} so far is ${word} normal: ${fmtRatio(r)} the usual activity for January to ${MONTHS_LONG[yt.throughMonth - 1]}, the ${rankFromEnds(yt.rank, yt.of)} start to a year in ${yt.of}.`
   })
 

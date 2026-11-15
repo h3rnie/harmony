@@ -1,6 +1,6 @@
 # `validation.json` (v1) — calibration validation, written by `pipeline/harmony_pipeline/calibrate.py`
 
-Served at `/data/validation.json`. Every number is in AFCD units (active-fire cell-days). Months use
+Served at `/data/validation.json`. Activity values (`pred`, `obs`, `expected`, size classes) are in AFCD (active-fire cell-days); `nmod` and `nvii` are detection counts, `shift_h` is hours, and ratios, shares, r and p are dimensionless. Months use
 the contract's index `m = (year-2000)*12 + month-1`. Floats are rounded to 4 decimals; `null` = not computable.
 
 ## Top level
@@ -25,13 +25,13 @@ the contract's index `m = (year-2000)*12 + month-1`. Floats are rounded to 4 dec
 | `noaa_scale_guard` | {min_sum, max_month_share, range, note} | the guard a stratum or biome NOAA factor must pass: both sums ≥ `min_sum`, no single month > `max_month_share` of either sum, factor inside `range` (else the next level is used) |
 | `modis_union_share` | {terra: [d, n], aqua: [d, n]} | share of Terra∪Aqua cell-days seen by Terra and by Aqua (2003–2011 months with both satellites every day); the union-aware MODIS coverage uses them (docs/METHOD.md section 4) |
 | `land_screen` | object | the near-real-time land rule (`screen.py`): `rule`, `source`, `buffer_cells`, `buffer_deg`, `water_cells_with_detections`, `nrt_rows_excluded`, `nrt_rows_excluded_by_satellite_month` [{satellite, month, rows}], `sp_candidate_rows_in_water_cells_kept` |
-| `bursts` | object | the burst screen: `rule`, `action`, `k`, `min_suspect`, `by_satellite` {sat: {days, median_suspect, p99_suspect, threshold}}, `flagged` [Burst], `standard_quality_top` (the three highest science-quality satellite-days per satellite, report only), `n_flagged`, `n_excluded_days`, `rows_excluded`, `rows_excluded_beyond_land_rule` |
+| `bursts` | object | the burst screen: `rule`, `action`, `k`, `min_suspect`, `by_satellite` {sat: {days, median_suspect, p99_suspect, threshold}}, `flagged` [Burst], `standard_quality_top` (the three highest standard-quality satellite-days per satellite, report only), `n_flagged`, `n_excluded_days`, `rows_excluded`, `rows_excluded_beyond_land_rule` |
 
 **Burst** = `{ satellite, date (UTC), quality (nrt | sp), detections (candidate detections that day), suspect,
 water, fire_free_land_unconfirmed, fire_free_land, share_suspect, satellite_median, threshold, robust_z,
 action: "excluded" | "reported" }`. Suspect = candidate detections in water cells, plus those in historically
 fire-free land cells that no other satellite confirms; near-real-time burst days are excluded from `used`,
-science-quality ones only reported.
+standard-quality ones only reported.
 
 ## Types
 **Scales** = `{ "stratum_month": Block, "cell1deg_month": Block }`. A unit is one stratum (stratum scale) or one
@@ -55,7 +55,7 @@ science-quality ones only reported.
 80 % / 95 % interval `H·exp(∓z·ci_scale·σ_log)`, and the 80 % share before `ci_scale`.
 
 **YearRatio** = `{ year, nmod, nvii, count_ratio = nvii/nmod, afcd_ratio_raw = Σv/Σmeq, harmonized_ratio = Σkv/Σmeq }`
-(from the tiles' own values; `count_ratio` rises from about 4 to about 7-8 in 2018-2019 as NOAA-20 joins S-NPP, `harmonized_ratio` should stay ≈ 1). The first year (2012, VIIRS starts in February) and the last year (incomplete: 2026 runs to mid-November) are not comparable with the full years. From 2025 `harmonized_ratio` rises above 1 because MODIS drifts, not because the calibration moves (docs/METHOD.md section 10).
+(from the tiles' own values; `count_ratio` rises from about 4 to about 7-8 in 2018-2019 as NOAA-20 joins S-NPP and to 11.6-12.9 in 2023-2025 as NOAA-21 joins, `harmonized_ratio` should stay ≈ 1). The first year (2012, VIIRS starts in February) and the last year (incomplete: 2026 runs to mid-November) are not comparable with the full years. From 2025 `harmonized_ratio` rises above 1 (1.07 in 2025) while MODIS reads low against VIIRS as its overpass moves (docs/METHOD.md section 10); the data cannot separate MODIS drift from a real change in the hour of burning or a change on the VIIRS side.
 
 **OOT** = `{ year, pred, obs, bias_pct, r_log1p_stratum_month, months }`.
 

@@ -38,7 +38,7 @@
 {#if doc && m != null && items.length}
   <section class="watch" aria-labelledby="watch-h">
     <div class="wh">
-      <h3 id="watch-h">Where is fire unusual this month?</h3>
+      <h3 id="watch-h">Where is fire most unusual?</h3>
       <p class="when">{monthLong(m)}{watchInProgress(doc) ? ' · month in progress' : win?.provisional ? ' · provisional' : ''}</p>
     </div>
     <ol class="list">
@@ -57,7 +57,7 @@
     {/if}
     <p class="foot">
       <button class="link" onclick={globe}>See all on the globe <span aria-hidden="true">→</span></button>
-      <span class="cav">Opening one analyses the wider outline around it, so its ratio is lower. {watchInProgress(doc) ? `The month is in progress, so each is compared at its pace so far and not ranked` : `Ranked against ${nYears} years`}{win?.provisional ? '; recent months are provisional and may include unscreened static heat sources' : ''}.</span>
+      <span class="cav">Opening one analyses the wider outline around it, so its ratio is lower; the list and the globe also use the hard-switch record without the orbit-drift correction. {watchInProgress(doc) ? `The month is in progress, so each is compared at its pace so far and not ranked` : `Ranked against ${nYears} years`}{win?.provisional ? '; recent months are provisional and may include unscreened static heat sources' : ''}.</span>
     </p>
   </section>
 {/if}

@@ -158,7 +158,7 @@ Numbers that exist in the repository's own test outputs, measured on the develop
 
 | Measure | Value | Source |
 | --- | --- | --- |
-| Kernel unit tests | 44 pass in 0.74 s (debug build) | `cargo test -p harmony-core` |
+| Kernel unit tests | 51 pass in 0.8 s (debug build) | `cargo test -p harmony-core` |
 | Analysis of a small area (300 cells, 2025 record), WASM in Node | 5.4 ms, 32 KB of JSON | `scripts/kernel-smoke.mjs` |
 | Large area: rasterise and list tiles | 7.4 ms for 167 tiles | same |
 | Large area: ingest 2,114,000 rows | 44 ms | same |
@@ -174,9 +174,9 @@ Update from `data/dist/tiles/index.json`, `points/index.json`, `meta.json` and f
 
 | Item | Value |
 | --- | --- |
-| L0 (0.05 degree, 2.5-degree tiles) | 3,880 tiles, 418.6 MB, 75,228,941 rows; largest tile 1.90 MB |
-| L1 (0.25 degree, 10-degree tiles) | 435 tiles, 128.8 MB, 17,256,347 rows; largest tile 3.57 MB |
-| L2 (1 degree, 30-degree tiles) | 70 tiles, 33.8 MB, 3,951,906 rows; largest tile 3.12 MB |
+| L0 (0.05 degree, 2.5-degree tiles) | 3,781 tiles, 418.6 MB, 75,225,718 rows; largest tile 1.90 MB |
+| L1 (0.25 degree, 10-degree tiles) | 406 tiles, 128.8 MB, 17,255,434 rows; largest tile 3.57 MB |
+| L2 (1 degree, 30-degree tiles) | 68 tiles, 33.8 MB, 3,951,467 rows; largest tile 3.11 MB |
 | Tiles in all | 581.2 MB |
 | Hotspot archive | 489 tile directories, 8,290 files, 11.37 GB, 658,009,224 rows |
 | Overview | 7.1 MB (27 yearly atlases, climatology, land mask, fire clock, trend, `meta.json`) |
@@ -203,8 +203,8 @@ No COOP/COEP headers are needed. The data is rebuilt offline ([OPERATIONS.md](OP
 - NOAA-21 enters from 2023-03 (standard-quality, via the API), not 2024-01-17; near-real-time NOAA-21 starts 2024-01-17.
 - Strata are biome x realm only; the MCD12C1 cropland flag was not implemented.
 - The per-AOI byte budget is 16 MiB, not 8 MB; L2 is stored as 30-degree tiles (builds before the 2026-11-15 refresh held it as one 360-degree tile; the reader takes tile size from `meta.json`).
-- The calibration is a ratio of sums (the quasi-Poisson maximum-likelihood estimate), not a statsmodels negative-binomial fit; `statsmodels`, `scipy`, `pyarrow`, `httpx` and `python-dotenv` are declared in `pyproject.toml` but not imported by the pipeline code.
+- The calibration is a ratio of sums (the Poisson maximum-likelihood estimate), not a statsmodels negative-binomial fit; `statsmodels`, `scipy`, `pyarrow`, `httpx` and `python-dotenv` are declared in `pyproject.toml` but not imported by the pipeline code.
 - There is no `harmony update` command and no `schema/tile-schema.json`; the top-up is `fetch-api` then `all`, and the schema is `schema/data-contract.md`.
-- The default record is a per-stratum, per-overpass fusion with drift correction and conformal intervals, not a hard switch at 2023-01; the switch is an option. The pipeline gained the `harmonize` and `watch` stages.
+- The default record is a fusion per stratum and day|night with drift correction and conformal intervals, not a hard switch at 2023-01; the switch is an option. The pipeline gained the `harmonize` and `watch` stages.
 - The product is one guided scroll ordered by questions, with a glossary, a Global pulse with four modes, a watchlist, sonification, an uncertainty-aware calendar mode, a live proxy with a Now card, an AI brief and Ask Harmony (Anthropic primary, OpenRouter adapter), an in-browser ONNX challenger and exports with a range choice; none of this was in the plan.
 - The overview atlases, the trend map and the watchlist are built from the L1 tiles with `meq` before the switch month and `kv` from it, in Python, without drift correction and without fusion; the kernel fuses by default and falls back to MODIS when VIIRS has no coverage. The two agree wherever one stream alone is served; they can differ where the kernel blends, most from 2020 on.

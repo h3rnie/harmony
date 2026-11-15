@@ -30,7 +30,7 @@
 
 <section class="chapter" id="how" aria-labelledby="how-h">
   <h2 id="how-h" class="q-title">How we know</h2>
-  <p class="lead">Two generations of satellites see fire differently. This is how Harmony joins them into one record, and how well that holds up.</p>
+  <p class="lead">Two generations of satellite sensors see fire differently. This is how Harmony joins them into one record, and how well that holds up.</p>
 
   <SeamView {a} />
   <!-- Global evidence (independent of the selected area); a passed snippet overrides the default subsection. -->

@@ -190,7 +190,7 @@
 
 <section class="seam" id="seam" aria-labelledby="seam-h">
   <div class="head">
-    <h3 id="seam-h" class="sub-title">Why two satellites had to be joined</h3>
+    <h3 id="seam-h" class="sub-title">Why two sensors had to be joined</h3>
     <div class="seg toggle" role="radiogroup" aria-label="Series shown">
       <button role="radio" aria-checked={!harmonized} onclick={() => (harmonized = false)}>Raw sensors</button>
       <button role="radio" aria-checked={harmonized} onclick={() => (harmonized = true)}>Harmonized</button>

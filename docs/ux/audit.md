@@ -206,7 +206,7 @@ All three keep the map on the left and the answer at the top. They differ in how
 #### Option A: Guided single scroll, question titles, sticky section index (recommended)
 
 ```
-┌ H HARMONY │ Two satellites. One fire record.        ● Record 15 Nov 2026 · live 3 h  [Global pulse] Method About ◐ ┐
+┌ H HARMONY │ Two sensors. One fire record.        ● Record 15 Nov 2026 · live 3 h  [Global pulse] Method About ◐ ┐
 ├───────────── map 42 % ─────────────────┬───────────────────────── reading column 58 % (max 72ch text) ──────────────┤
 │ [Stories ▾] [Draw area ▾] [⌖] [⇪]      │ GRAN CHACO · 680,639 km²                              [Month: Sep 2020 ▾] │
 │                                        │ ┌──────────────────────────────────────────────────────────────────────┐ │
@@ -344,7 +344,7 @@ helping a newcomer decide.
 | **Now card** (live) | **Move + retitle** | After the outlook as "Right now (last 7 days)", with its own date stamp. Its hero shrinks to stat size (22.5 px) so it never competes with the answer. When the focus month is the latest month, show one line in the answer card instead: "This week: 1.6× the normal pace →". |
 | Now: Refresh, Live hotspots CSV | Keep, move | Refresh stays. The CSV moves to Export. |
 | **02 Calendar** | Keep as is (signature) | Title "When does it burn?". The legend's era-mark key moves into a "Reading the calendar" disclosure. |
-| **03 The 2012 seam** | **Move** | To open the "How we know" chapter. Title "Why two satellites had to be joined". Keep the toggle and the 4 figures. |
+| **03 The 2012 seam** | **Move** | To open the "How we know" chapter. Title "Why two sensors had to be joined". Keep the toggle and the 4 figures. |
 | **Method lab** | **Move + collapse** (already collapsed) | Inside "How we know", after the seam. |
 | **04 Season + year to date** | Keep, retitle | "Is this year unusual?". Keep both charts side by side. The "Compare with" select stays in context. |
 | **05 Trend** | Simplify, retitle | "Is it getting worse?". Lead: "Burning has fallen about 2 % a year since 2001 (likely a real trend)". The statistics move to details. |
@@ -377,7 +377,7 @@ helping a newcomer decide.
 | 01 · This month vs normal / "September 2020" | **How does September 2020 compare with normal?** (the month stays the visual title) |
 | Live · last 7 days / "Now" | **What is burning right now?** (last 7 days, provisional) |
 | 02 · Burning calendar / "Every month since 2000" | **When does this area burn?** |
-| 03 · Why harmonize? / "The 2012 seam" | **Why two satellites had to be joined** (in "How we know") |
+| 03 · Why harmonize? / "The 2012 seam" | **Why two sensors had to be joined** (in "How we know") |
 | Method lab / "Would machine learning do better?" | **Would machine learning do better?** (keep; it is already a question) |
 | 04 · Season & YTD / "How 2026 is unfolding" | **Is this year unusual?** |
 | 05 · Trend / "Falling" | **Is burning increasing or decreasing?** (the answer "Falling about 2 % a year" becomes the lead) |

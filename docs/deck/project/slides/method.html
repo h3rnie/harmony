@@ -2,7 +2,7 @@
 <h2>Harmony counts burning places per day, calibrates the sensors, then fuses them</h2>
 <div class="row" style="gap:96px;align-items:flex-start">
 <div class="points" style="width:904px;gap:44px">
-<div class="pt" style="--i:0"><h3>Count cell-days, not pixels</h3><p class="body">A 1.4 km cell that burned that day counts once.</p></div>
+<div class="pt" style="--i:0"><h3>Count cell-days, not pixels</h3><p class="body">A 1.4 km cell with fire counts once per day and once per night.</p></div>
 <div class="pt" style="--i:1"><h3>Calibrate where both flew</h3><p class="body">By biome, region, time of day and month.</p></div>
 <div class="pt" style="--i:2"><h3>Fuse by measured error</h3><p class="body">Every satellite contributes. Each month has a range.</p></div>
 </div>
@@ -29,5 +29,5 @@
 </div>
 <p class="src">Dashed square: one 1.4 km cell. MODIS 1 km and VIIRS 375 m pixels drawn to scale.</p>
 <p class="pg">4 / 7</p>
-<aside>Three steps. First, change the unit. Instead of counting pixels, count cell-days: a 1.4 kilometre cell that had a fire on a given day or night counts once. On the right, the same fire is one MODIS hotspot or six VIIRS hotspots, and both become one cell-day. That removes most of the gap. Second, calibrate what is left, in the years when both sensors flew, with a simple ratio for each biome, region, time of day and month, and correct MODIS for the drift of its own orbit. Third, do not switch from one sensor to the other. Each sensor’s error is estimated from the data by triple collocation, and every month is a weighted combination of all the satellites flying, with a range calibrated on held-out years. When MODIS and Suomi NPP retire, the record continues on what is left. The calibration follows the approach of published fire-emissions datasets; the fusion and the drift correction go beyond it.</aside>
+<aside>Three steps. First, change the unit. Instead of counting pixels, count cell-days: a 1.4 kilometre cell that had a fire on a given day or night counts once. On the right, the same fire is one MODIS hotspot or six VIIRS hotspots, and both become one cell-day. That cuts the gap to under three times. Second, calibrate what is left, in the years when both sensors flew, with a simple ratio for each biome, region, time of day and month, and correct MODIS for the drift of its own orbit. Third, do not switch from one sensor to the other. Each sensor’s error is estimated from the data by triple collocation, and every month is a weighted combination of the MODIS record and the VIIRS record, which averages the VIIRS satellites flying, with a range calibrated on held-out years. When MODIS and Suomi NPP retire, the record continues on what is left. The calibration follows the approach of published fire-emissions datasets; the fusion and the drift correction go beyond it.</aside>
 </section>

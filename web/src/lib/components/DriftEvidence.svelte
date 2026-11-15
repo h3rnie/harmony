@@ -154,7 +154,7 @@
       {#if aDay && aNight}Aqua’s day detections were {ratioWords(aDay.ratio)} (<span class="num">{f2(aDay.ratio)}</span>), its night detections {ratioWords(aNight.ratio)} (<span class="num">{f2(aNight.ratio)}</span>).{/if}
     </p>
     <p class="body">
-      The cause is <Term id="drift">orbit drift</Term>. Terra’s <Term id="overpasstime">overpass</Term> moved
+      The leading explanation is <Term id="drift">orbit drift</Term>. Terra’s <Term id="overpasstime">overpass</Term> moved
       {#if terraShift != null}about <span class="num">{Math.abs(terraShift).toFixed(1)}</span> h {terraShift < 0 ? 'earlier' : 'later'} by {headYear}{/if}{#if explained?.kind === 'global'};
       in {explained.over90} of {explained.of} biome groups that shift alone explains over 90 % of the change in its daytime ratio since 2020{:else if explained?.kind === 'group'};
       here it explains <span class="num">{Math.round(explained.share * 100)} %</span> of the change in its daytime ratio since 2020{/if}.
@@ -166,7 +166,7 @@
         <figure class="panel" style:width={`${panelW}px`}>
           <figcaption class="pt"><strong>{s.title}</strong> <span class="muted">{s.pass}, observed ÷ expected</span></figcaption>
           <svg width={panelW} height={H} role="img"
-            aria-label={`${s.title}, observed over expected detections by year, ${where}. ${headYear}: day ${fmtRow(at(s.day, headYear))}, night ${fmtRow(at(s.night, headYear))}. Placebo years ${ref[0]}–${ref[1]} near 1.`}
+            aria-label={`${s.title}, observed over expected cell-days by year, ${where}. ${headYear}: day ${fmtRow(at(s.day, headYear))}, night ${fmtRow(at(s.night, headYear))}. Placebo years ${ref[0]}–${ref[1]} near 1.`}
             onpointermove={(e) => onMove(e, s.id)} onpointerleave={() => (hover = null)}>
             <rect class="placebo" x={Math.max(M.l, x(ref[0] - 0.5))} y={M.t - 14} width={x(ref[1] + 0.5) - Math.max(M.l, x(ref[0] - 0.5))} height={H - M.b - M.t + 14} />
             <text class="pl" x={Math.max(M.l, x(ref[0] - 0.5)) + 4} y={M.t - 3}>before the drift (placebo)</text>
@@ -243,7 +243,7 @@
     {#if showTable}
       <div class="tw">
         <table class="dt">
-          <caption class="small muted">Observed ÷ expected detections (95 % interval), {where}; overpass shift in hours, all land, daytime.</caption>
+          <caption class="small muted">Observed ÷ expected cell-days (95 % interval), {where}; overpass shift in hours, all land, daytime.</caption>
           <thead><tr><th scope="col">Year</th><th scope="col">Terra day</th><th scope="col">Terra night</th><th scope="col">Aqua day</th><th scope="col">Aqua night</th><th scope="col">Terra shift</th><th scope="col">Aqua shift</th></tr></thead>
           <tbody>
             {#each years as yr (yr)}
@@ -261,7 +261,7 @@
 
     <p class="limit"><strong>What this cannot separate.</strong> A real change in the hour fires burn (crop-residue burning moved earlier or later in the day, say), a change in fire sizes, or a change on the VIIRS side would look the same as drift. The fused record divides MODIS by the whole ratio and counts half of that correction as uncertain, so MODIS weighs less as the drift grows.</p>
     {#if blindLine}
-      <p class="evidence"><strong>Independent check.</strong> NOAA-21 never entered any calibration fit. On its own it lands within <span class="num">{blindLine.n20.toFixed(1)} %</span> of calibrated NOAA-20 in every year {blindLine.y0}–{blindLine.y1}, yet runs {blindLine.late.join(' and ')} against raw MODIS: the drift, seen by a satellite the calibration never used. Against drift-corrected MODIS it is within <span class="num">{blindLine.dc.toFixed(1)} %</span> (a consistency check, not proof: the correction itself uses the VIIRS composite).</p>
+      <p class="evidence"><strong>Independent check.</strong> NOAA-21 never entered any fit against MODIS (it is only scaled to S-NPP). On its own it lands within <span class="num">{blindLine.n20.toFixed(1)} %</span> of calibrated NOAA-20 in every year {blindLine.y0}–{blindLine.y1}, yet runs {blindLine.late.join(' and ')} against raw MODIS: the drift, seen by a satellite the calibration never used. Against drift-corrected MODIS it is within <span class="num">{blindLine.dc.toFixed(1)} %</span> (a consistency check, not proof: the correction itself uses the VIIRS composite).</p>
     {/if}
   </section>
 {/if}

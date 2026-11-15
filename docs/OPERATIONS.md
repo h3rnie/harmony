@@ -32,7 +32,7 @@ Update from `data/work/refresh_run.log`, `data/work/global_run.log`, the logs in
 
 | Item | First full run (all years) | Refresh run (2026 and NOAA-21 added) | Fix rebuild (2026 re-normalized, then `all --from availability --force`) | Review rebuild (stages by name with `--force`; points for 2026 only) |
 | --- | --- | --- | --- | --- |
-| normalize | 4,933 s | 295 s (only changed sensor-years re-read) | 96 s (four sensors, 2026 only) | not re-run |
+| normalize | 4,933 s | 295 s (only changed sensor-years re-read) | 96 s (four product streams, 2026 only) | not re-run |
 | availability / static_mask / afcd | 8 s / 111 s / 764 s | 3 s / 24 s / 217 s | 2 s / 25 s / 239 s | 3 s / not re-run / 218 s |
 | screen | not in that run | not in that run | not in that run | 385 s (land raster 49 s, cached afterwards) |
 | strata / calibrate | 268 s / 104 s | 45 s / 87 s | 119 s / 83 s | 46 s / 72 s |
@@ -95,7 +95,7 @@ uv run python -m harmony_pipeline.cli verify
 
 `all --from <stage>` starts at a later stage; `--force` recomputes a stage even when it looks up to date; `normalize` accepts `--sensors` and `--years` to restrict what it re-reads. `calibrate` rewrites `validation.json`, so always run `harmonize` after it (it is in `all`), otherwise the file lacks the harmonization tables and `meta.json` lacks the error model.
 
-After the run, check `data/work/verify.json` (`ok` true for every check), `data/dist/meta.json` (`data_through`, `generated`, the `provisional` array and the last values of `cov_modis` and `cov_viirs`) and `data/dist/watch.json` (`month`: the latest month with at least 0.9 day coverage, so the month in progress is skipped), and `data/work/screen.json` (`bursts.flagged`: near-real-time burst days that were excluded, with their counts; `bursts.standard_quality_top`: the highest science-quality satellite-days, reported only). Two checks are worth doing by hand after a top-up that adds near-real-time data: that the newest months have VIIRS coverage (a month with `cov_viirs` near 0 means rows were dropped; see Troubleshooting) and that `normalize_stats/*.json` `nrt_superseded` is plausible for the sensor-years touched. The web app reads the new files directly; `Cache-Control: no-cache` is set for `/data` in the dev server, and a static host should do the same for `meta.json`, `watch.json` and the indexes.
+After the run, check `data/work/verify.json` (`ok` true for every check), `data/dist/meta.json` (`data_through`, `generated`, the `provisional` array and the last values of `cov_modis` and `cov_viirs`) and `data/dist/watch.json` (`month`: the latest month with at least 0.9 day coverage, so the month in progress is skipped), and `data/work/screen.json` (`bursts.flagged`: near-real-time burst days that were excluded, with their counts; `bursts.standard_quality_top`: the highest standard-quality satellite-days, reported only). Two checks are worth doing by hand after a top-up that adds near-real-time data: that the newest months have VIIRS coverage (a month with `cov_viirs` near 0 means rows were dropped; see Troubleshooting) and that `normalize_stats/*.json` `nrt_superseded` is plausible for the sensor-years touched. The web app reads the new files directly; `Cache-Control: no-cache` is set for `/data` in the dev server, and a static host should do the same for `meta.json`, `watch.json` and the indexes.
 
 The calibration is refitted at every rebuild on the fixed 2012-02 to 2021-12 window, and `harmonize` re-estimates the error model, the drift ratios and the conformal multipliers. New data does not enter the calibration fit, but the static mask and the availability table are recomputed over all data, so coefficients can move slightly between builds. Compare `data/dist/validation.json` before and after a refresh.
 
@@ -107,7 +107,7 @@ A row counts as standard only if its FIRMS `version` is purely numeric (`2`, `61
 
 Standard data lag the present by months (Table O1: on 2026-11-15, about 2.5 months for MODIS and 3.5 for VIIRS), so the latest three to four months stay provisional. Standard processing also adds the `type` field that NRT lacks; NRT rows get the static mask, the land rule (no NRT row in a 0.05° cell more than one cell from mapped land) and the burst screen instead (`screen.py`, METHOD.md section 2).
 
-### At the turn of a year, and when a sensor ends
+### At the turn of a year, and when a satellite or sensor ends
 
 - When FIRMS publishes the bulk country files for a new year, run `fetch-country` (it downloads every file in the FIRMS index with the configured prefixes), then raise the last bulk year of each sensor in `config.SENSORS` (the fourth field; 2025 today). `normalize` reads bulk years from those ranges, and `fetch-api` starts at the year after. This is a code edit.
 - S-NPP stopped on 2026-11-02 (`config.OPERATING`, and an end date in `fetch_api.END`). MODIS is expected to end around 2027: nothing needs to change at the end, because availability is detected from the daily counts (days with no data are marked unavailable), but then set the end date of Terra and Aqua in `config.OPERATING`. The kernel's fusion falls back to VIIRS when MODIS has no coverage, so after MODIS ends the record is VIIRS alone with the two-satellite error row; check the MODIS weight chart and the drift table in the app. NOAA-20 and NOAA-21 then carry the record.
@@ -144,11 +144,11 @@ Set in `.env.local`; defaults apply when empty. Source: `web/server/ai/config.ts
 | `AI_MODEL` (alias `BRIEF_MODEL`) | a model id | Overrides the model for the primary provider; must match `[A-Za-z0-9][A-Za-z0-9._:/-]{0,79}`. |
 | `AI_FALLBACK`, `AI_FALLBACK_MODEL` | `openrouter` or `anthropic`; a model id | Used only after an outage, a 5xx or a 429 and one retry on the primary (a stream cut before its stop reason counts as transient); must be a different, configured provider. |
 | `AI_CACHE_TTL` | `5m` (default), `1h` | Lifetime of the prompt-cache breakpoints. |
-| `OPENROUTER_REFERER`, `OPENROUTER_BASE_URL` | URL | Optional; the second is a test hook for a mock server. |
+| `OPENROUTER_REFERER`, `OPENROUTER_BASE_URL` | URL | Optional; the second is a test hook for a mock server and is ignored in production. |
 
-Check what the server resolved: `curl http://localhost:5173/api/brief` returns provider, model, profile, effort, fallback, `available`, `ask`, a problem code if any, and token and cache counters (a `curl` call has no `Origin` header, so it passes the same-origin check; a call from a browser page on another site gets 403). With no key the answer is `available: false`; the app then shows the rule-based brief and hides Ask Harmony. Restart is not needed for an environment change, but the status call is the way to confirm it.
+Check what the server resolved: `curl http://localhost:5173/api/brief` returns `available`, `ask`, `provider`, `model`, `profile` and `capReached`; effort, fallback and the token and cache counters go to the server log only (a `curl` call has no `Origin` header, so it passes the same-origin check; a call from a browser page on another site gets 403). With no key the answer is `available: false`; the app then shows the rule-based brief and hides Ask Harmony. Restart is not needed for an environment change, but the status call is the way to confirm it.
 
-Tests: `node scripts/brief-smoke.mjs --offline` (no network, no spend; 118 checks on 2026-11-15) covers request shapes, retry, fallback, output validation and numeric grounding, truncated streams, rate limits and origin checks against mock providers. `node scripts/brief-smoke.mjs --url http://localhost:5196` (dev server started with `pnpm --dir web dev --port 5196 --strictPort`) makes real calls, a fraction of a cent each; `--real-openrouter` makes one real OpenRouter call if the key is set. Known limitation: the dossier sent to the model has no unit field, so under the VIIRS lens the prompt still calls values MODIS-equivalent (METHOD.md section 20).
+Tests: `node scripts/brief-smoke.mjs --offline` (no network, no spend; 118 checks on 2026-11-15) covers request shapes, retry, fallback, output validation and numeric grounding, truncated streams, rate limits and origin checks against mock providers. `node scripts/brief-smoke.mjs --url http://localhost:5196` (dev server started with `pnpm --dir web dev --port 5196 --strictPort`) makes real calls, a fraction of a cent each; `--real-openrouter` makes one real OpenRouter call if the key is set. The dossier carries a `unit` field (AFCD-M or AFCD-V), so the brief follows the units lens.
 
 ## Rebuilding the ML model
 
@@ -176,7 +176,7 @@ pnpm --dir web check                # svelte-check and the Node type check
 
 | Command | Checks | Result on 2026-11-15 |
 | --- | --- | --- |
-| `cargo test -p harmony-core` (with `export PATH="$HOME/.cargo/bin:$PATH"`) | Kernel unit tests | 44 passed |
+| `cargo test -p harmony-core` (with `export PATH="$HOME/.cargo/bin:$PATH"`) | Kernel unit tests | 51 passed |
 | `node scripts/kernel-smoke.mjs` | Built WASM kernel on synthetic tiles | passed |
 | `node scripts/sound-test.mjs` | Sonification mapping and transcripts | 37 checks passed |
 | `node scripts/live-smoke.mjs --unit` | Live proxy units, pace computation, origin checks | 63 checks passed |

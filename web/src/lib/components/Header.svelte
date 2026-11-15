@@ -33,7 +33,7 @@
     <!-- Always rendered with a reserved width, so the header does not shift when the dates arrive. -->
     {#if !through}<span class="chip fresh placeholder" aria-hidden="true"></span>
     {:else}
-      <span class="chip fresh" title={liveAge ? 'Science record (calendar) through this date · newest near-real-time FIRMS detection, provisional' : 'Science record (calendar) through this date'}>
+      <span class="chip fresh" title={liveAge ? 'Harmonized record (calendar) through this date; the latest months are provisional · newest near-real-time FIRMS detection' : 'Harmonized record (calendar) through this date; the latest months are provisional'}>
         <span class="dot" aria-hidden="true"></span>Data to <span class="num">{through}</span>{#if liveAge}<span class="sep" aria-hidden="true">·</span><span class="live-t">live <span class="num">{liveAge === 'just now' ? 'just now' : `${liveAge} ago`}</span></span>{/if}
       </span>
     {/if}

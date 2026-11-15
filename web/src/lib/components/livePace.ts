@@ -23,7 +23,6 @@ export function livePace(a: Analysis): PaceResult | null {
 export const HINT_KEY = 'harmony.hint.calendar'
 
 /** "early", "mid" or "late" part of the month for a date. */
-export const partOfMonth = (d: Date) => (d.getUTCDate() <= 10 ? 'early' : d.getUTCDate() <= 20 ? 'mid' : 'late')
 
 /** Scroll a guided-scroll section into view below the sticky header and index, and move focus to its title. */
 export function goToSection(id: string, smooth = true) {

@@ -23,9 +23,9 @@ Project Harmony
 
 ## 2. Project Summary
 
-NASA has been spotting fires from orbit since 2000, first with MODIS and, from 2012, with the sharper VIIRS. The trouble is, they don't count the same way. For the same fires, VIIRS reports four to thirteen times as many hotspots, depending on how many of its satellites are flying, so a chart that joins the two records makes the planet look as if it caught fire in 2012.
+NASA has been spotting fires from orbit since 2000, first with MODIS and, from 2012, with the sharper VIIRS. The trouble is, they don't count the same way. In the same year, VIIRS reports four to thirteen times as many hotspots, depending on how many of its satellites are flying, so a chart that joins the two records makes the planet look as if it caught fire in 2012.
 
-Harmony is a web app that fixes this. It counts the places burning each day rather than pixels, calibrates one sensor against the other over the years they flew together, and blends every working satellite by how reliable it has proved to be. The result: the sensors agree within 3% in every year from 2013 to 2024.
+Harmony is a web app that fixes this. It counts the places burning each day rather than pixels, calibrates one sensor against the other over ten years when both flew, and blends the two records by how reliable each has proved to be. The result: the sensors agree within 3% in every year from 2013 to 2024.
 
 Draw an area, or type in coordinates, and in about a second you get a calendar of its burning since 2000, how this month compares with a typical one, and the hotspots as a CSV. Suomi NPP stopped sending data on 2 November 2026 and MODIS is close to retirement, so the people who watch fires for a living need this long record to carry on unbroken.
 
@@ -45,23 +45,23 @@ Source code: https://github.com/h3rnie/harmony
 
 **What it does**
 
-Open Harmony and pick a place: draw it on the map, type coordinates, or choose from a short list of regions burning unusually this month. The first thing you see is a sentence, such as "September 2020 was 1.4 times the normal." Below it is the burning calendar the challenge asks for, one row per year and one column per month. Then come the fire season, the long-term trend, past years that looked similar, and the last week's detections measured against the usual pace. The calendar and the hotspots behind any search download as CSV.
+Open Harmony and pick a place: draw it on the map, type coordinates, or choose from a short list of regions where fire is most unusual. The first thing you see is a sentence, such as "September 2020 was 1.4 times the normal." Below it is the burning calendar the challenge asks for, one row per year and one column per month. Then come the fire season, the long-term trend, past years that looked similar, and the last week's detections measured against the usual pace. The calendar and the hotspots behind any search download as CSV.
 
 **How it works**
 
 Everything starts from 658 million FIRMS detections from five satellites. Three ideas turn them into one record.
 
-First, I stopped counting pixels. A 1.4 km square that had fire on a given day counts once, whether MODIS logged it as one hotspot or VIIRS as six. That alone closes most of the gap.
+First, I stopped counting pixels. A square about 1.4 km across that had fire counts once per day and once per night, whether MODIS logged it as one hotspot or VIIRS as six. That alone cuts the gap from 4 to 13 times down to under 3 times.
 
-Second, what's left is calibrated on the ten years both sensors flew together (2012–2021), separately for each biome and region, for day and night, and for each month of the year.
+Second, what's left is calibrated on ten years in which both sensors flew (2012–2021), separately for each biome and region, for day and night, and for each month of the year.
 
-Third, I don't switch from one sensor to the other on some chosen date. Each satellite's error is estimated from the data, and every month is a weighted blend of whichever satellites were flying, with a range around it. When a satellite retires, the record leans on the rest.
+Third, I don't switch from one sensor to the other on some chosen date. Each sensor's error is estimated from the data, and every month is a weighted blend of the MODIS record and the VIIRS record (itself the average of the VIIRS satellites flying), with a range around it. When a satellite retires, the record leans on the rest.
 
 **Does it hold up?**
 
-Raw, VIIRS reports 4 to 13 times as many hotspots as MODIS. Harmonized, the ratio stays between 0.98 and 1.03 in every year from 2013 to 2024. On years it was not fitted on, the record tracks MODIS with a correlation of 0.944. There is no detectable jump at the hand-over, where the raw counts jump more than twelvefold.
+Raw, VIIRS reports 4 to 13 times as many hotspots as MODIS. Harmonized, the ratio stays between 0.98 and 1.03 in every year from 2013 to 2024. On years held out of the fit, calibrated VIIRS alone tracks MODIS with a log-scale correlation of 0.944 at 1° cells. There is no detectable jump at the hand-over, where the raw counts jump more than twelvefold.
 
-One result I didn't expect. VIIRS always passes at the same local time, so it works as a yardstick for MODIS itself. By 2025 Terra was crossing about 1.1 hours earlier than it used to, and its daytime detections were running 42% low. Harmony corrects for this before blending. If fires had genuinely moved to a different hour of the day it would look the same, and the app says so.
+One result I didn't expect. VIIRS always passes at the same local time, so it works as a yardstick for MODIS itself. By 2025 Terra was crossing about 1.1 hours earlier than it used to, and its daytime fire record was running 42% low against VIIRS. Harmony corrects for this before blending. If fires had genuinely moved to a different hour of the day it would look the same, and the app says so.
 
 **Who it's for**
 
@@ -77,7 +77,7 @@ Calibrating one sensor against another by a ratio is standard practice. Three th
 
 **What I weighed**
 
-Only official NASA FIRMS fire data goes in. I kept the unflattering results in view: the 80% ranges cover 76% of months on unseen years, blending beats either sensor alone but not a simple average, and detections are not burned area. For accessibility there are colour-blind-safe palettes, numbers printed in the cells, keyboard control, data tables and sound. API keys never leave the server.
+Only official NASA FIRMS fire data goes in. I kept the unflattering results in view: the 80% ranges cover 76% of months on unseen years, at 1° scale blending beats either sensor alone but not a simple average, and detections are not burned area. For accessibility there are colour-blind-safe palettes, numbers printed in the cells, keyboard control, data tables and sound. API keys never leave the server.
 
 ## 6. NASA data and resources
 
@@ -135,9 +135,9 @@ All values are read from `data/dist/validation.json`; the tables are in [METHOD.
 | Detections used | 658,009,224 | README data table; `data/dist/points/index.json` |
 | Raw VIIRS per MODIS hotspot | 3.8 (2012) to 12.9 (2025) | `ratio_by_year.count_ratio`, Table M1 |
 | Harmonized ratio | 0.98 to 1.03, 2013–2024 | `ratio_by_year.harmonized_ratio`, Table M1 |
-| Correlation on held-out years | 0.944 (1° cells, each year of 2012–2021 held out) | `loyo.cell1deg_month.overall.r_log1p`, Table M2 |
-| Jump at the hand-over | raw ×12.6 (p < 0.0001); harmonized none (p = 0.15) | `pettitt`, Table M4 |
-| Terra daytime detections by 2025 | 0.58 of expected, −42 % (95 % range −46 to −37) | `drift.table`, Table M8a |
+| Correlation on held-out years | 0.944 (calibrated VIIRS against MODIS, log scale, 1° cells, each year of 2012–2021 held out) | `loyo.cell1deg_month.overall.r_log1p`, Table M2 |
+| Jump at the hand-over | raw ×12.6 (p < 0.0001); harmonized none at the 5 % level (switch series p = 0.15, default fused series p = 0.06) | `pettitt`, `fusion.pettitt_fused`, Tables M4 and M4b |
+| Terra daytime detections by 2025 | 0.58 of expected, −42 % (95 % range −47 to −37) | `drift.table`, Table M8a |
 | Terra overpass by 2025 | 1.1 hours earlier | `drift.overpass`, Table M8b |
 | Coverage of the 80 % range | 76 % on 2022–2024, units of 5 or more cell-days | `conformal.out_of_time`, Table M9 |
 | Blend against a simple average | log error 0.898 blended, 0.888 equal weights, 0.949 and 0.932 single sensors | `fusion.non_circular_terra_reference`, Table M10 |
