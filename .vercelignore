@@ -1,0 +1,9 @@
+# Uploads for `vercel deploy` from the repository root. The Vercel project's Root Directory is web/, so only
+# web/ (minus local build output) is needed; never upload data/ (11 GB), Rust build output or local env files.
+/*
+!/web
+/web/node_modules
+/web/dist
+/web/.vercel
+.env
+.env.*

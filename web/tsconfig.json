@@ -3,5 +3,10 @@
   "references": [
     { "path": "./tsconfig.app.json" },
     { "path": "./tsconfig.node.json" }
-  ]
+  ],
+  // Read by the Vercel Node.js builder, which transpiles api/*.ts and the server/ files they import one file at a
+  // time: rewrite the explicit ".ts" import specifiers (used so Node can run the same files directly) to ".js".
+  "compilerOptions": {
+    "rewriteRelativeImportExtensions": true
+  }
 }

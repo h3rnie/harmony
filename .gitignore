@@ -6,12 +6,17 @@ dist/
 .venv/
 __pycache__/
 *.pyc
-web/src/lib/kernel/pkg/
+# The WASM kernel build (web/src/lib/kernel/pkg/) IS committed so the web app builds without Rust;
+# regenerate it with scripts/build-wasm.sh and check it with scripts/check-wasm.mjs.
 
 # secrets
 .env
 .env.*
 !.env.example
+
+# Vercel CLI link (project and team ids); local upload manifest (scripts/upload-data.mjs)
+.vercel
+.cache/
 
 # misc
 .DS_Store

@@ -5,9 +5,13 @@
   "description": "Harmonized MODIS + VIIRS burning activity calendar",
   "scripts": {
     "dev": "pnpm --dir web dev",
-    "build": "pnpm --dir web build"
+    "build": "pnpm --dir web build",
+    "check:wasm": "node scripts/check-wasm.mjs",
+    "upload:data": "node scripts/upload-data.mjs"
   },
   "devDependencies": {
+    "@aws-sdk/client-s3": "3.1169.0",
+    "@aws-sdk/lib-storage": "3.1169.0",
     "typescript": "6.0.3"
   }
 }
