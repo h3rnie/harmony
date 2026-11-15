@@ -9,7 +9,7 @@ data/dist/
   tiles/index.json
   tiles/L0/{tx}_{ty}.parquet      0.05 deg cells, 2.5 deg tiles
   tiles/L1/{tx}_{ty}.parquet      0.25 deg cells, 10 deg tiles
-  tiles/L2/{tx}_{ty}.parquet      1 deg cells, 30 deg tiles (one 360 deg tile in the 2026-11-15 build)
+  tiles/L2/{tx}_{ty}.parquet      1 deg cells, 30 deg tiles (70 tiles in the 2026-11-15 build)
   points/index.json
   points/{px}_{py}/{year}.parquet raw hotspots, 10 deg tiles
   overview/…                      global 0.5 deg PNG atlases for the pulse view (see below)
@@ -20,8 +20,7 @@ data/dist/
   `ix = floor((lon + 180) / c)`, `iy = floor((lat + 90) / c)`, `cell = iy * NX + ix` (UINT32).
 - Tile of size `t` deg: `tx = floor((lon + 180) / t)`, `ty = floor((lat + 90) / t)`, from the cell's SW corner.
 - L0 c=0.05 t=2.5 · L1 c=0.25 t=10 · L2 c=1 t=30 (pipeline configuration, `config.LEVELS`). Readers must take the tile size from
-  `meta.levels[].tile_deg`, not from this text: the build of 2026-11-15 was written before L2 moved from 360 to 30 and holds
-  L2 as a single tile `0_0` (`tile_deg` 360). Levels are exactly additive (L1 = sum of 5x5 L0 …).
+  `meta.levels[].tile_deg`, not from this text (builds before the 2026-11-15 refresh hold L2 as one 360 deg tile `0_0`). Levels are exactly additive (L1 = sum of 5x5 L0 …).
 - Month index `m = (year - 2000) * 12 + (month - 1)`; first data month is 2000-11 (m = 10).
 - Active-fire cell-day (AFCD): one distinct (0.0125 deg sub-cell, local-solar date, day|night) with >= 1
   accepted detection. Local-solar date = date(UTC time + lon/15 h).
@@ -66,7 +65,7 @@ Parquet v1, ZSTD, sorted by (cell, stratum, m, dn). A row exists only if some va
                "alpha": [day, night],           // NB dispersion: var = mu + alpha mu^2 at L0 cell-month
                "relvar_bridge": [day, night],   // same for the Terra-only bridge
                "k": [[12 day], [12 night]] }],  // stratum factor by month-of-year (informational)
-  "ci_scale": 1.0,                        // interval inflation tuned on leave-one-year-out coverage
+  "ci_scale": 1.0,                        // LEGACY: interval inflation, used only without the harmonization fields below
   "method": { … parameters, thresholds, tau … },
   "sources": [{ "name": "FIRMS MODIS C6.1 (MCD14ML)", "years": "2000-2025", "quality": "standard" }, …]
 }
@@ -105,7 +104,8 @@ clamped to 1..3. `biome` of a stratum comes from `strata[].biome`.
 ## Series formula (kernel)
 Groups `g` = stratum × dn present in the AOI. Per month and group: `M_g = Σ w_i meq_i`, `V_g = Σ w_i kv_i` (AFCD).
 - **MODIS stream**: bridge parameters before `aqua_start_m`, `modis` after. Drift (fused mode only), for months
-  with `year >= drift.start_year`: `f = exp(log_f[biome][dn][year])` (last listed year for later years),
+  with `year >= drift.start_year` that have MODIS coverage: `f = exp(log_f[biome][dn][i])` with `i` the last listed
+  year not after the month's year (the first listed year if all are later); `log_f` clamped to ±5;
   `M_g ← M_g / f`, `rho_M ← rho_M + log_sd² + (attr_frac · log f)²`.
 - **VIIRS stream**: `rho_V = relvar + err.viirs.rho[n_sats]`, `phi_V = err.viirs.phi[n_sats]`.
 - Stream variance at level `μ`: `Var_j(μ) = rho_j μ² + phi_j μ`; common mode
@@ -120,11 +120,29 @@ Groups `g` = stratum × dn present in the AOI. Per month and group: `M_g = Σ w_
   `H = Σ H_g`, `Var = Σ Var_g` (groups independent, as in the legacy formula), MODIS weight
   `= Σ w_g H_g / Σ H_g` (null when `H = 0` or no MODIS).
 - **Switch mode**: the legacy stream choice at `switchM` (no drift correction), `Var` = that stream's variance.
-- **Bounds** for every covered month: `σ_log = sqrt(Var) / max(H, 0.5)`, size class from `H` (MODIS units),
-  `q = Σ_g H_g q[group(g)][class] / H` (global row when `H = 0`), bounds `H · exp(∓ q σ_log)`.
-- **Lens** (`unit: "viirs"`): every MODIS-equivalent value of month m (fused value, bounds, modisEq, viirsCal and
-  all statistics computed from them) is divided by `f_k = Σ kv / Σ v` of calendar month `k` over the AOI's
-  `fit_window_m` months (fallback: all fit-window months, then all months with `v > 0`, else 1).
+- **Bounds** for every covered month, on a shifted log (c = 0.5 AFCD, so a zero can be covered):
+  `σ = sqrt(Var) / (H + 0.5)`, size class from `H` (MODIS units), `q = Σ_g H_g q[group(g)][class] / H` (global row
+  when `H = 0`; an invalid entry falls back to the global row, then to `z · ci_scale`),
+  `lo = max(0, (H + 0.5) · exp(−q σ) − 0.5)`, `hi = (H + 0.5) · exp(+q σ) − 0.5`; q80 for the 80 %, q95 for the 95 %
+  bounds. With `err` but without `conformal`, `q = z · ci_scale` on the same scale (`harmonization.intervals` =
+  "legacy").
+- **Exactness**: in a month served by one stream without drift correction, `H` is that stream's exact total and the
+  MODIS weight exactly 1 or 0, so switch mode reproduces the legacy values. Within a group the fused value lies
+  between the two streams; an area total can fall slightly outside when groups disagree in direction.
+- **Source code** in fused mode: 3 (VIIRS) when VIIRS is used and MODIS is not, or the MODIS weight is < 0.5;
+  otherwise 1 (bridge, before `aqua_start_m`) or 2 (MODIS); 0 when no stream is used.
+- **MODIS weight** (`Series.modisWeight`): null when `H = 0` or the month has no value; 1/0 in switch mode.
+  `Series.modisAdj`: drift-corrected MODIS wherever MODIS has coverage in fused mode (= `modisEq` otherwise).
+- **Cell layer**: `CellLayerOptions.seriesMode` (`'fused'` default | `'switch'`) fuses each tile row with its own
+  stratum parameters and drift factor (`mode` there already means harmonized | ratio). The overview atlases use the
+  switch rule.
+- **Lens** (`unit: "viirs"`): every MODIS-equivalent value of month m (fused value, bounds, modisEq, viirsCal,
+  modisAdj and all statistics computed from them) is divided by `f_k = Σ kv / Σ v` of calendar month `k` over the AOI's
+  `fit_window_m` months (fallback: all fit-window months, then all months with `v > 0`, else 1;
+  `harmonization.lensFallback` is true if any calendar month used a fallback).
+- **Analysis additions** (optional): `harmonization { mode, unit, intervals: 'conformal' | 'legacy', lensFactor,
+  lensFallback }` (`mode` is the effective mode: 'switch' when meta has no error model) and `analogs`
+  (`web/src/lib/kernel/types.ts`, docs/METHOD.md section 17).
 
 ## Interval formula (legacy kernel, used when the fields above are absent)
 For one month and AOI weights `w_i`, VIIRS-derived value `H = Σ w_i kv_i`:

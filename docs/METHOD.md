@@ -2,13 +2,13 @@
 
 How Harmony turns MODIS and VIIRS active-fire detections into one record, how that record is checked, and where it is weak. Written for a reader who knows fire remote sensing. The code is the reference: `pipeline/harmony_pipeline/` (parameters in `config.py`) and `crates/harmony-core/src/` (kernel). Every measured number is in the section [Measured values](#measured-values-as-of-the-2026-11-15-build); the rest of the text refers to those tables by name, so a data refresh only changes that section.
 
-Contents: [1 Problem](#1-problem) · [2 Filters](#2-filters) · [3 Unit](#3-the-unit-afcd-m) · [4 Availability and coverage](#4-satellite-availability-and-coverage-correction) · [5 Static sources](#5-static-source-mask) · [6 Strata](#6-strata) · [7 Calibration](#7-calibration-model) · [8 Terra bridge](#8-terra-bridge) · [9 Final series](#9-the-final-series-and-the-switch) · [10 Uncertainty](#10-uncertainty) · [11 Validation](#11-validation) · [12 ML challenger](#12-ml-challenger) · [13 Live pace](#13-live-now-versus-normal-pace) · [14 Outlook](#14-outlook) · [15 Statistics](#15-statistics-in-the-interface) · [16 Limits](#16-known-limitations-and-what-would-improve-it) · [Measured values](#measured-values-as-of-the-2026-11-15-build) · [References](#references)
+Contents: [1 Problem](#1-problem) · [2 Filters](#2-filters) · [3 Unit](#3-the-unit-afcd-m) · [4 Availability and coverage](#4-satellite-availability-and-coverage-correction) · [5 Static sources](#5-static-source-mask) · [6 Strata](#6-strata) · [7 Calibration](#7-calibration-model) · [8 Terra bridge](#8-terra-bridge) · [9 Error model](#9-sensor-error-model) · [10 Drift fingerprint](#10-modis-orbit-drift-fingerprint) · [11 Final series](#11-the-final-series-fusion-default-and-switch) · [12 Intervals](#12-uncertainty-conformal-intervals) · [13 Validation](#13-validation) · [14 ML challenger](#14-ml-challenger) · [15 Live pace](#15-live-now-versus-normal-pace) · [16 Outlook](#16-outlook) · [17 Analog years](#17-analog-years) · [18 Lens](#18-reference-sensor-lens) · [19 Statistics](#19-statistics-in-the-interface) · [20 Limits](#20-known-limitations-and-what-would-improve-it) · [21 New and standard](#21-what-is-new-here-and-what-is-standard) · [Measured values](#measured-values-as-of-the-2026-11-15-build) · [References](#references)
 
 ## 1. Problem
 
 MODIS (Terra from 2000-11, Aqua from 2002-07; 1 km pixels) is ending, probably around 2027, and its orbits have drifted since about 2021. VIIRS 375 m (S-NPP from 2012-01, NOAA-20 from 2018, NOAA-21 from 2023-03) is its successor. VIIRS detects smaller and cooler fires and reports many more pixels, so a count of detections is not comparable across the two. Table M1 gives the measured ratio of VIIRS to MODIS detections by year. It is about 4 while only S-NPP flies, jumps in 2018 when NOAA-20 joins (each satellite adds its own detections of the same fires), and then stays near 8 to 9. A time series of raw counts therefore has two artificial steps, in 2012 and in 2018, that are larger than most real year-to-year changes. Table M4 shows what a change-point test finds in the raw series at the sensor switch, and in the harmonized one.
 
-The aim is a record whose unit means the same thing in 2003 and in 2025, so that "this month against the median of the same month" is a valid statement for any area.
+The aim is a record whose unit means the same thing in 2003 and in 2025, so that "this month against the median of the same month" is a valid statement for any area. Where both sensors fly, the record does not pick one: it combines them with weights from an estimated error model (sections 9 and 11), corrects MODIS for its orbital drift (section 10), and gives every month an interval calibrated on held-out data (section 12).
 
 ## 2. Filters
 
@@ -69,13 +69,13 @@ Gas flares, industrial heat, kilns, volcanoes and similar sources are detected e
 2. type 1, 2 or 3 is more than half of its typed detections, with at least 3 typed; or
 3. it is persistent: accepted VIIRS detections in at least 10 distinct months of a calendar year, in at least 3 different years.
 
-The set is dilated by one sub-cell in all eight directions to absorb geolocation jitter. The `type` field is absent from near-real-time data, so the mask is the only static-source filter that near-real-time rows receive in the pipeline. The live view (section 13) does not apply it. Table M5 gives the size of the mask.
+The set is dilated by one sub-cell in all eight directions to absorb geolocation jitter. The `type` field is absent from near-real-time data, so the mask is the only static-source filter that near-real-time rows receive in the pipeline. The live view (section 15) does not apply it. Table M5 gives the size of the mask.
 
 ## 6. Strata
 
 Code: `strata.py`. The calibration ratio differs by land cover (different fire sizes, temperatures, durations), so it is fitted per stratum: RESOLVE Ecoregions 2017 **biome x realm** (14 biomes x 8 realms), plus one "unclassified" stratum. A 0.05° cell takes the stratum of its centre; if the centre falls outside every ecoregion (coasts, lakes, rock and ice) it takes the nearest ecoregion within 0.25°, else "unclassified". Table M5 gives the counts.
 
-The original plan also used a cropland flag from MODIS land cover (MCD12C1). It was not implemented; see section 16.
+The original plan also used a cropland flag from MODIS land cover (MCD12C1). It was not implemented; see section 20.
 
 ## 7. Calibration model
 
@@ -93,7 +93,7 @@ with a log link and `log V` as offset, fitted by quasi-Poisson maximum likelihoo
 k[s, d, k] = sum(M) / sum(V)       over 2012-02 .. 2021-12, months with cov_modis, cov_viirs, f_aqua >= 0.5
 ```
 
-**Why this window.** It is the period in which MODIS and VIIRS both operate, before the MODIS orbital drift. The coefficients are applied unchanged to every later month, so a drift in MODIS after 2021 shows up as a drift in the out-of-time check and is not absorbed into the calibration.
+**Why this window.** It is the period in which MODIS and VIIRS both operate, before most of the MODIS orbital drift. It is not entirely before it: the overpass times had begun to move by 2021 (section 10). Refitting on 2012-2019 moves the V-weighted factor by +0.33 % globally and by up to 6 % at night in some biome groups (Table M11d); the window was kept, and the drift analysis uses 2012-2019 only. The coefficients are applied unchanged to every later month, so a drift in MODIS after 2021 shows up as a drift in the out-of-time check and is not absorbed into the calibration.
 
 **Fallback levels.** A ratio is accepted at a level only if `sum(M) >= 200`. The order is
 
@@ -128,41 +128,119 @@ meq(t) = m_ta / cov_modis                from 2002-07
 
 The bridge is a coarser tool than the VIIRS calibration (its leave-one-year-out RMSE is larger, Table M3) and its months carry the Terra bridge source code in the app.
 
-## 9. The final series and the switch
+## 9. Sensor error model
 
-For month `t` and area weights `w_i` (fraction of cell `i` inside the area):
+Code: `harmonize.py` (stage `harmonize`, after `calibrate`). The record has up to three estimates of the same month: MODIS Terra∪Aqua (`meq`), the Terra-only bridge before Aqua, and calibrated VIIRS (`kv`). To combine them, and to put an interval on every month, each needs an error variance. The quantity they all estimate is called the *latent MODIS-equivalent activity* `mu` of a stratum, day|night and month: the Terra∪Aqua cell-days that MODIS would record on average for the fires that burned (the average over overpass timing, cloud and the detection lottery). MODIS itself is therefore a noisy measurement of `mu`, not the truth.
 
-```
-H(t) = sum_i w_i * meq_it     if t < switch   (Terra bridge before 2002-07, native MODIS after)
-H(t) = sum_i w_i * kv_it      if t >= switch  (calibrated VIIRS)
-```
-
-The default switch is 2023-01 (`default_switch_m = 276`), and the user can move it anywhere in the record from the interface. Each stream falls back to the other if it has no coverage in a month (`series.rs`, `source_for`). The source of every month (none, bridge, MODIS, VIIRS) and a provisional flag travel with the series, and the interface shows the source as a marker, never as a different scale.
-
-MODIS is used up to the switch because it is the longer, independently validated record, and because both streams exist in the overlap, so the seam can be checked directly (section 11). The switch is late (2023) so that the 2012-2022 overlap, in which the calibration is fitted, is mostly shown from observation.
-
-## 10. Uncertainty
-
-Variance of the VIIRS-derived value `H = sum w_i kv_i` for one month (`series.rs`, the same formula as in [the contract](../schema/data-contract.md)):
+**Variance law.** For a stream `j` and a stratum × day|night group at level `mu`:
 
 ```
-Var = ci_scale^2 * sum over (stratum s, dn d) of [ relvar[s,d] * S^2  +  S  +  alpha[s,d] * Q ]
-S   = sum_{i in s,d} w_i * kv_i               (AFCD units)
-Q   = sum_{i in s,d} w_i^2 * kvsq_i           kvsq_i = kv_i^2 at L0, summed upward
-sigma_log = sqrt(Var) / max(H, 0.5)
-bounds    = H * exp(-/+ z * sigma_log),       z = 1.2816 (80 %) and 1.96 (95 %)
+Var_j(mu) = rho_j * mu^2  +  phi_j * mu
 ```
 
-- `relvar[s,d]` is the relative variance of `k`: the year-jackknife variance of the fitted factor, divided by `k^2`, weighted by `V` over months of the year. It represents estimation error of the calibration and is fully correlated within a stratum (it multiplies `S^2`).
-- `S` is the Poisson part and `alpha * Q` the over-dispersion part: negative-binomial variance `mu + alpha mu^2` at L0 cell-month, `alpha` by method of moments on in-sample residuals (global value per day|night where a stratum has under 200 cell-days).
-- Terra-bridge months use `relvar_bridge` and `meq` in place of `kv`, with no dispersion term. Native MODIS months have no interval.
-- `ci_scale` is the factor on `sigma_log` that makes the 80 % interval cover 80 % of leave-one-year-out 1° cell-months whose predicted value is at least 5 AFCD. Table M3 gives it, and the coverage by size class.
+`phi_j` is the dispersion of noise that is independent between cells (variance over mean; 1 = Poisson); it adds over cells, so an area gets `phi * S` with `S` the area's sum. `rho_j` is the relative variance of an error shared by the whole stratum in that month (a diurnal or cloud regime that shifts every cell the same way, a year-specific sensor ratio); it multiplies the square of the stratum sum, as `relvar` does in the legacy interval. Groups (stratum × day|night) are independent of each other.
 
-Reading the result. A scale factor well above 1 means the model terms above leave out a large part of the real error, mainly the year-to-year variability of the true VIIRS-to-MODIS ratio (a given year can be above or below the fitted mean, and `relvar` only measures how well the mean is known). The factor is a calibration of the interval to the held-out data, not a derived quantity. The 80 % level is exact by construction on the tuning set; the 95 % level is not (Table M3), and coverage falls for the largest cells. The interval was validated on 1° cell-months, not on the area sums the app shows, so it is least tested for very large areas.
+**Streams.** Terra∪Aqua `U`, Terra `T` and Aqua `A` (each MODIS satellite's own cell-days), the production VIIRS stream (calibrated `kv`), and, for reporting, S-NPP, NOAA-20 and NOAA-21 alone. Each is coverage-corrected by its own satellite's monthly availability and rescaled to the Terra∪Aqua scale with a ratio per stratum × day|night × month of year over 2012-02 to 2019-12 (`T' = g_T T`, and so on). NOAA-21 is rescaled with the production chain (`c21` to S-NPP, then `k`), so it never enters a fit against MODIS.
 
-## 11. Validation
+**(a) Cell-level dispersion `phi` by triple collocation.** Triple collocation (TC; Stoffelen 1998; McColl et al. 2014; Gruber et al. 2016) estimates the error variances of three measurements of one signal from their covariances, provided the three errors are independent of each other and of the signal:
 
-All tests below are in `calibrate.py` and stored in `data/dist/validation.json`, which the app reads and shows ([schema](../schema/validation.md)). Results: Tables M2 to M4.
+```
+e_1 = C_11 - C_12 C_13 / C_23        (and cyclically for e_2, e_3)
+```
+
+Units are 1° cell × stratum × day|night × month. Values are put on the Anscombe square-root scale, `y = sqrt(X + 3/8 g)` (Anscombe 1948; `g` is the stream's rescaling factor, so the constant applies to its native counts), on which a Poisson count has variance `g/4` whatever its mean; hence `phi_j = 4 e_j`. TC is run on anomalies from each unit's month-of-year mean (seasonal cycle and persistent cell offsets removed), with covariances pooled within units so that the degrees of freedom lose one per unit × month of year. Zeros of active units are kept; unit × month-of-year cells whose mean level is below 1 cell-day are left out, because the square root does not stabilise a Poisson variance there. Triplets:
+
+| Triplet | Months | Gives |
+| --- | --- | --- |
+| Terra, Aqua, S-NPP | 2012-02 to 2019-12 | `phi` of Terra and Aqua (rescaled) and of S-NPP |
+| Terra, Aqua, production VIIRS (leave-one-year-out `kv`) | 2012-02 to 2017-12 (one satellite); 2018-2019 (two) | `phi_V` for one and two satellites |
+| Terra, Aqua, production VIIRS | 2023-03 to 2025-12 | `phi_V` for three satellites (MODIS drift era) |
+| Terra, Aqua, NOAA-20; Terra, Aqua, NOAA-21 | 2018-2019; 2023-03 to 2025-12 | reporting only |
+
+Terra∪Aqua cannot be in a triplet with Terra or Aqua (it contains both). If each MODIS satellite samples the fires as an independent thinning of the same events with equal native dispersion, the union has that native dispersion and a rescaled single satellite has `g` times it, so `phi_U = (phi_T'/g_T + phi_A'/g_A)/2`; the two halves are reported separately as a check. The Terra-only bridge has the dispersion of rescaled Terra, `phi_B = phi_T'`.
+
+**(b) Stratum-coherent error `rho`.** TC on the log of stratum × day|night × month sums (Terra, Aqua, leave-one-year-out VIIRS; 2012-02 to 2019-12; anomalies from the stratum's month-of-year mean). The TC error at that scale still contains the cell-level part `phi/S`, which is removed: `rho_j = max(0, e_j - phi_j mean(1/S_j))`. Terra∪Aqua takes `rho_U = (rho_T + rho_A)/4`: at stratum scale the union behaves like the mean of the two satellites (the variance of the log difference between the union and that mean is reported in Table M7). The bridge takes `rho_B = rho_T + relvar_bridge`. VIIRS takes one `rho_V` for any number of satellites, because an error common to the VIIRS satellites (same instrument design and algorithm, same early-afternoon overpass) does not average out when satellites are added. The kernel adds `relvar`, the year-jackknife variance of the calibration factor, as a floor that combining VIIRS satellites cannot remove.
+
+**(c) Common mode.** Aqua and the three VIIRS satellites all cross the equator in the early afternoon, so they share the diurnal and cloud state of the month, and TC, which needs independent errors, counts their shared error as signal: it understates the Aqua and VIIRS errors and overstates Terra's. Three sensors cannot separate this. A second identification assumes instead that Terra and Aqua have equal stratum-coherent error (same instrument and algorithm) and leaves the Aqua-VIIRS error covariance `g` free. Solved on strata whose mean exceeds 500 cell-days, pooled per day|night, it gives an Aqua-VIIRS error correlation `kappa_AV = g / sqrt(e_A e_V)`. Terra∪Aqua carries about half of Aqua's share, so the kernel uses `kappa = kappa_AV / sqrt(2)`, clipped to [0, 0.9], as the correlation of the MODIS and VIIRS stratum-coherent errors (Table M7). A positive `kappa` widens the fused interval relative to independence.
+
+**(d) Cross-check by a Poisson split.** In the one-satellite years, the variance of the square-root difference `sqrt(VIIRS) - sqrt(Terra∪Aqua)` (anomalies) is split between the two streams in proportion to their Poisson expectations, `1/4` and `k/4`, which assumes both have the same dispersion relative to Poisson. Table M7 sets this next to TC.
+
+**Fallback.** Every estimate is made per stratum × day|night, else from pooled sufficient statistics per biome × day|night, else globally per day|night. A level is accepted when it has enough residual degrees of freedom (500 unit-months for cells, 48 months for strata), all three cross-covariances are positive and every error variance is above a quarter of its Poisson expectation (below that the estimate is not plausible and counts as failed). Table M7 gives the share of strata at each level.
+
+**Assumptions and how they fail.**
+- Independent errors within a triplet. Weakest for Aqua and VIIRS (shared overpass); handled by (c), which rests on its own assumption (equal Terra and Aqua error).
+- Terra's differences include the real difference between morning and afternoon burning, and TC counts it as Terra error. The latent target is therefore closer to the afternoon view. This matters most for the bridge, which uses Terra alone.
+- Poisson-like variance within a cell-month (variance proportional to the mean). Cell-days are bounded by the days in a month, so the busiest cells saturate; there the law overstates the variance. At very low activity the VIIRS-to-MODIS conversion is poorer than the law implies (section 13).
+- The three-satellite VIIRS dispersion is estimated in 2023-2025, when Terra and Aqua drift. TC is insensitive to a change of scale, not to a change in error structure, so this row is the least certain.
+- After S-NPP ended (2026-11-02) the VIIRS stream is NOAA-20 and NOAA-21, and the kernel uses the two-satellite row, which was estimated with S-NPP and NOAA-20.
+
+## 10. MODIS orbit-drift fingerprint
+
+Code: `harmonize.py`, `drift`. Terra and Aqua no longer hold their orbits: since about 2021 Terra crosses the equator earlier and Aqua later. Fires follow a strong diurnal cycle, so a moving overpass changes how many fires MODIS sees even if nothing on the ground changes. VIIRS keeps its overpass and serves as the fixed reference.
+
+**Ratio.** For satellite `j` (Terra, Aqua, Terra∪Aqua) a reference ratio `k_ref[j, s, d, moy] = sum(obs_j) / sum(V)` is fitted on 2012-2019 only, before the drift (the production calibration window runs to 2021 and so already contains its start; Table M3 gives how much `k` moves when that window ends in 2019 instead). Then, for any year and for a biome, biome group, hemisphere or the globe, by day|night:
+
+```
+R_j = sum(obs_j) / sum(k_ref V)
+```
+
+Before the drift `R` should be 1. For 2012-2019, each year's ratio uses `k_ref` fitted without that year; this is the placebo test, and its spread is the year-to-year noise floor of `R`.
+
+**Uncertainty.** A delete-a-group jackknife over 40 random groups of 5° blocks, refitting `k_ref` in every replicate, gives a sampling interval (t with 39 degrees of freedom). It reflects spatial sampling only; the placebo years show that `R` also varies by a few percent from year to year for reasons unrelated to drift, so the table also gives a total interval with the placebo variance added (Table M8).
+
+**Overpass time.** From the detections themselves (`acq_time_utc` and longitude): the mean local solar time of detections per satellite × stratum × month × day|night (night shifted by 12 h so that it does not wrap at midnight; VIIRS sub-sampled 1 in 8 by sub-cell). Its shift from the same satellite's 2012-2019 mean for the same stratum × day|night × month of year measures the drift directly. Then `log R = beta * shift` is fitted through the origin over all years, per biome group × day|night × satellite. This uses the drift as a natural experiment on the diurnal sensitivity of detections: `beta` is the change in log detections per hour of overpass shift, and the table gives the share of the post-2020 variance of `log R` the shift explains.
+
+**What cannot be separated.** `R` measures anything that changes MODIS relative to VIIRS: the drift, but also a real shift in the timing of burning (for example in when crop residue is burned), a change in the fire-size mix (MODIS misses small fires that VIIRS sees), or a change on the VIIRS side (NOAA-21 joining in 2023-03, S-NPP ageing). The overpass regression attributes the part that moves with the overpass; the rest is not attributed. 2026 is a partial year (complete months to October, near-real-time data from July), so its ratio is also affected by the season mix and data quality.
+
+**Use in the kernel.** The Terra∪Aqua ratio per biome × day|night × year from 2020 (`meta.json`, `drift`) corrects `meq` in fused mode: `meq / R`, with the MODIS variance increased by `sd^2 + (0.5 log R)^2`. Here `sd^2` is the jackknife plus placebo variance, and the second term treats half of the correction as uncertain attribution (drift or real change). The weight of MODIS therefore falls as the drift grows. A biome-year with less than 2,000 expected cell-days uses the global ratio. Because the reference is calibrated VIIRS, a drift-corrected MODIS value shares the VIIRS calibration error, and the kernel counts that as common error (section 11). The raw annual ratio is used rather than the overpass-time fit, so the correction also removes changes that are not drift; this is deliberate (VIIRS is the reference that carries the record forward) and is why the attribution term is there.
+
+## 11. The final series: fusion (default) and switch
+
+For month `t` and area weights `w_i` the kernel works per stratum × day|night group `g`, with `M_g = sum w_i meq_i`, `V_g = sum w_i kv_i` and the error model of section 9 (`meta.json`: `strata[].err`, `fusion.kappa`, `drift`).
+
+**Fused mode (default).**
+1. Streams. MODIS is used if it has coverage, VIIRS likewise; when one stream covers at least half the month and the other does not, the partial one is dropped. Before 2002-07 MODIS is the Terra bridge, with its own parameters.
+2. Drift. From 2020, `M_g <- M_g / R` and `rho_M <- rho_M + sd^2 + (0.5 log R)^2` (section 10).
+3. Variances at a common level `mu`: `Var_M(mu) = rho_M mu^2 + phi_M mu`, `Var_V(mu) = (rho_V + relvar) mu^2 + phi_V[n] mu` (`n` = number of VIIRS satellites that month), and covariance `C(mu) = kappa sqrt(rho_M0 rho_V0) mu^2`, plus `relvar mu^2` in drift-corrected months (subscript 0: before the drift and calibration terms), capped at 0.99 times the geometric mean of the two variances. Both variances are evaluated at the same `mu`, not at each stream's own value; with Poisson-like variances, weighting each value by its own variance would favour the lower one.
+4. Weight and estimate, three fixed-point steps from `mu = (M_g + V_g)/2`:
+
+```
+w     = clamp( (Var_V - C) / (Var_M + Var_V - 2C), 0, 1 )      MODIS weight
+mu    = w M_g + (1 - w) V_g
+Var_g = w^2 Var_M + (1-w)^2 Var_V + 2 w (1-w) C
+```
+
+   The weight is computed from `Var/mu`, so at `mu = 0` it takes its limit `phi_V/(phi_M + phi_V)` (with `C = 0`). With one stream, `H_g` is that stream and `Var_g` its variance.
+5. Area: `H = sum_g H_g`, `Var = sum_g Var_g`, MODIS weight `= sum_g w_g H_g / H`.
+
+This is the generalised-least-squares combination of two unbiased estimates with given variances and covariance. It is best only if the error model is right, which section 13 tests; it is not claimed to be optimal. In the MODIS-only era it returns MODIS (now with an interval); from 2012 it blends; in the drift era the MODIS weight falls; after MODIS ends it returns VIIRS. Combining satellite streams with weights from estimated error variances is standard in other fields: GFAS assimilates fire radiative power from several sensors (Kaiser et al. 2012), and ESA CCI soil moisture merges products with collocation-derived weights (Gruber et al. 2017).
+
+**Switch mode** (`mode: "switch"`) is the previous behaviour: `meq` (no drift correction) before `switchM`, `kv` from it, each falling back to the other when it has no coverage, and the interval from that stream's own variance. `switchM` matters only in this mode.
+
+The source code of a month (none, bridge, MODIS, VIIRS) still travels with the series; in fused mode it names the stream with the larger weight. The tile files are unchanged: everything above is computed in the browser from `meq`, `kv` and `meta.json`. The map's cell layer fuses each tile row the same way unless `seriesMode: "switch"` is passed. The overview atlases are still built with the switch rule.
+
+## 12. Uncertainty: conformal intervals
+
+The error model gives a variance for every month, but section 13 shows that taken at face value it is too narrow: its nominal 80 % interval covers a held-out reference about 60 % of the time at 1° scale. Instead of one inflation factor (the legacy `ci_scale`), the width is calibrated empirically by split conformal prediction (Vovk et al. 2005; Lei et al. 2018), separately by biome group and activity size (Mondrian bins).
+
+**Scale.** Intervals are on a shifted log, `log(x + 0.5)`, so that a month with no fire can lie inside one:
+
+```
+sigma  = sqrt(Var) / (H + 0.5)
+bounds = max(0, (H + 0.5) exp(-/+ q sigma) - 0.5)
+```
+
+**Scores.** For every unit-month in 2012-2021 the leave-one-year-out calibrated VIIRS prediction `P` (refitted without its year) is compared with observed Terra∪Aqua `O`: `score = |log((O + 0.5)/(P + 0.5))| / sigma_diff`, where `sigma_diff` is the error-model standard deviation of `P - O` (VIIRS variance plus MODIS variance minus twice the common mode), evaluated at `P` and summed over the groups in the unit. Units are 1° cells and 5° blocks, each split by biome group, and whole strata; scores of the three supports are pooled.
+
+**Multipliers.** `q80`, `q95` = the `ceil((n+1)p)`-th smallest score in each bin of biome group × size class of `P` (below 5, 5-20, 20-100, 100-1000, and 1000 or more cell-days). A bin with fewer than 500 scores is merged with a neighbouring size class, a group with too few scores takes the global row, and a multiplier is capped at 8. With a correct Gaussian error model, `q80` would be 1.28 and `q95` 1.96. The kernel takes the size class from `H` and averages the multipliers of the groups present, weighted by each group's share of `H`.
+
+**What the coverage means.** In the calibration years the 80 % and 95 % levels hold by construction in every bin. They are *empirical held-out coverage by biome group and size class*, not a guarantee: conformal coverage assumes exchangeable scores, and monthly fire data are autocorrelated and, after 2021, affected by drift. The interval is a statement about where Terra∪Aqua would be: its calibration target is the observed MODIS record of a held-out year, which includes MODIS's own noise. The same multipliers are applied to fused and MODIS-only months, whose coverage of the latent activity cannot be observed. The test that matters is out of time: the frozen calibration in 2022-2024, scored against observed MODIS (raw and drift-corrected), by size class, next to the legacy interval (Table M9).
+
+`ci_scale` and the legacy formula remain in `meta.json`; they are used only by a kernel that reads a `meta.json` without the harmonization fields.
+
+## 13. Validation
+
+The tests below are in `calibrate.py` and `harmonize.py` and stored in `data/dist/validation.json`, which the app reads and shows ([schema](../schema/validation.md)). Results: Tables M2 to M4 and M7 to M11.
 
 **Leave-one-year-out (LOYO), 2012-2021.** For each year `y`, `k` and `r` are refitted on the other nine years (with the same `tau`) and used to predict `y` from VIIRS; the prediction is compared with observed MODIS. Scored at two scales: stratum x month (a unit is a whole stratum) and 1° cell x month. Metrics per unit-month where either value is positive: Pearson `r` and RMSE of `log1p`, percentage bias, slope of observed on predicted `log1p`, the share of unit-years whose peak month is matched exactly or within one month, and the share of unit-months whose anomaly (against the unit's own month-of-year mean over the LOYO years) has the same sign in prediction and observation.
 
@@ -170,17 +248,29 @@ All tests below are in `calibrate.py` and stored in `data/dist/validation.json`,
 
 **Naive baseline.** One global ratio `sum(M)/sum(V)` fitted leave-one-year-out, with no strata, season, day|night or cell multiplier, scored the same way. It is the right yardstick for what the structure of the model adds. Table M2 shows the result: the structure reduces log-RMSE clearly at both scales and improves peak timing, but it does not improve the sign of anomalies at stratum scale, where the global ratio is slightly better. The honest reading is that most of the anomaly information is in `V` itself and the calibration mainly corrects level and seasonality.
 
-**Out-of-time, 2022 onward.** The frozen fit is applied after the fit window and compared with MODIS, which still operates, by year (Table M2). Terra and Aqua drift changes the sampled time of day, so some of the bias is MODIS behaviour rather than calibration error; the data cannot separate the two. The bias in the latest full year is the largest.
+**Out-of-time, 2022 onward.** The frozen fit is applied after the fit window and compared with MODIS, which still operates, by year (Table M2). The bias grows in 2025-2026. Section 10 measures how much of it is MODIS drift: against drift-corrected MODIS the frozen calibration (and NOAA-21 alone, Table M11) stays within about 1 %. That correction is anchored on VIIRS, so this is a consistency check, not independent proof that the calibration did not move.
 
 **Change-point test at the switch and at VIIRS start.** Pettitt's (1979) non-parametric test on the log monthly global total minus its month-of-year mean, in a 72-month window around the event, on two series: harmonized (`meq` before, `kv` after) and naive (`nmod` before, `nvii` after). A significant change at the event month means a seam. Table M4: the naive series has an overwhelmingly significant step of the size of the sensor ratio; the harmonized one has none at the 5 % level. The harmonized test places its (insignificant) change month near 2022-10, which is the month Terra lost data for 13 days; this coincidence was not tested.
 
 **Aqua-only sensitivity.** `k` is refitted against Aqua alone (without the cell multiplier) and the log anomalies of the stratum-month series are correlated with those of the production series. The anomaly series does not depend materially on which MODIS satellite is the reference (Table M2). Aqua's absolute level is about two thirds of Terra+Aqua, as expected from half the overpasses.
 
-**Log-log slope diagnostic.** The ratio model is proportional (`M = kV`). The OLS slope of `log M` on `log V` at 1° cell-month, by biome, tests this. Slopes are below 1 in every biome (Table M2): at fine scales MODIS grows more slowly than VIIRS as fire density rises, which a proportional model cannot represent. It is reported as a diagnostic and is not corrected. It is one reason the model is weaker for the most active cells and for the extremes.
+**Log-log slope diagnostic.** The ratio model is proportional (`M = kV`). The OLS slope of `log M` on `log V` at 1° cell-month, by biome, is below 1 in every biome (Table M2). This was first read as MODIS growing more slowly than VIIRS as fire density rises. That reading is not supported: the OLS fit keeps only cell-months with `M > 0` (at low `V` this selects the months in which MODIS happened to see something, which flattens the slope) and is attenuated by noise in `log V`. A Poisson fit of `M = a V^b` that keeps the zeros gives `b` of 1.0 to 1.2 (Table M11c): if anything the MODIS share rises with activity, as expected if MODIS misses mostly small fires.
+
+**Fusion against an independent reference.** Scoring the fused record against MODIS would be circular, because MODIS is one of its inputs. The test therefore fuses Aqua (rescaled to the Terra∪Aqua scale, with leave-one-year-out factors) with leave-one-year-out calibrated VIIRS, using the Aqua and VIIRS error models, and scores every candidate against Terra (rescaled the same way), which none of them contains: Aqua alone (what the switch shows before 2023), VIIRS alone, the fusion, and an equal-weight mean as a contrast. 2012-2019, 1° cell-months and stratum-months, log1p RMSE. Terra's own noise adds the same floor to every candidate, and Aqua and VIIRS share the afternoon overpass, so neither is favoured against the other by the morning reference. The error-model parameters come from the same years (they are a few numbers per stratum from about a million cell-months; the calibration itself is leave-one-year-out). Table M10.
+
+**MODIS weight by era and change points of the fused record.** The production fusion is run per 1° cell × stratum × day|night (as the kernel would for an area of that size) and per stratum for the globe; Table M10 gives the typical MODIS weight by era. Pettitt's test is repeated on the fused global series around the start of VIIRS, the start of the drift correction (2020-01) and the legacy switch (2023-01), next to the switch and naive series (Table M4).
+
+**NOAA-21 blind test.** NOAA-21 never enters a VIIRS-to-MODIS fit. Calibrated NOAA-21 alone (`c21` from its overlap with S-NPP, then the 2012-2021 `k`, no per-cell multiplier) is scored by year against MODIS (raw and drift-corrected) and against calibrated NOAA-20 and S-NPP (Table M11). The drift-corrected comparison is not independent: the drift factors use the VIIRS composite, which includes NOAA-21 from 2023-03.
+
+**Closure.** In the GSICS sense (Chander et al. 2013): the NOAA-20 factor fitted directly against MODIS on 2018-2019 against the chain NOAA-20 → S-NPP (`c20`) → MODIS on the same months, per stratum × day|night × month of year, and both applied out of sample to 2020-2021 (Table M11).
+
+**Activity dependence of the ratio.** Cell-days saturate in busy cells, and MODIS misses more of the small fires than VIIRS, so the ratio could depend on activity (Schroeder et al. 2008 show detection probability rising with fire size). A power law `M = a V^b` (`a` per stratum × day|night × month of year, `b` per biome group × day|night by Poisson deviance on a grid from 0.6 to 1.5) is compared with the proportional model, both without the per-cell multiplier, leave-one-year-out (Table M11). It is a diagnostic, not adopted (section 20).
+
+**Robustness to the end of S-NPP.** S-NPP stopped on 2026-11-02. The VIIRS stream is a per-day mean over the satellites available each day, so later months are NOAA-20 and NOAA-21 only, scaled to S-NPP units by `c20` and `c21` (fitted on the overlap and frozen); the kernel takes the two-satellite error row from the satellite count in `months.viirs_sats`. The build of 2026-11-15 runs through this transition; its last month (2026-11) is partial for both sensors (VIIRS coverage 0.10, MODIS 0.48) and is drawn but excluded from statistics.
 
 **Reconciliation.** `verify.py` checks that rows are conserved through the pipeline, that standard and near-real-time never overlap, that tile totals equal the count of accepted detections at every level, that levels add exactly, that the points archive holds every normalized row, that sampled official country files have the same row count as the zips, and prints the top anomaly months per realm. See the [README](../README.md#tests-and-checks) for its status.
 
-## 12. ML challenger
+## 14. ML challenger
 
 Code: `ml_challenger.py`; schema [ml.md](../schema/ml.md). A cross-check on the production ratio method, not a replacement. It never feeds the served record.
 
@@ -191,7 +281,7 @@ Code: `ml_challenger.py`; schema [ml.md](../schema/ml.md). A cross-check on the 
 - Result (Table M6): on the held-out years the challenger lowers log-RMSE against the production method at both scales, with similar overall bias, but its worst biome bias is larger, and out of time it is no more stable than the ratio method. The ratio method stays in production because it is transparent, has per-stratum mass balance and cannot fail on unseen strata; the challenger is offered in the Method lab as a cross-check on the selected area, run on WebGPU where available and WASM otherwise, only at the finest tile level.
 - Parity: the ONNX graph agrees with the training forward pass to about 1e-6 relative (`data/work/ml/run.log`).
 
-## 13. Live now-versus-normal pace
+## 15. Live now-versus-normal pace
 
 Code: `web/src/lib/live/pace.ts`, `web/server/liveCore.ts`. Question: is the last week unusual for this area and month? It is a different, deliberately simpler computation than the monthly record, because near-real-time data are unscreened and there is no month to calibrate yet.
 
@@ -204,7 +294,7 @@ Code: `web/src/lib/live/pace.ts`, `web/server/liveCore.ts`. Question: is the las
 
 Approximations. The normal pace spreads a monthly median evenly over the days of the month, so it ignores within-month shape. `k_eff` is an average over months and stratum mixtures in the area, not the per-stratum, per-cell calibration. Near-real-time rows have no static-source screening and lower quality than standard rows. The window is at most 7 days, and the box is snapped outward to 0.5°, so rows are filtered to the polygon in the browser. The result is a pace indicator, not a monthly value, and it is not mixed into the record.
 
-## 14. Outlook
+## 16. Outlook
 
 Code: `outlook.rs`. A 1 to 3 month look-ahead for the area, on the harmonized series. With `x = log1p(H)`, climatology `mu_k` the mean of `x` for calendar month `k` over the baseline years, and anomaly `a = x - mu_k`:
 
@@ -217,9 +307,29 @@ skill  = 1 - MSE_model / MSE_climatology,   leave-one-year-out lead-1 hindcast o
 
 If skill is 0 or below the outlook is the baseline climatology itself (median and 10th to 90th percentile range), and the interface says so. Skill is computed per area when it is drawn; no global skill figure is stored. It needs at least 24 anomaly pairs. The model is deliberately simple; it extends the seasonal cycle by the persistence of this year's departure and does not use weather, fuel or climate indices.
 
-## 15. Statistics in the interface
+## 17. Analog years
 
-Computed by the kernel on the harmonized monthly series of the area (`stats.rs`, `trend.rs`, `season.rs`).
+Code: `analogs.rs`. For the year of the latest complete-enough month, the kernel compares its year to date (months 1 to `K`) with every complete earlier year of the selected series:
+
+```
+distance(y) = sqrt( mean_{k=1..K} ( log(1 + x_y,k) - log(1 + x_now,k) )^2 )
+```
+
+The three nearest years are returned with their distance, their rest-of-year total (months `K+1` to 12) as a ratio to the median rest-of-year total of all candidates, and the month in which their rest of year peaked. Two numbers say how much to trust them: the spread of the analogs' log ratios against the spread over all candidate years, and a leave-one-out hindcast skill (each candidate year predicted from its three nearest other years, `1 - SSE/SSE_median` on log ratios). Analogs are called informative only when the skill exceeds 0.1 and the analogs agree more than the years in general; otherwise the interface is told to treat them as anecdotes. With fewer than four candidates there are no analogs, and when the latest month is December there is no rest of year to describe.
+
+## 18. Reference-sensor lens
+
+Code: `series.rs`, `lens`. MODIS ends; the record will be carried by VIIRS. With `unit: "viirs"` every MODIS-equivalent value of month `m` (the selected series, its bounds, `modisEq`, `viirsCal`, the drift-corrected MODIS) is divided by the area's own conversion factor for that calendar month,
+
+```
+f_k = sum kv / sum v       over the area's months of calendar month k in the fit window (2012-02 to 2021-12)
+```
+
+(falling back to all fit-window months, then to all months with VIIRS, then to 1), so the whole record reads in uncalibrated VIIRS cell-days, the S-NPP-equivalent per-day mean. Raw counts and `viirsRaw` are untouched. Every statistic is computed on the lensed series. Because one factor applies to all years of a calendar month, ratios to the calendar-month median, percentiles and ranks among years of the same month do not change; this is tested in the kernel (`lens_keeps_calendar_ratios_percentiles_and_ranks`) and in the browser on real tiles (largest relative change of a calendar ratio 3e-16). Quantities that add different calendar months (annual totals and their ranks, year to date, records across months, trend in %) are re-weighted by season, because a VIIRS cell-day is worth a different MODIS amount in different seasons; they are unchanged only when `f` is the same for every month. The robust z is not scale-free (its Poisson floor `sqrt(median)` changes with the unit). Intervals and their size classes are computed in MODIS units and then divided by `f_k`.
+
+## 19. Statistics in the interface
+
+Computed by the kernel on the harmonized monthly series of the area (`stats.rs`, `trend.rs`, `season.rs`). "Harmonized" is the selected series: fused by default, the switch series in switch mode, and in VIIRS units under the lens (section 18).
 
 - **Baseline** for a calendar month: the harmonized values of that month in the chosen baseline years (default 2003-2022); months without coverage are left out and true zeros are kept. Quantiles use the type-7 definition.
 - **Ratio, percentile, rank, robust z** of a month against its baseline: ratio to the median, percentile rank among the baseline values, rank among all years, and `(x - median) / max(1.4826 MAD, max(sqrt(median), 0.5))` (the floor, the Poisson standard deviation of a count of that size, keeps quiet months from producing huge scores). Level labels from the percentile: at or below 10 well below, up to 25 below, below 75 normal, below 90 above, below 97.5 well above, else extreme.
@@ -307,42 +417,54 @@ Quebec first (~170-250 x normal, highest of 26 Junes); December 2019 and January
 (~200-370 x normal); August 2019 is led by Siberia, with an arc-of-deforestation cluster third at only 3.7 x normal,
 and the arc as a fixed box ranks 11th of 26 Augusts (1.2 x the 2003-2022 median; 2005, 2010 and 2007 were higher).
 
-## 16. Known limitations and what would improve it
+## 20. Known limitations and what would improve it
 
 | Limitation | Effect | Improvement |
 | --- | --- | --- |
+| Fusion weights not optimal at every scale | Against an independent reference (Terra) the fused record beats both single streams at 1° and for active strata, but an equal-weight mean does about as well, and at stratum scale for small strata Aqua alone is better (Table M10). The error model understates the VIIRS conversion error at low activity. | An additive low-activity variance term, estimated by collocation on low-activity units. |
 | No cropland stratum | Agricultural burning (short, small, often at fixed overpass hours) is pooled with the biome. The cell multiplier absorbs part of it. | Add a cropland flag from a land-cover product (MODIS MCD12C1 was planned) as a third stratum dimension. |
-| Interval inflated by a factor rather than modelled | The factor `ci_scale` hides a missing variance component (between-year variability of the ratio). The interval is validated on 1° cell-months, not on large area sums. | Model the between-year variance of `k` per stratum directly (a random year effect) and validate on area sums. |
-| Sub-linear relation between `V` and `M` at fine scale | Proportional ratio overstates the benefit of high VIIRS counts in the busiest cells. | A concave link (power of `V`) per biome, or the ML model as production if its biome bias can be controlled. |
-| MODIS drift and ending | The reference sensor drifts after 2021 and stops about 2027; the out-of-time check cannot separate drift from calibration error. | Use VIIRS 750 m M-band active fire as an alternative bridge, or an independent reference. |
+| Interval width calibrated empirically | The error model (section 9) understates the error; conformal multipliers (section 12) correct the width per biome group and size class, but their coverage is empirical and slips by 3-9 points out of time (Table M9). Areas whose activity is spread over many biome groups take a weighted multiplier that was not calibrated as such. | Model the between-year variance of `k` per stratum directly (a random year effect) and validate on area sums. |
+| Proportional VIIRS-to-MODIS ratio | A power law with `b` of 1.0-1.2 predicts better than the proportional ratio when neither has the per-cell multiplier (Table M11c); a power of `V` is not additive over cells, so it cannot be applied to L0 rows and summed. Its gain on top of the multiplier is untested. | Fit `b` at L0 jointly with the cell multiplier and test it leave-one-year-out; adopt only if it helps there. |
+| MODIS drift and ending | Drift is measured and corrected against VIIRS (section 10), so in the drift era MODIS adds little that is independent of VIIRS at biome-year scale; real changes in the timing of burning are removed with the drift. The VIIRS error rows for three satellites are estimated in the drift era. | An independent reference with a fixed overpass (e.g. geostationary fire products over the Americas, Africa and Australia) to separate drift from real change. |
 | Detections are not burned area | Counts do not give area burned. | Cross-check against a burned-area product, for example GFED5 (Chen et al. 2023) or the FIRMS burned-area layers, as an external validation of the monthly ranks. |
 | Persistent sources missed by the mask | A source that FIRMS does not label and that is active for less than 10 months a year is counted. | Tune the persistence rule against known flare locations. |
 | Count-based availability | A genuine regional quiet period is not confused with an outage because counts are global, but a small partial outage of one satellite may not be flagged. | Use the satellites' own granule metadata. |
 | Coefficients are refitted at every rebuild | They are *frozen* in the sense of a fixed fit window and are not stored between builds, so a rebuild can move them slightly (the mask and the availability table are recomputed over all data). | Store the coefficient files with the release and make the build read them. |
 | Daily time zones | Local-solar date uses longitude / 15 h, not civil time zones. | Intentional; documented here so that day boundaries are not mistaken for civil days. |
 
+## 21. What is new here and what is standard
+
+Standard, with prior use for fire data: cell-days as a unit, a stratified ratio calibration with shrinkage, leave-one-year-out validation and change-point tests. GFED5's near-real-time extension (Chen et al. 2026) calibrates VIIRS to the MODIS-based record in a closely related way at 0.25°, without uncertainty; it is supporting precedent for the calibration, and Harmony does not claim to improve on it.
+
+Standard methods applied here to MODIS/VIIRS active-fire counts: triple collocation (established for winds and soil moisture, and applied to fire radiative power, not counts, by Kang et al. 2026), merging of satellite products with error-variance weights (GFAS, Kaiser et al. 2012; ESA CCI soil moisture, Gruber et al. 2017), split conformal prediction (Vovk et al. 2005; Lei et al. 2018; in Earth observation, Singh et al. 2024), and cross-calibration closure (Chander et al. 2013). Count models with time-varying levels have a long statistical history (for example Harvey and Fernandes 1989); the fusion here is a simpler per-month combination.
+
+What we did not find elsewhere, in a search of the fire-count literature and of other entries made for this build (a search, not a proof): fusion weights for MODIS and VIIRS fire counts estimated by collocation rather than assumed; a global per-biome, day/night estimate of drift-induced change in MODIS active-fire counts against a fixed-overpass VIIRS reference, with the overpass-time shift used to estimate the diurnal sensitivity of detections; and empirical conformal intervals for a harmonized fire-count record checked out of time. To our knowledge these combinations are new for fire counts; each component is standard.
+
 ## Measured values (as of the 2026-11-15 build)
 
-Update this section from the files named in each caption after a refresh; nothing else in this document contains data-dependent numbers. The build has global scope. It contains no 2026 VIIRS data and NOAA-21 only for 2023-03 to 2023-05, so the 2026 row of `ratio_by_year` is not meaningful and is omitted.
+Update this section from the files named in each caption after a refresh; nothing else in this document contains data-dependent numbers. The build has global scope and runs to 2026-11-15, with NOAA-21 from 2023-03 and near-real-time data from 2026-07; 2026-11 is partial for both sensors. Tables M5 and M6 come from the earlier build of the same day (before NOAA-21 and the 2026 backfill) and were not recomputed; Tables M2-M3 were recomputed on the refreshed data and differ from the earlier build only in the last digit except where shown.
 
 **Table M1. Raw and harmonized VIIRS-to-MODIS ratios by year** (`validation.json`, `ratio_by_year`). Count ratio = VIIRS detections / MODIS detections; AFCD ratio = sum of uncalibrated `v` / sum of `meq`; harmonized ratio = sum of `kv` / sum of `meq`. 2012 starts in February for VIIRS, so its ratios are not comparable.
 
 | Year | MODIS detections | VIIRS detections | Count ratio | AFCD ratio (raw) | Harmonized ratio |
 | --- | --- | --- | --- | --- | --- |
-| 2012 | 4,517,497 | 17,026,686 | 3.77 | 2.41 | 0.89 |
-| 2013 | 3,829,553 | 15,345,242 | 4.01 | 2.78 | 1.00 |
-| 2014 | 3,998,116 | 16,080,781 | 4.02 | 2.78 | 1.00 |
-| 2015 | 4,286,105 | 17,125,903 | 4.00 | 2.74 | 0.99 |
-| 2016 | 3,993,330 | 16,229,159 | 4.06 | 2.79 | 0.98 |
-| 2017 | 4,019,931 | 15,876,344 | 3.95 | 2.68 | 0.98 |
-| 2018 | 3,750,479 | 26,547,649 | 7.08 | 2.75 | 1.00 |
-| 2019 | 4,108,490 | 33,412,001 | 8.13 | 2.76 | 1.00 |
-| 2020 | 4,005,570 | 33,066,747 | 8.26 | 2.84 | 1.02 |
-| 2021 | 3,934,529 | 32,170,091 | 8.18 | 2.76 | 1.01 |
-| 2022 | 3,397,973 | 27,776,195 | 8.17 | 2.81 | 1.03 |
-| 2023 | 4,174,009 | 36,857,738 | 8.83 | 2.76 | 1.02 |
-| 2024 | 4,357,490 | 34,967,174 | 8.02 | 2.76 | 1.00 |
-| 2025 | 3,273,755 | 28,705,568 | 8.77 | 2.98 | 1.07 |
+| 2012 | 4,516,630 | 17,017,652 | 3.77 | 2.41 | 0.89 |
+| 2013 | 3,828,738 | 15,335,521 | 4.01 | 2.78 | 1.00 |
+| 2014 | 3,997,393 | 16,070,104 | 4.02 | 2.78 | 1.00 |
+| 2015 | 4,284,877 | 17,112,138 | 3.99 | 2.74 | 0.99 |
+| 2016 | 3,992,527 | 16,219,256 | 4.06 | 2.79 | 0.98 |
+| 2017 | 4,019,104 | 15,865,507 | 3.95 | 2.68 | 0.98 |
+| 2018 | 3,749,733 | 26,532,317 | 7.08 | 2.75 | 1.00 |
+| 2019 | 4,107,420 | 33,389,353 | 8.13 | 2.75 | 1.00 |
+| 2020 | 4,004,148 | 33,040,132 | 8.25 | 2.83 | 1.02 |
+| 2021 | 3,933,448 | 32,148,073 | 8.17 | 2.76 | 1.01 |
+| 2022 | 3,397,224 | 27,756,068 | 8.17 | 2.81 | 1.03 |
+| 2023 | 4,167,362 | 48,548,385 | 11.65 | 2.76 | 1.01 |
+| 2024 | 4,351,135 | 52,121,453 | 11.98 | 2.76 | 1.00 |
+| 2025 | 3,268,543 | 42,136,959 | 12.89 | 2.97 | 1.07 |
+| 2026 | 2,730,989 | 37,430,979 | 13.71 | 3.18 | 1.14 |
+
+The count ratio steps up again from 2023, when NOAA-21 joins (each satellite adds its own detections); the harmonized ratio does not, but it rises in 2025-2026 as MODIS drifts (section 10). 2026 runs to mid-November.
 
 **Table M2. Validation** (`validation.json`: `loyo`, `loyo_naive_global_ratio`, `out_of_time`, `aqua_only_sensitivity`, `beta_loglog_1deg`).
 
@@ -359,11 +481,12 @@ Update this section from the files named in each caption after a refresh; nothin
 | | slope | 1.006 | 0.999 |
 | | peak month exact / within one month | 0.777 / 0.891 | 0.770 / 0.885 |
 | | anomaly sign agreement | 0.843 | 0.844 |
-| Out-of-time bias (stratum-month r) | 2022 | +1.19 % (0.984) | not computed |
-| | 2023 | +1.51 % (0.988) | |
-| | 2024 | -0.04 % (0.987) | |
-| | 2025 | +7.28 % (0.984) | |
-| Aqua-only sensitivity | correlation of log anomalies, production vs Aqua-only reference | 0.982 (lowest by biome: unclassified 0.857, tundra 0.951, tropical grasslands 0.963; others 0.98-0.995) | |
+| Out-of-time bias (stratum-month r) | 2022 (11 months) | +1.2 % (0.984) | not computed |
+| | 2023 | +1.5 % (0.988) | |
+| | 2024 | +0.0 % (0.988) | |
+| | 2025 | +7.0 % (0.985) | |
+| | 2026 (10 months) | +19.0 % (0.981) | |
+| Aqua-only sensitivity | correlation of log anomalies, production vs Aqua-only reference | 0.985 (lowest by biome: unclassified 0.857, tundra 0.951, tropical grasslands 0.963; others 0.98-0.995) | |
 | Log-log slope, 1-degree, by biome | OLS slope of log M on log V | 0.66 (mangroves) to 0.94 (tropical and subtropical grasslands); all below 1 | |
 
 Stratum-month log-RMSE by biome ranges from 0.17 (deserts) to 0.41 (flooded grasslands) for most biomes; it is 1.20 for boreal forest, 1.36 for tundra and 0.67 for the unclassified stratum (`loyo.stratum_month.by_biome`).
@@ -380,7 +503,8 @@ Stratum-month log-RMSE by biome ranges from 0.17 (deserts) to 0.41 (flooded gras
 | V-weighted `k` by biome (VIIRS to MODIS-equivalent), day | 0.29 (mangroves) to 0.60 (temperate conifer forests) |
 | V-weighted `k` by biome, night | 0.14 (montane grasslands) to 0.36 (tundra) |
 | Bridge LOYO RMSE at tau_bridge (1-degree) | 0.8223 |
-| `ci_scale` | 2.2368 |
+| `ci_scale` (legacy interval only) | 2.2362 |
+| VIIRS-to-MODIS factor refitted on 2012-2019 instead of 2012-2021 | +0.33 % globally (Table M11d) |
 | 80 % interval coverage, unscaled | 0.481 |
 | 80 % / 95 % coverage after scaling, all cells with H >= 5 (373,041 cell-months) | 0.800 / 0.915 |
 | Same by predicted H: 5-20 (177,555), 20-100 (122,669), 100 and above (72,817) | 80 %: 0.822, 0.808, 0.734; 95 %: 0.919, 0.924, 0.889 |
@@ -413,7 +537,138 @@ Stratum-month log-RMSE by biome ranges from 0.17 (deserts) to 0.41 (flooded gras
 | Challenger (mass-balanced) | 0.948 | 0.550 | 0.989 | 0.429 | +1.64 % |
 | Challenger x cell multiplier | 0.952 | 0.527 | 0.991 | 0.395 | +1.23 % |
 
-Out-of-time bias, 2022 / 2023 / 2024 / 2025: production +1.2 / +1.5 / 0.0 / +7.3 %; challenger -2.3 / -2.4 / -2.2 / +5.9 %; naive +0.6 / +0.4 / +0.4 / +8.4 %. Worst biome bias on the test years: challenger -15.7 %, production -9.0 %. Mass-balance factor of the shipped model: 1.0895. The `verdict` text in `model.json` is generated from the same table.
+Out-of-time bias in the ML run (its own snapshot), 2022 / 2023 / 2024 / 2025: production +1.2 / +1.5 / 0.0 / +7.3 %; challenger -2.3 / -2.4 / -2.2 / +5.9 %; naive +0.6 / +0.4 / +0.4 / +8.4 %. Worst biome bias on the test years: challenger -15.7 %, production -9.0 %. Mass-balance factor of the shipped model: 1.0895. The `verdict` text in `model.json` is generated from the same table.
+
+
+**Table M4b. Change points of the fused global series** (`validation.json`, `fusion.pettitt_fused`; detected month, p and step for each series).
+
+| Event (window) | Fused | Switch | Naive counts |
+| --- | --- | --- | --- |
+| VIIRS start, 2012-02 (109-180) | 2013-03, p 0.120, step -0.076 | 2013-03, p 0.097, step -0.081 | 2012-02, p below 0.0001, step +1.367 |
+| Drift correction starts, 2020-01 (204-275) | 2020-12, p 0.067, step -0.059 | 2020-12, p 0.029, step -0.078 | 2018-11, p below 0.0001, step +0.496 |
+| Legacy switch, 2023-01 (240-311) | 2025-02, p 0.061, step -0.131 | 2025-02, p 0.169, step -0.117 | 2023-03, p below 0.0001, step +0.439 |
+
+Fused global total over raw MODIS, by year: 2012 0.984, 2013 0.998, 2014 1.003, 2015 0.993, 2016 0.991, 2017 0.991, 2018 1.003, 2019 1.001, 2020 1.027, 2021 1.005, 2022 1.027, 2023 1.014, 2024 1.002, 2025 1.073, 2026 1.146.
+
+**Table M7a. Cell-level dispersion `phi`** (`validation.json`, `error_model`; day / night; group values weighted by Terra∪Aqua cell-days; MODIS-equivalent units, 1 = Poisson). TC = triple collocation; split = Poisson split of the VIIRS - Terra∪Aqua difference (section 9d).
+
+| Biome group | Terra∪Aqua, TC | Terra∪Aqua, split | VIIRS 1 sat., TC | VIIRS 1 sat., split | VIIRS 2 sat. | VIIRS 3 sat. | Terra bridge |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Tropical forests | 1.80 / 0.95 | 2.28 / 2.14 | 0.80 / 1.35 | 0.72 / 0.45 | 0.78 / 1.09 | 0.44 / 0.67 | 9.0 / 1.3 |
+| Temperate forests | 1.22 / 0.90 | 1.58 / 2.29 | 1.16 / 1.74 | 0.79 / 0.57 | 0.79 / 2.01 | 0.61 / 1.57 | 3.4 / 1.1 |
+| Boreal forest and tundra | 0.52 / 0.81 | 1.22 / 2.60 | 1.61 / 3.09 | 0.68 / 0.82 | 2.00 / 4.98 | 1.34 / 2.86 | 1.1 / 0.6 |
+| Tropical savannas and grasslands | 2.48 / 1.27 | 2.63 / 2.29 | 1.01 / 1.13 | 1.04 / 0.45 | 0.69 / 1.24 | 0.58 / 0.73 | 10.5 / 1.9 |
+| Temperate grasslands | 1.25 / 1.09 | 1.30 / 2.51 | 0.75 / 0.87 | 0.73 / 0.53 | 0.46 / 0.68 | 0.22 / 0.31 | 3.1 / 1.9 |
+| Flooded and montane grasslands | 1.74 / 1.24 | 1.92 / 2.21 | 1.04 / 1.19 | 0.81 / 0.55 | 0.90 / 1.85 | 0.31 / 0.62 | 6.3 / 2.0 |
+| Mediterranean | 1.28 / 0.90 | 1.37 / 1.97 | 0.70 / 1.07 | 0.72 / 0.63 | 0.36 / 1.40 | 0.37 / 0.66 | 5.1 / 1.5 |
+| Deserts and xeric shrublands | 1.63 / 1.24 | 1.72 / 2.09 | 0.66 / 1.06 | 0.77 / 0.59 | 0.47 / 1.19 | 0.52 / 1.09 | 5.3 / 2.4 |
+| Mangroves and unclassified | 0.92 / 0.50 | 1.29 / 1.45 | 0.61 / 0.73 | 0.38 / 0.35 | 0.35 / 1.66 | 0.21 / 1.17 | 4.7 / 0.8 |
+| All strata | 2.07 / 1.08 | 2.32 / 2.28 | 0.97 / 1.49 | 0.91 / 0.53 | 0.75 / 1.78 | 0.54 / 1.08 | 8.8 / 1.6 |
+
+**Table M7b. Stratum-coherent relative variance `rho`** (day / night). `relvar` is the calibration floor the kernel adds to VIIRS.
+
+| Biome group | Terra∪Aqua | VIIRS (any number of satellites) | VIIRS `relvar` | Terra bridge (incl. `relvar_bridge`) |
+| --- | --- | --- | --- | --- |
+| Tropical forests | 0.0065 / 0.0078 | 0.0038 / 0.0159 | 0.0018 / 0.0074 | 0.0248 / 0.0087 |
+| Temperate forests | 0.0066 / 0.0336 | 0.0169 / 0.0278 | 0.0037 / 0.0867 | 0.0259 / 0.0419 |
+| Boreal forest and tundra | 0.0053 / 0.0265 | 0.0127 / 0.0653 | 0.0024 / 0.0090 | 0.0162 / 0.0649 |
+| Tropical savannas and grasslands | 0.0014 / 0.0015 | 0.0009 / 0.0077 | 0.0004 / 0.0013 | 0.0048 / 0.0034 |
+| Temperate grasslands | 0.0073 / 0.0484 | 0.0086 / 0.0568 | 0.0009 / 0.0984 | 0.0194 / 0.0018 |
+| Flooded and montane grasslands | 0.0043 / 0.0167 | 0.0082 / 0.0155 | 0.0015 / 0.0080 | 0.0159 / 0.0194 |
+| Mediterranean | 0.0136 / 0.0230 | 0.0070 / 0.0683 | 0.0026 / 0.3648 | 0.0513 / 0.0422 |
+| Deserts and xeric shrublands | 0.0071 / 0.0132 | 0.0077 / 0.0231 | 0.0017 / 0.1112 | 0.0227 / 0.0279 |
+| Mangroves and unclassified | 0.0123 / 0.0376 | 0.0079 / 0.0822 | 0.0026 / 0.0277 | 0.0494 / 0.0218 |
+| All strata | 0.0037 / 0.0124 | 0.0037 / 0.0236 | 0.0011 / 0.0283 | 0.0130 / 0.0190 |
+
+Single satellites, all strata, `phi` day / night: S-NPP 1.17 / 1.46, NOAA-20 1.07 / 2.05, NOAA-21 1.42 / 1.38, Aqua rescaled 2.42 / 3.61, Terra rescaled 8.78 / 1.55. The two halves of the Terra∪Aqua estimate: from Terra 2.35 / 1.09, from Aqua 1.79 / 1.07. Signal share of the cell-level anomaly variance 0.82 / 0.82. Variance of log(Terra∪Aqua) - log(mean of rescaled Terra and Aqua), stratum-month anomalies: 0.0082. Common mode (section 9c): day, Aqua-VIIRS error correlation 0.48 on 32 strata, `kappa` = 0.34; night, the alternative identification gives a negative correlation (-0.65, 15 strata), which is not usable, so `kappa` = 0 at night. Fallback levels (stratum / biome / global / global raised to the plausibility floor): cell TC Terra, Aqua, S-NPP 75% / 14% / 2% / 9%; VIIRS one satellite 70% / 21% / 1% / 8%; two 31% / 51% / 11% / 7%; three 44% / 45% / 11% / 0%; stratum-month TC 73% / 26% / 2% / 0%.
+
+**Table M8a. Drift fingerprint, global** (`validation.json`, `drift.table`, scope `global`). Ratio observed / expected (expected from calibrated VIIRS with satellite-specific 2012-2019 ratios). 2019 is a placebo year (leave-one-year-out reference); from 2022 the total 95 % interval (jackknife plus placebo variance) is in brackets. 2026: January to October, near-real-time from July.
+
+| Satellite | | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Terra | day | 1.01 | 1.00 | 0.99 | 0.92 (0.87-0.96) | 0.85 (0.80-0.89) | 0.73 (0.68-0.77) | 0.58 (0.54-0.63) | 0.44 (0.40-0.49) |
+| Terra | night | 1.03 | 1.04 | 1.10 | 1.04 (0.99-1.10) | 1.16 (1.10-1.22) | 1.27 (1.20-1.34) | 1.35 (1.27-1.43) | 1.53 (1.41-1.66) |
+| Aqua | day | 0.99 | 0.95 | 0.99 | 1.00 (0.96-1.03) | 1.02 (0.99-1.06) | 1.06 (1.02-1.10) | 1.01 (0.97-1.05) | 0.90 (0.85-0.95) |
+| Aqua | night | 1.07 | 0.99 | 1.09 | 0.98 (0.88-1.09) | 1.03 (0.93-1.15) | 1.04 (0.92-1.16) | 0.83 (0.74-0.93) | 0.70 (0.60-0.82) |
+| Terra∪Aqua | day | 1.00 | 0.96 | 0.99 | 0.97 (0.95-1.00) | 0.98 (0.95-1.01) | 0.97 (0.94-1.00) | 0.90 (0.87-0.93) | 0.78 (0.74-0.82) |
+| Terra∪Aqua | night | 1.04 | 1.03 | 1.10 | 1.02 (0.97-1.08) | 1.12 (1.06-1.19) | 1.19 (1.12-1.26) | 1.20 (1.13-1.28) | 1.29 (1.19-1.40) |
+
+Placebo, 2012-2019, global, RMS of the log ratio (day / night): Terra 0.021 / 0.021, Aqua 0.016 / 0.050, Terra∪Aqua 0.014 / 0.025; largest single-year departure 9.5 %. The jackknife-only 95 % interval covers 1 in 50% (day) and 88% (night) of the Terra∪Aqua placebo years: it misses the year-to-year variability, which is why the total interval adds it.
+
+**Table M8b. Overpass shift** (`drift.overpass`): mean local solar time of detections minus the same satellite's 2012-2019 mean for the same stratum × day|night × month of year, hours.
+
+| Satellite | | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Terra | day | +0.02 | +0.04 | -0.01 | -0.20 | -0.42 | -0.69 | -1.09 | -1.24 |
+| Terra | night | +0.00 | +0.01 | -0.05 | -0.20 | -0.44 | -0.74 | -1.16 | -1.71 |
+| Aqua | day | -0.01 | -0.01 | -0.00 | +0.06 | +0.25 | +0.60 | +1.14 | +1.83 |
+| Aqua | night | -0.00 | -0.00 | +0.01 | +0.07 | +0.29 | +0.64 | +1.16 | +1.95 |
+| SNPP | day | -0.02 | -0.03 | -0.02 | -0.01 | +0.00 | -0.02 | +0.01 | +0.12 |
+| SNPP | night | -0.02 | -0.03 | -0.02 | -0.01 | +0.02 | -0.03 | +0.03 | +0.15 |
+| NOAA20 | day | +0.00 | -0.01 | +0.01 | +0.01 | +0.03 | +0.01 | +0.00 | +0.07 |
+| NOAA20 | night | +0.00 | -0.01 | -0.00 | +0.01 | +0.02 | +0.00 | +0.01 | +0.09 |
+
+**Table M8c. Drift by biome group, 2025, and diurnal sensitivity** (`drift.table`, `drift.diurnal_sensitivity`). Ratio (total 95 % interval). `beta` = change in log detections per hour of overpass shift ± standard error (share of the 2020-2026 variance of the log ratio explained by the shift).
+
+| Biome group | Terra day | Terra night | Aqua day | Aqua night | beta Terra day | beta Terra night | beta Aqua night |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Tropical forests | 0.60 (0.52-0.69) | 1.53 (1.36-1.73) | 1.02 (0.92-1.13) | 0.79 (0.67-0.92) | +0.42 ± 0.02 (98%) | -0.38 ± 0.02 (99%) | -0.06 ± 0.04 (20%) |
+| Temperate forests | 0.73 (0.60-0.90) | 1.30 (0.98-1.73) | 1.00 (0.88-1.13) | 0.95 (0.55-1.63) | +0.27 ± 0.03 (98%) | -0.20 ± 0.05 (93%) | -0.09 ± 0.09 (26%) |
+| Boreal forest and tundra | 0.80 (0.68-0.93) | 1.06 (0.86-1.30) | 1.20 (1.03-1.40) | 0.89 (0.53-1.48) | +0.01 ± 0.07 (0%) | +0.04 ± 0.07 (3%) | -0.48 ± 0.12 (63%) |
+| Tropical savannas and grasslands | 0.52 (0.46-0.57) | 1.40 (1.31-1.50) | 0.99 (0.96-1.04) | 0.82 (0.74-0.90) | +0.66 ± 0.02 (99%) | -0.30 ± 0.01 (99%) | -0.19 ± 0.02 (90%) |
+| Temperate grasslands | 0.70 (0.62-0.78) | 1.05 (0.75-1.47) | 1.00 (0.88-1.13) | 0.55 (0.32-0.92) | +0.32 ± 0.02 (99%) | -0.20 ± 0.06 (61%) | -0.40 ± 0.10 (74%) |
+| Flooded and montane grasslands | 0.51 (0.45-0.59) | 1.55 (1.34-1.80) | 1.06 (0.99-1.13) | 0.77 (0.49-1.21) | +0.58 ± 0.02 (99%) | -0.43 ± 0.03 (94%) | -0.18 ± 0.04 (70%) |
+| Mediterranean | 0.76 (0.58-1.00) | 1.30 (0.83-2.02) | 1.13 (0.95-1.33) | 1.10 (0.62-1.94) | +0.30 ± 0.02 (97%) | -0.15 ± 0.06 (69%) | -0.06 ± 0.09 (10%) |
+| Deserts and xeric shrublands | 0.79 (0.69-0.89) | 1.23 (1.01-1.49) | 1.01 (0.92-1.10) | 0.93 (0.69-1.25) | +0.22 ± 0.02 (94%) | -0.21 ± 0.03 (94%) | -0.15 ± 0.05 (66%) |
+| Mangroves and unclassified | 0.50 (0.38-0.67) | 1.15 (0.70-1.86) | 1.20 (1.05-1.37) | 0.49 (0.23-1.07) | +0.54 ± 0.04 (97%) | -0.26 ± 0.09 (80%) | -0.18 ± 0.15 (18%) |
+
+**Table M9. Conformal intervals** (`validation.json`, `conformal`; `meta.json`, `conformal`). Multipliers of the global row; coverage of observed Terra∪Aqua at 80 % / 95 % by size class of the prediction, all supports pooled. In the calibration years the new interval covers 0.800 / 0.950 in every class by construction. Out of time = frozen calibration, 2022-2024.
+
+| Size class (AFCD) | q80 / q95 | n, 2012-2021 | legacy, 2012-2021 | n, 2022-2024 | conformal vs raw MODIS | conformal vs drift-corrected MODIS | legacy vs raw MODIS |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| H<5 | 1.29 / 3.02 | 791,435 | 0.396 / 0.407 | 270,306 | 0.809 / 0.962 | 0.809 / 0.962 | 0.363 / 0.376 |
+| 5-20 | 1.79 / 3.41 | 233,741 | 0.826 / 0.922 | 69,027 | 0.774 / 0.939 | 0.778 / 0.939 | 0.817 / 0.914 |
+| 20-100 | 1.89 / 3.37 | 164,444 | 0.804 / 0.921 | 47,483 | 0.753 / 0.926 | 0.760 / 0.929 | 0.773 / 0.900 |
+| 100-1000 | 2.12 / 3.74 | 93,985 | 0.723 / 0.874 | 27,926 | 0.732 / 0.919 | 0.747 / 0.926 | 0.667 / 0.833 |
+| H>=1000 | 2.19 / 3.98 | 13,746 | 0.636 / 0.807 | 4,284 | 0.712 / 0.908 | 0.736 / 0.914 | 0.556 / 0.726 |
+
+Out of time by biome group (80 %, conformal / legacy): Tropical forests 0.78 / 0.57; Temperate forests 0.80 / 0.49; Boreal forest and tundra 0.82 / 0.37; Tropical savannas and grasslands 0.78 / 0.57; Temperate grasslands 0.79 / 0.55; Flooded and montane grasslands 0.78 / 0.48; Mediterranean 0.80 / 0.49; Deserts and xeric shrublands 0.80 / 0.39; Mangroves and unclassified 0.82 / 0.36. The legacy interval cannot cover a zero (class below 5) and narrows relative to the error for the largest values. The conformal interval undercovers out of time by 3 to 9 points in the classes above 5, more for larger values; drift-correcting the reference recovers part of that.
+
+**Table M10. Fusion** (`validation.json`, `fusion`). (a) Non-circular test, 2012-2019: log1p RMSE against rescaled Terra; size class from the mean of the two inputs.
+
+| Scale | Aqua alone (switch) | VIIRS alone | Fused | Equal weights | Mean Aqua weight |
+| --- | --- | --- | --- | --- | --- |
+| 1° cell-month, all (n 739,773) | 0.949 | 0.932 | 0.898 | 0.888 | 0.35 |
+| stratum-month, all (n 5,800) | 0.464 | 0.570 | 0.511 | 0.502 | 0.58 |
+| 1°, H<5 (n 452,072) | 0.866 | 0.856 | 0.808 | 0.790 | |
+| 1°, 5-20 (n 134,288) | 1.212 | 1.190 | 1.160 | 1.156 | |
+| 1°, 20-100 (n 95,279) | 0.996 | 0.974 | 0.962 | 0.964 | |
+| 1°, 100-1000 (n 53,924) | 0.793 | 0.748 | 0.754 | 0.761 | |
+| 1°, H>=1000 (n 4,210) | 0.697 | 0.621 | 0.645 | 0.657 | |
+| stratum, H<5 (n 656) | 0.880 | 0.871 | 0.809 | 0.793 | |
+| stratum, 5-20 (n 345) | 0.899 | 1.447 | 1.273 | 1.231 | |
+| stratum, 20-100 (n 810) | 0.539 | 0.726 | 0.639 | 0.637 | |
+| stratum, 100-1000 (n 1,997) | 0.291 | 0.297 | 0.272 | 0.273 | |
+| stratum, H>=1000 (n 1,992) | 0.165 | 0.180 | 0.159 | 0.158 | |
+
+Error model alone (no conformal multiplier): the nominal 80 % / 95 % interval of the fused value, widened by Terra's own error, covers Terra (H ≥ 5) 0.59 / 0.70 of the time at 1° and 0.76 / 0.87 at stratum scale. Fused with `kappa` = 0: 0.898 (1°), 0.511 (stratum).
+
+(b) MODIS weight of the production fusion (median over 1° cell-months; activity-weighted in brackets): 2012-2019 0.35 (0.39); 2020-2021 0.31 (0.32); 2022-2025 0.25 (0.27); 2026 0.23 (0.18). Global, by year: 2012 0.41, 2013 0.39, 2014 0.40, 2015 0.40, 2016 0.39, 2017 0.40, 2018 0.36, 2019 0.37, 2020 0.31, 2021 0.33, 2022 0.31, 2023 0.28, 2024 0.26, 2025 0.21, 2026 0.18.
+
+**Table M11. Sensor tests** (`validation.json`: `noaa21_blind`, `closure`, `power_law`, `k_refit_2012_2019`). (a) NOAA-21 blind test, stratum-month.
+
+| Year | bias vs MODIS | log-RMSE vs MODIS | bias vs drift-corrected MODIS | bias vs NOAA-20 | log-RMSE vs NOAA-20 | bias vs S-NPP |
+| --- | --- | --- | --- | --- | --- | --- |
+| 2023 (10 months) | +0.5 % | 0.444 | +0.1 % | +0.2 % | 0.153 | +0.6 % |
+| 2024 (12 months) | +0.4 % | 0.503 | +0.1 % | -0.1 % | 0.181 | +2.5 % |
+| 2025 (12 months) | +6.9 % | 0.560 | -0.6 % | -0.4 % | 0.180 | +0.1 % |
+| 2026 (10 months) | +19.0 % | 0.632 | -0.4 % | -0.4 % | 0.232 | +0.1 % |
+
+(b) Closure, NOAA-20 → MODIS, chain over direct: weighted mean log -0.0041, RMS 0.0246; out of sample (2020-2021, 1°) log-RMSE chain 0.6818, direct 0.6824; bias +0.5 % and +1.0 %.
+
+(c) Power law, leave-one-year-out, no per-cell multiplier: 1° log-RMSE proportional 0.6451, power 0.6188; stratum-month 0.5007 and 0.4597. Selected `b` 1.00 to 1.20 (grid 0.6-1.5). For comparison, the per-cell multiplier lowers the proportional model's 1° error from 0.645 to 0.601 (Table M3).
+
+(d) VIIRS-to-MODIS factor refitted on 2012-2019 instead of 2012-2021 (V-weighted): +0.33 % globally; by biome group, day / night: Tropical forests +0.2 / -0.4 %; Temperate forests -0.0 / -3.1 %; Boreal forest and tundra +0.0 / -6.4 %; Tropical savannas and grasslands +0.9 / +0.1 %; Temperate grasslands -0.1 / +2.6 %; Flooded and montane grasslands +0.4 / -3.7 %; Mediterranean +0.3 / +0.9 %; Deserts and xeric shrublands -0.6 / -0.1 %; Mangroves and unclassified +1.1 / +0.3 %.
 
 ## References
 
@@ -432,6 +687,19 @@ Out-of-time bias, 2022 / 2023 / 2024 / 2025: production +1.2 / +1.5 / 0.0 / +7.3
 - Wilks, D. S. (2016). "The stippling shows statistically significant grid points": How research results are routinely overstated and overinterpreted, and what to do about it. *Bulletin of the American Meteorological Society* 97(12), 2263-2273. doi:10.1175/BAMS-D-15-00267.1
 - Benjamini, Y., Hochberg, Y. (1995). Controlling the false discovery rate: a practical and powerful approach to multiple testing. *Journal of the Royal Statistical Society B* 57(1), 289-300.
 - van der Werf, G. R., Randerson, J. T., Giglio, L., et al. (2017). Global fire emissions estimates during 1997-2016. *Earth System Science Data* 9, 697-720. doi:10.5194/essd-9-697-2017
+- Anscombe, F. J. (1948). The transformation of Poisson, binomial and negative-binomial data. *Biometrika* 35(3-4), 246-254. doi:10.1093/biomet/35.3-4.246
+- Chander, G., et al. (2013). Overview of intercalibration of satellite instruments. *IEEE Transactions on Geoscience and Remote Sensing* 51, 1056-1080. doi:10.1109/TGRS.2012.2228654
+- Chen, Y., et al. (2026). Tracking recent extremes and interannual variability of global fire emissions using a near-real-time extension. *Earth System Science Data* 18, 7535-7555. doi:10.5194/essd-18-7535-2026
+- Gruber, A., et al. (2016). Recent advances in (soil moisture) triple collocation analysis. *International Journal of Applied Earth Observation and Geoinformation* 45, 200-211. doi:10.1016/j.jag.2015.09.002
+- Gruber, A., et al. (2017). Triple collocation-based merging of satellite soil moisture retrievals. *IEEE Transactions on Geoscience and Remote Sensing* 55, 6780-6792. doi:10.1109/TGRS.2017.2734070
+- Harvey, A. C., Fernandes, C. (1989). Time series models for count or qualitative observations. *Journal of Business & Economic Statistics* 7, 407-417. doi:10.1080/07350015.1989.10509750
+- Kaiser, J. W., et al. (2012). Biomass burning emissions estimated with a global fire assimilation system based on observed fire radiative power. *Biogeosciences* 9, 527-554. doi:10.5194/bg-9-527-2012
+- Kang, Y., et al. (2026). Comprehensive global fire radiative power evaluation by minimizing detection bias with intercomparison and extended triple collocation. *Remote Sensing of Environment* 333, 115136. doi:10.1016/j.rse.2025.115136
+- Lei, J., et al. (2018). Distribution-free predictive inference for regression. *Journal of the American Statistical Association* 113, 1094-1111. doi:10.1080/01621459.2017.1307116
+- McColl, K. A., et al. (2014). Extended triple collocation: estimating errors and correlation coefficients with respect to an unknown target. *Geophysical Research Letters* 41, 6229-6236. doi:10.1002/2014GL061322
+- Schroeder, W., et al. (2008). Validation of GOES and MODIS active fire detection products using ASTER and ETM+ data. *Remote Sensing of Environment* 112, 2711-2726. doi:10.1016/j.rse.2008.01.005
+- Singh, G., et al. (2024). Uncertainty quantification for probabilistic machine learning in earth observation using conformal prediction. *Scientific Reports* 14, 16166. doi:10.1038/s41598-024-65954-w
+- Stoffelen, A. (1998). Toward the true near-surface wind speed: error modeling and calibration using triple collocation. *Journal of Geophysical Research: Oceans* 103, 7755-7766. doi:10.1029/97JC03180
 - Pettitt, A. N. (1979). A non-parametric approach to the change-point problem. *Applied Statistics* 28(2), 126-135. doi:10.2307/2346729
 
-Bibliographic details were checked against Crossref. Sen's slope estimator and the Mann-Kendall test are standard methods (Sen 1968; Mann 1945; Kendall 1975) and are not cited with details here.
+Bibliographic details were checked against Crossref; for the 2026-11 additions the DOI, first author, year, title, journal, volume and pages were checked, and co-authors beyond the first are abbreviated where not checked. Vovk, Gammerman and Shafer (2005), *Algorithmic Learning in a Random World* (Springer), is cited without a DOI. Sen's slope estimator and the Mann-Kendall test are standard methods (Sen 1968; Mann 1945; Kendall 1975) and are not cited with details here.

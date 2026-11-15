@@ -177,7 +177,7 @@ def fit_stream(R: Rows, nS: int, biome: np.ndarray, n_biome: int, years: list[in
     # Selection effect: tau is the grid value that minimises these LOYO predictions, and the same LOYO predictions
     # (at this tau) are then reported as validation, so the reported 1-degree LOYO scores carry a small optimism from
     # the five-way choice. k and the per-cell multiplier r are refitted without the held-out year in every fold.
-    # Documented in docs/METHOD.md, section 11.
+    # Documented in docs/METHOD.md, section 13.
     tau = min(taus, key=lambda t: sse[t])
     pred = np.zeros(len(R.num))
     k_loyo = {}
