@@ -118,7 +118,9 @@ h2 {
 .feat .d { font-size: 24px; line-height: 1.35; color: #c6cbd4; }
 
 /* ---- close ---- */
-.close .patch { position: absolute; right: 128px; top: 128px; width: 300px; height: 300px; object-fit: contain; }
+.close .qrs { position: absolute; left: 1452px; top: 118px; width: 340px; display: flex; flex-direction: row; gap: 40px; }
+.close .qr { width: 150px; display: flex; flex-direction: column; gap: 10px; align-items: center; }
+.close .qrcap { width: 150px; text-align: center; font-family: 'Barlow', Arial, sans-serif; font-weight: 500; font-size: 24px; line-height: 1.1; letter-spacing: 3px; text-transform: uppercase; color: #8b94a5; }
 .who { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 40px; }
 .card { display: flex; flex-direction: column; gap: 12px; padding-top: 20px; border-top: 1px solid #232b37; }
 .card h3 { font-size: 30px; font-weight: 600; line-height: 1.25; color: #eceef2; }
