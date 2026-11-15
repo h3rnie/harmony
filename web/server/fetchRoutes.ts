@@ -40,6 +40,8 @@ const SITE_KEYS = ['ALLOWED_ORIGINS', 'VERCEL_URL', 'VERCEL_BRANCH_URL', 'VERCEL
 export function pickEnv(all: Record<string, string | undefined>): ServerEnv {
   const out: Record<string, string | undefined> = { FIRMS_MAP_KEY: all.FIRMS_MAP_KEY }
   for (const k of [...AI_KEYS, ...LIMIT_KEYS, ...SITE_KEYS]) out[k] = all[k]
+  // The base-URL override exists for tests; production always talks to the real OpenRouter host.
+  if (all.VERCEL_ENV === 'production') out.OPENROUTER_BASE_URL = undefined
   return out as ServerEnv
 }
 

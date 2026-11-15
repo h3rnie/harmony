@@ -1,0 +1,16 @@
+# One pnpm workspace: the repository root (data upload script) and web/ (the app), with one lockfile here.
+# Run pnpm commands from the root: `pnpm install`, `pnpm -r up`, `pnpm --dir web dev`.
+packages:
+  - web
+
+# protobufjs (via onnxruntime-web) ships an install script the app does not need; pnpm >= 11 reads allowBuilds,
+# pnpm 10 (used by Vercel for this lockfile) reads ignoredBuiltDependencies.
+allowBuilds:
+  protobufjs: false
+ignoredBuiltDependencies:
+  - protobufjs
+
+# zod below 4.6.6 has a memory-exhaustion advisory (GHSA, validating oversized collections). @vercel/config asks
+# for zod 3, but the app imports only its types, so nothing here runs zod 3 code paths.
+overrides:
+  zod: ^4.6.6

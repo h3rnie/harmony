@@ -20,7 +20,7 @@ The functions are thin wrappers: all request handling is in `web/server/fetchRou
 | Route | Limit | Over the limit |
 | --- | --- | --- |
 | `/api/brief` POST + `/api/ask` POST, per visitor | 20 per 10 minutes and 60 per day | `429 rate_limited` with `Retry-After` |
-| AI requests that reach a model, all visitors | `AI_DAILY_CAP` per UTC day (default 300; `0` turns AI off) | `GET /api/brief` reports `available: false, problem: "daily_cap"`, so the page shows the rule-based brief; a POST gets `503 daily_cap` with `Retry-After` until midnight UTC |
+| AI requests that reach a model, all visitors | `AI_DAILY_CAP` per UTC day (default 300; `0` turns AI off) | `GET /api/brief` reports `available: false, capReached: true`, so the page shows the rule-based brief; a POST gets `503 daily_cap` with `Retry-After` until midnight UTC |
 | `/api/live`, per visitor | 40 per 10 minutes and 400 per day | `429 rate_limited` with `Retry-After` |
 | `/api/live` upstream, per instance | 12 FIRMS batches a minute, plus the FIRMS key budget guard | `429` / `503 busy` (unchanged from the dev route) |
 
@@ -34,21 +34,22 @@ A 900 square-degree box over 7 days is the largest request the route accepts. Me
 
 ### Headers and caching
 
-`web/vercel.ts` sets, for every path: a Content-Security-Policy, `Referrer-Policy: strict-origin-when-cross-origin`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Strict-Transport-Security` and a `Permissions-Policy` that turns off camera, microphone, geolocation and similar features. There are no COOP/COEP headers: onnxruntime-web runs single-threaded and cross-origin isolation would block the basemap.
+`web/vercel.ts` sets, for every path: a Content-Security-Policy, `Referrer-Policy: strict-origin-when-cross-origin`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Strict-Transport-Security` (two years, subdomains included), `Cross-Origin-Opener-Policy: same-origin` and a `Permissions-Policy` that turns off camera, microphone, geolocation and similar features. There is no COEP header: onnxruntime-web runs single-threaded, so the app needs no cross-origin isolation, and COEP would block the basemap.
 
 The CSP allows: scripts and workers from the site itself, `'wasm-unsafe-eval'` for WebAssembly (the kernel and onnxruntime-web), `blob:` workers, inline style attributes, and connections and images from `https://tiles.openfreemap.org` (style JSON, TileJSON, vector tiles, glyphs and sprites all come from that host) and the data origin (`https://data.harmony.hernie.me`, plus the origin of `VITE_DATA_BASE` when it is set at build time). `frame-ancestors 'none'`. Scripts have no `'unsafe-inline'` and no `'unsafe-eval'`; the theme bootstrap that used to be inline is `web/public/theme-init.js`.
 
 Files under `/assets/` (content-hashed by Vite) are cached for a year as immutable. `index.html`, `/` and `theme-init.js` revalidate on every load. The SPA fallback rewrites only extension-less paths outside `/api/` and `/assets/` to `index.html`, so a missing asset, data file or API route stays a 404.
 
-## Current state (2026-11-15)
+## Current state (2026-11-16)
 
-- Vercel project `harmony` in team `her` exists; the repository root is linked (`.vercel/`, git-ignored) and `.vercelignore` uploads only `web/`.
-- Environment variables set for Preview and Production: `FIRMS_MAP_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `IP_HASH_SECRET` (sensitive), and `AI_PROVIDER=anthropic`, `AI_PROFILE=sonnet-high`, `AI_FALLBACK=openrouter`, `AI_DAILY_CAP=300`, `VITE_SOURCE_URL=https://github.com/h3rnie/harmony`. `VITE_DATA_BASE` is not set, so builds run in the labelled demo-data mode.
-- The project's first CLI deployment became its production deployment automatically (Vercel does that for a project's first deployment) and was served at `harmony.hernie.me`, which had been added to the project. The domain was removed from the project again so nothing is public yet; that production deployment is in demo-data mode and reachable only through Vercel's protected `*.vercel.app` URLs. The next production deployment replaces it.
-- The Cloudflare DNS record for the app already exists: `harmony.hernie.me CNAME e6a619f808cfdc33.vercel-dns-016.com`, DNS only.
-- R2 bucket `harmony-data` exists with the custom domain `data.harmony.hernie.me` attached. No data is uploaded.
-- No Redis store is connected; the limits count per instance.
+- The app is live at <https://harmony.hernie.me> (Vercel project `harmony` in team `her`, production). The pitch deck is at `/demo`.
+- The repository root is linked (`.vercel/`, git-ignored). `.vercelignore` uploads `web/` and the three pnpm workspace files at the root (`package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`); the install runs from the root lockfile with pnpm 10.
+- Environment variables set for Preview and Production: `FIRMS_MAP_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `IP_HASH_SECRET` (sensitive), and `AI_PROVIDER=anthropic`, `AI_PROFILE=sonnet-high`, `AI_FALLBACK=openrouter`, `AI_DAILY_CAP=300`, `VITE_SOURCE_URL=https://github.com/h3rnie/harmony`, `VITE_DATA_BASE=https://data.harmony.hernie.me/v/20261115T130031Z`.
+- The Cloudflare DNS record for the app: `harmony.hernie.me CNAME e6a619f808cfdc33.vercel-dns-016.com`, DNS only.
+- R2 bucket `harmony-data` with the custom domain `data.harmony.hernie.me` holds version `20261115T130031Z` (tiles, overview, model and the points archive).
+- No Redis store is connected; the limits and the daily cap count per function instance (step 3 below is still open).
 - Preview deployments are protected by Vercel Authentication (the team default). Use `vercel curl <url>` for checks; `vercel curl` uses the CLI login.
+- Known and accepted: a missing file under `/assets/` or under a data version prefix is answered 404 with the same one-year immutable cache header as a real file, because neither host can set headers by status. A browser that requested a file before it existed keeps the 404; a hard reload clears it.
 
 ## Going live, in order
 
@@ -159,7 +160,7 @@ On the preview (step 6), then on `https://harmony.hernie.me` (step 8):
 8. Response headers on `/` include the CSP and the other security headers; `/assets/*` carries `max-age=31536000, immutable`.
 9. Function logs (`vercel logs --deployment <url>`) show no `internal_error` and no key material.
 
-Checked on preview deployments on 2026-11-15 in demo-data mode: items 1 (no CSP messages; only the expected `/data/*` 404s), 4 (a 2 x 2 degree box returned 8 detections, Brotli-encoded), 5 (a brief streamed: 23 deltas, one call), 6 and 8, the 405/415/400 responses, the 7.74 MB worst-case live response, and the daily cap (a preview deployed with `--env AI_DAILY_CAP=1` answered `503 daily_cap` and reported `available: false`). Items 2, 3 and 7 need the uploaded data.
+Checked on preview deployments on 2026-11-15, first in demo-data mode: items 1 (no CSP messages; only the expected `/data/*` 404s), 4 (a 2 x 2 degree box returned 8 detections, Brotli-encoded), 5 (a brief streamed: 23 deltas, one call), 6 and 8, the 405/415/400 responses, the 7.74 MB worst-case live response, and the daily cap (a preview deployed with `--env AI_DAILY_CAP=1` answered `503 daily_cap` and reported `available: false`). Items 2, 3 and 7 need the uploaded data; the upload has since been done and the live site reads it.
 
 ## Rollback
 
@@ -192,4 +193,4 @@ A refresh is atomic for readers: a page that is already open keeps reading the v
 - Deleting old data versions.
 - Rotating `FIRMS_MAP_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY` and `IP_HASH_SECRET`: `vercel env rm <NAME> <env>`, add the new value through stdin (`... | vercel env add <NAME> -e production,preview --sensitive --yes`), redeploy.
 - Git-based deployments: the project is not connected to the GitHub repository. `vercel git connect` (with Root Directory `web/`, already set) makes every push build a preview and every push to the production branch deploy to production.
-- `node scripts/check-wasm.mjs` is not part of the Vercel build (the build uploads only `web/`); run it before committing a change under `crates/`.
+- `node scripts/check-wasm.mjs` is not part of the Vercel build (the build uploads only `web/` and the pnpm workspace files); run it before committing a change under `crates/`.

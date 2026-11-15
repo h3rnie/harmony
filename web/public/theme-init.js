@@ -9,8 +9,9 @@
 })()
 
 // Start-up watch. Until src/main.ts sets window.__harmonyUp, a script that fails to load, an uncaught error or a slow
-// connection is reported in the #boot element instead of leaving a blank page.
-(function () {
+// connection is reported in the #boot element instead of leaving a blank page. The leading semicolon matters: without
+// it the parenthesis below would call the result of the function above.
+;(function () {
   function say(text) {
     if (window.__harmonyUp) return
     var m = document.getElementById('boot-msg')

@@ -313,7 +313,7 @@ export async function getBrief(body: unknown, env: AiEnv, hooks: RunHooks = {}):
     }
     problems = check.problems
     hooks.log?.(`brief draft rejected (round ${round + 1}): ${problems.join(' | ')}`)
-    hooks.log?.(`rejected draft: ${g.result.text.slice(0, 700).replace(/\s+/g, ' ')}`)
+    hooks.log?.(`rejected draft: ${g.result.text.length} chars`)
   }
   record(usage, calls)
   throw new AiError(502, 'bad_output', (problems ?? []).join('; ').slice(0, 300))

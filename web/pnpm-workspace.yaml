@@ -1,7 +1,0 @@
-# pnpm settings for the web app (not a multi-package workspace).
-# protobufjs (via onnxruntime-web) ships an install script the app does not need; pnpm >= 11 reads allowBuilds,
-# pnpm 10 (used by Vercel for this lockfile) reads ignoredBuiltDependencies.
-allowBuilds:
-  protobufjs: false
-ignoredBuiltDependencies:
-  - protobufjs

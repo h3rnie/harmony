@@ -4,8 +4,8 @@
 // - SPA fallback to index.html only for extension-less paths outside /api/ and /assets/, so a missing asset, data
 //   file or API route stays a 404 instead of turning into HTML.
 // - Hashed build assets are cached for a year (immutable); index.html and other unhashed files revalidate.
-// - Security headers, CSP included. No COOP/COEP: the app does not use SharedArrayBuffer (onnxruntime-web runs
-//   single-threaded) and cross-origin isolation would block the basemap tiles.
+// - Security headers, CSP included. COOP isolates the window from cross-origin openers. No COEP: the app does not
+//   use SharedArrayBuffer (onnxruntime-web runs single-threaded) and COEP would block the basemap tiles.
 import type { VercelConfig } from '@vercel/config/v1'
 
 /** Public data origin (Cloudflare R2 custom domain); VITE_DATA_BASE adds its own origin when it is set at build time. */
@@ -44,7 +44,8 @@ const SECURITY_HEADERS = [
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'X-Frame-Options', value: 'DENY' },
-  { key: 'Strict-Transport-Security', value: 'max-age=31536000' },
+  { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains' },
+  { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
   {
     key: 'Permissions-Policy',
     value: 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), hid=(), midi=(), magnetometer=(), gyroscope=(), accelerometer=(), browsing-topics=()',
