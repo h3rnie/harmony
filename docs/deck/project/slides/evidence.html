@@ -1,0 +1,46 @@
+<section id="evidence" data-transition="fade">
+<h2>Harmonized, the sensors agree within 3 %, and a drift in MODIS becomes measurable</h2>
+<div class="row" style="gap:64px;align-items:flex-start">
+<div class="figs" style="width:420px">
+<div class="fig" style="--i:0"><p class="n">0.98–1.03</p><p class="c">VIIRS per MODIS after harmonization, 2013–2024. Raw: 4 to 13.</p></div>
+<div class="fig" style="--i:1"><p class="n">0.944</p><p class="c">correlation with MODIS on years held out of the fit</p></div>
+<div class="fig" style="--i:2"><p class="n hot">−42 %</p><p class="c">Terra daytime detections by 2025, as its orbit drifted</p></div>
+</div>
+<div class="col" style="width:1180px;gap:20px">
+<div class="plot2">
+<svg width="860" height="360" viewBox="0 0 860 360" style="overflow:visible" aria-label="Line chart, 2012 to 2025, of MODIS detections relative to what calibrated VIIRS predicts. All four lines stay near 1 until 2020. Terra daytime then falls to 0.58 and Terra night rises to 1.35 by 2025; Aqua daytime stays near 1.01 and Aqua night falls to 0.83.">
+<rect x="0" y="0" width="463.1" height="360" fill="#121720"/>
+<line x1="0" y1="0.5" x2="860" y2="0.5" stroke="#232b37" stroke-width="1"/>
+<line x1="0" y1="90" x2="860" y2="90" stroke="#232b37" stroke-width="1"/>
+<line x1="0" y1="270" x2="860" y2="270" stroke="#232b37" stroke-width="1"/>
+<line x1="0" y1="359.5" x2="860" y2="359.5" stroke="#232b37" stroke-width="1"/>
+<line x1="0" y1="180" x2="860" y2="180" stroke="#5b6470" stroke-width="2"/>
+<polyline points="0.0,163.4 66.2,214.2 132.3,190.4 198.5,177.1 264.6,189.7 330.8,173.9 396.9,195.5 463.1,155.9 529.2,184.7 595.4,148.0 661.5,187.9 727.7,168.1 793.8,166.7 860.0,240.1" fill="none" stroke="#8b94a5" stroke-width="3" stroke-dasharray="10 8" stroke-linejoin="round"/>
+<polyline points="0.0,166.0 66.2,181.1 132.3,183.6 198.5,177.5 264.6,184.7 330.8,177.1 396.9,184.3 463.1,182.2 529.2,198.0 595.4,185.0 661.5,181.1 727.7,171.7 793.8,159.1 860.0,176.8" fill="none" stroke="#8b94a5" stroke-width="3" stroke-linejoin="round"/>
+<polyline points="0.0,184.0 66.2,191.5 132.3,173.9 198.5,184.3 264.6,189.7 330.8,175.3 396.9,186.1 463.1,169.2 529.2,165.2 595.4,144.0 661.5,164.2 727.7,123.8 793.8,82.8 860.0,55.1" fill="none" stroke="#eceef2" stroke-width="3" stroke-dasharray="10 8" stroke-linejoin="round"/>
+<polyline points="0.0,176.8 66.2,191.9 132.3,192.2 198.5,178.6 264.6,174.2 330.8,169.9 396.9,178.9 463.1,175.0 529.2,180.0 595.4,183.6 661.5,209.9 727.7,235.4 793.8,278.6 860.0,330.8" fill="none" stroke="#ff8a4c" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="860" cy="330.8" r="9" fill="#ff8a4c"/>
+<circle cx="860" cy="55.1" r="6" fill="#eceef2"/>
+<circle cx="860" cy="176.8" r="6" fill="#8b94a5"/>
+<circle cx="860" cy="240.1" r="6" fill="#8b94a5"/>
+</svg>
+<p class="ax2" style="top:0">1.5</p>
+<p class="ax2" style="top:168px">1</p>
+<p class="ax2" style="top:338px">0.5</p>
+<p class="tx2" style="left:24px">2012</p>
+<p class="tx2" style="left:289px">2016</p>
+<p class="tx2" style="left:553px">2020</p>
+<p class="tx2" style="left:884px">2025</p>
+<p class="band2">before the drift, 2012–2019</p>
+<p class="el2" style="top:43px">Terra, night 1.35</p>
+<p class="el2" style="top:165px">Aqua, day 1.01</p>
+<p class="el2" style="top:228px">Aqua, night 0.83</p>
+<p class="el2 hot" style="top:319px">Terra, day 0.58</p>
+</div>
+<p class="fig-note" style="font-size:28px;line-height:1.3;color:#c6cbd4">MODIS detections relative to calibrated VIIRS. By 2025 Terra passed 1.1 hours earlier. A real shift in the hour fires burn would look the same.</p>
+</div>
+</div>
+<p class="src">Leave-one-year-out 2012–2021. Full validation tables are in the repository.</p>
+<p class="pg">6 / 7</p>
+<aside>Two kinds of evidence. First, accuracy. Before harmonization VIIRS reports four to thirteen times as many hotspots as MODIS. After it, the ratio sits between 0.98 and 1.03 in every year from 2013 to 2024. Holding out each year from 2012 to 2021 in turn, the harmonized record correlates 0.944 with what MODIS saw at one-degree scale. A change-point test finds no significant step at the hand-over, where the raw record steps 12.6-fold. On unseen years the stated 80 percent range covers 76 percent of months, so the ranges are a few points optimistic, and the app says so. Second, a finding. Because VIIRS keeps a fixed overpass time, it can be used as a reference to measure MODIS itself. From 2012 to 2019 all four lines sit at one: the method reports no change when nothing has changed. Then the orbits begin to drift. By 2025 Terra passes over 1.1 hours earlier, and its daytime fire detections run 42 percent low, with a 95 percent range of 37 to 46 percent. At night they run 35 percent high. Aqua’s daytime detections are unchanged. The limit is that a real shift in the hour fires burn would look the same. NASA lists the effect of this drift on fire products as under investigation, and I found no published global estimate by biome and time of day. Harmony uses it to correct MODIS before fusing it. Two honest notes: the cell-day unit does most of the harmonizing, and fusing the sensors beats either one alone but not a plain average. Both are stated in the app.</aside>
+</section>

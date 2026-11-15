@@ -68,18 +68,18 @@
 <div class="chart big" style="width:1216px">
 <div class="groups"><p class="grp" style="width:512px">one VIIRS satellite</p><p class="grp" style="width:424px">two</p><p class="grp" style="width:248px">three</p></div>
 <div class="bars">
-<div class="bc"><p class="bv">3.8</p><div class="bar" style="height:121px"></div></div>
+<div class="bc"><p class="bv">3.8</p><div class="bar" style="height:120px"></div></div>
 <div class="bc"><p class="bv">4.0</p><div class="bar" style="height:128px"></div></div>
-<div class="bc"><p class="bv">4.0</p><div class="bar" style="height:129px"></div></div>
+<div class="bc"><p class="bv">4.0</p><div class="bar" style="height:128px"></div></div>
 <div class="bc"><p class="bv">4.0</p><div class="bar" style="height:128px"></div></div>
 <div class="bc"><p class="bv">4.1</p><div class="bar" style="height:130px"></div></div>
-<div class="bc"><p class="bv">4.0</p><div class="bar" style="height:126px"></div></div>
-<div class="bc"><p class="bv">7.1</p><div class="bar" style="height:227px"></div></div>
+<div class="bc"><p class="bv">3.9</p><div class="bar" style="height:126px"></div></div>
+<div class="bc"><p class="bv">7.1</p><div class="bar" style="height:226px"></div></div>
 <div class="bc"><p class="bv">8.1</p><div class="bar" style="height:260px"></div></div>
 <div class="bc"><p class="bv">8.3</p><div class="bar" style="height:264px"></div></div>
 <div class="bc"><p class="bv">8.2</p><div class="bar" style="height:261px"></div></div>
 <div class="bc"><p class="bv">8.2</p><div class="bar" style="height:261px"></div></div>
-<div class="bc"><p class="bv">11.7</p><div class="bar" style="height:373px"></div></div>
+<div class="bc"><p class="bv">11.6</p><div class="bar" style="height:372px"></div></div>
 <div class="bc"><p class="bv">12.0</p><div class="bar" style="height:383px"></div></div>
 <div class="bc"><p class="bv hot">12.9</p><div class="bar last" style="height:412px"></div></div>
 </div>
@@ -129,11 +129,11 @@
 <section id="product" aria-label="Slide 5 of 7">
 <h2>Pick an area, read the answer, explore the record</h2>
 <div class="row" style="gap:64px;align-items:flex-start">
-<img class="shot" src="/demo/img/product.gif" alt="Screen capture of Harmony: the landing page, then the Gran Chaco with the answer September 2020 was 1.4 times the normal, the calendar of every month since 2000, the season charts, the raw and harmonized records, and the orbit-drift chart" style="width:992px;height:620px">
+<img class="shot" src="/demo/img/product.gif" alt="Screen capture of Harmony: the Gran Chaco with the answer September 2020 was 1.4 times the normal, then the calendar of every month since 2000, the season charts, the raw and harmonized records, the orbit-drift chart, and the landing page" style="width:992px;height:620px">
 <div class="points" style="width:608px;gap:24px">
 <div class="pt tight" style="--i:0"><h3>1 · Pick any area on Earth</h3><p class="body">Draw it, type coordinates, or use the watchlist.</p></div>
 <div class="pt tight" style="--i:1"><h3>2 · Read the answer</h3><p class="body">This month against its normal, in about a second.</p></div>
-<div class="pt tight" style="--i:2"><h3>3 · Explore and export</h3><p class="body">Calendar, trend, live pace, a plain brief, hotspot CSV.</p></div>
+<div class="pt tight" style="--i:2"><h3>3 · Explore and export</h3><p class="body">Calendar, trend, live pace, a plain brief, the record as sound, hotspot CSV.</p></div>
 </div>
 </div>
 <p class="src">Live capture from harmony.hernie.me: Gran Chaco, September 2020.</p>
@@ -150,7 +150,7 @@
 </div>
 <div class="col" style="width:1180px;gap:20px">
 <div class="plot2">
-<svg width="860" height="360" viewBox="0 0 860 360" aria-label="Line chart, 2012 to 2025, of MODIS detections relative to what calibrated VIIRS predicts. All four lines stay near 1 until 2020. Terra daytime then falls to 0.58 and Terra night rises to 1.35 by 2025; Aqua daytime stays near 1.01 and Aqua night falls to 0.83.">
+<svg width="860" height="360" viewBox="0 0 860 360" style="overflow:visible" aria-label="Line chart, 2012 to 2025, of MODIS detections relative to what calibrated VIIRS predicts. All four lines stay near 1 until 2020. Terra daytime then falls to 0.58 and Terra night rises to 1.35 by 2025; Aqua daytime stays near 1.01 and Aqua night falls to 0.83.">
 <rect x="0" y="0" width="463.1" height="360" fill="#121720"/>
 <line x1="0" y1="0.5" x2="860" y2="0.5" stroke="#232b37" stroke-width="1"/>
 <line x1="0" y1="90" x2="860" y2="90" stroke="#232b37" stroke-width="1"/>
@@ -179,7 +179,7 @@
 <p class="el2" style="top:228px">Aqua, night 0.83</p>
 <p class="el2 hot" style="top:319px">Terra, day 0.58</p>
 </div>
-<p class="fig-note" style="font-size:28px;line-height:1.3;color:#c6cbd4">MODIS detections relative to calibrated VIIRS. Terra now passes 1.1 hours earlier. A real shift in the hour fires burn would look the same.</p>
+<p class="fig-note" style="font-size:28px;line-height:1.3;color:#c6cbd4">MODIS detections relative to calibrated VIIRS. By 2025 Terra passed 1.1 hours earlier. A real shift in the hour fires burn would look the same.</p>
 </div>
 </div>
 <p class="src">Leave-one-year-out 2012–2021. Full validation tables are in the repository.</p>
@@ -199,10 +199,13 @@
 <div class="col" style="gap:6px"><p class="url"><a href="https://github.com/h3rnie/harmony">github.com/h3rnie/harmony</a></p><p class="what">Code, method and tests</p></div>
 </div>
 </div>
-<div class="col" style="width:840px;gap:16px">
-<p class="lead">For responders, scientists and land managers.</p>
-<p class="body">Team Hernie · Toh Yu Heng · Singapore</p>
+<div class="col who" style="width:840px;gap:10px">
+<p class="body"><b>Responders:</b> is this month unusual here?</p>
+<p class="body"><b>Scientists:</b> a validated record with stated limits.</p>
+<p class="body"><b>Land managers:</b> when a place burns and how that shifts.</p>
+<p class="body" style="margin-top:18px">Team Hernie · Toh Yu Heng · Singapore</p>
 </div>
+<p class="globecap">From the app: fire activity, month by month</p>
 <p class="src">Data: NASA FIRMS (MODIS Collection 6.1, VIIRS Collection 2), part of NASA EOSDIS.</p>
 <p class="pg">7 / 7</p>
 <aside>Harmony is live at harmony.hernie.me, and the code, the method and the tests are public on GitHub. The globe on the right is from the app: every month since November 2000, rendered in the browser. The record is built entirely on NASA FIRMS data, and because it weights each satellite by its measured error it carries on with NOAA-20 and NOAA-21 after MODIS retires. It is for three groups. Responders get a plain answer to “is this unusual?”, in the same unit as the last 26 years. Scientists get a validated series with its uncertainty and its limits stated. Land managers get the rhythm of a place: when it burns, how that is shifting, which years to learn from. We acknowledge the use of data and imagery from NASA’s Fire Information for Resource Management System (FIRMS), part of NASA’s Earth Observing System Data and Information System (EOSDIS). This work is dedicated to everyone who works the fire line, the dispatch desk and the long night after. I am Toh Yu Heng, team Hernie, from Singapore. Thank you.</aside>

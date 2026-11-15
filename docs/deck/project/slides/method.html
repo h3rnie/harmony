@@ -1,18 +1,33 @@
 <section id="method" data-transition="fade">
-<div class="head">
-<p class="eyebrow">The method</p>
-<h2>One unit, every satellite, weighted by what it can see</h2>
+<h2>Harmony counts burning places per day, calibrates the sensors, then fuses them</h2>
+<div class="row" style="gap:96px;align-items:flex-start">
+<div class="points" style="width:904px;gap:44px">
+<div class="pt" style="--i:0"><h3>Count cell-days, not pixels</h3><p class="body">A 1.4 km cell that burned that day counts once.</p></div>
+<div class="pt" style="--i:1"><h3>Calibrate where both flew</h3><p class="body">By biome, region, time of day and month.</p></div>
+<div class="pt" style="--i:2"><h3>Fuse by measured error</h3><p class="body">Every satellite contributes. Each month has a range.</p></div>
 </div>
-<div class="steps">
-<div class="step" style="--i:0"><p class="n">01</p><h3>Filter</h3><p class="d">Keep confident vegetation fires. Mask gas flares and other static heat sources.</p></div>
-<div class="step" style="--i:1"><p class="n">02</p><h3>Count cell-days</h3><p class="d">A 1.4 km cell that burned on a given day or night counts once, whatever the pixel size.</p></div>
-<div class="step" style="--i:2"><p class="n">03</p><h3>Calibrate</h3><p class="d">VIIRS against MODIS over 2012–2021, by biome, region, day or night and month.</p></div>
-<div class="step" style="--i:3"><p class="n">04</p><h3>Correct the drift</h3><p class="d">MODIS is corrected for its shifting overpass time, measured against VIIRS.</p></div>
-<div class="step key" style="--i:4"><p class="n">05</p><h3>Fuse</h3><p class="d">Every satellite flying contributes, weighted by its measured error, with a stated range.</p></div>
+<div class="col" style="width:664px;gap:28px">
+<div class="cellrow">
+<div class="cellcol">
+<div class="cell"><div class="px" style="left:43px;top:43px;width:214px;height:214px"></div></div>
+<p class="cellcap">MODIS: 1 hotspot</p>
 </div>
-<p class="formula">record = w · MODIS (drift-corrected) + (1 − w) · k · VIIRS</p>
-<p class="caption">The weight w comes from each sensor’s measured error. Unit: AFCD-M, MODIS-equivalent active-fire cell-days, built only from NASA FIRMS data.</p>
-<p class="foot">Harmony · NASA Space Apps 2026</p>
-<p class="pg">3 / 7</p>
-<aside>Most approaches fit a ratio in the overlap years and switch from one sensor to the other. Harmony goes further in three ways. First, the unit: a cell that burned on a given day or night counts once, which removes most of the pixel-size gap. Second, the calibration is fitted by biome, region, time of day and month. Third, and this is the difference: the area analysis has no hard switch. Each sensor’s error is estimated from the data by triple collocation, MODIS is corrected for the drift of its own orbit, and every month is a weighted combination of all the satellites flying, with a range calibrated on held-out years. When MODIS and Suomi NPP retire, the record simply continues on what is left.</aside>
+<div class="cellcol">
+<div class="cell">
+<div class="px v" style="left:26px;top:68px;width:80px;height:80px"></div>
+<div class="px v" style="left:110px;top:68px;width:80px;height:80px"></div>
+<div class="px v" style="left:194px;top:68px;width:80px;height:80px"></div>
+<div class="px v" style="left:26px;top:152px;width:80px;height:80px"></div>
+<div class="px v" style="left:110px;top:152px;width:80px;height:80px"></div>
+<div class="px v" style="left:194px;top:152px;width:80px;height:80px"></div>
+</div>
+<p class="cellcap">VIIRS: 6 hotspots</p>
+</div>
+</div>
+<p class="lead hot">Both are one cell-day.</p>
+</div>
+</div>
+<p class="src">Dashed square: one 1.4 km cell. MODIS 1 km and VIIRS 375 m pixels drawn to scale.</p>
+<p class="pg">4 / 7</p>
+<aside>Three steps. First, change the unit. Instead of counting pixels, count cell-days: a 1.4 kilometre cell that had a fire on a given day or night counts once. On the right, the same fire is one MODIS hotspot or six VIIRS hotspots, and both become one cell-day. That removes most of the gap. Second, calibrate what is left, in the years when both sensors flew, with a simple ratio for each biome, region, time of day and month, and correct MODIS for the drift of its own orbit. Third, do not switch from one sensor to the other. Each sensor’s error is estimated from the data by triple collocation, and every month is a weighted combination of all the satellites flying, with a range calibrated on held-out years. When MODIS and Suomi NPP retire, the record continues on what is left. The calibration follows the approach of published fire-emissions datasets; the fusion and the drift correction go beyond it.</aside>
 </section>

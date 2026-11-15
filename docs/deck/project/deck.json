@@ -5,11 +5,11 @@
   "format": { "v": 1, "shared": ["project/deck.css"] },
   "title": "Harmony Space Apps Deck",
   "cover": "cover",
-  "order": ["cover", "problem", "method", "product", "proof", "beyond", "close"],
+  "order": ["cover", "data", "problem", "method", "product", "evidence", "close"],
   "sections": {
-    "open": { "description": "Who we are and why two satellite fire records do not add up to one.", "start": "cover" },
-    "solution": { "description": "How Harmony makes one record, what the product does, and the evidence that it works.", "start": "method" },
-    "impact": { "description": "What goes beyond the brief, who it serves, and what comes next.", "start": "beyond" }
+    "open": { "description": "The team, the challenge, the NASA data it rests on, and why two sensor records do not add up to one.", "start": "cover" },
+    "solution": { "description": "How Harmony makes one record, and what using the live product is like.", "start": "method" },
+    "evidence": { "description": "The accuracy of the record, the MODIS orbit drift it measures, and where to find it.", "start": "evidence" }
   },
   "faces": {
     "barlow": { "family": "Barlow", "href": "https://fonts.googleapis.com/css2?family=Barlow:wght@500;600&family=Schibsted+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400;500&display=swap" },

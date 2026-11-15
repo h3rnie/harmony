@@ -103,6 +103,8 @@
   .pulse-btn:hover:not(:disabled) { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); }
   @media (max-width: 1180px) { .tagline { display: none; } }
   @media (max-width: 720px) { .live-t, .fresh .sep { display: none; } .fresh { min-width: 11.5em; } }
+  /* Below this width the date chip no longer fits beside the wordmark. */
+  @media (max-width: 700px) { .fresh { display: none; } }
   @media (max-width: 560px) {
     .hdr { padding: 0 10px; gap: 8px; }
     .right { gap: 6px; }

@@ -1,6 +1,7 @@
-/* Harmony deck — brand direction A "Mission control + patch".
-   Ground #0a0d12, surface #121720, hairline #232b37, text #eceef2, muted #8b94a5, ember #ff8a4c.
-   Type scale: 132 / 64 / 40 / 30 / 24. Barlow tracked caps for labels, Schibsted Grotesk for text, JetBrains Mono for figures. */
+/* Harmony deck. Ground #0a0d12, surface #121720, hairline #232b37, text #eceef2, soft #c6cbd4, muted #8b94a5, ember #ff8a4c.
+   Type scale: 132 (wordmark) / 64 (titles) / 40 (lead) / 28 (body) / 24 (labels, figures in charts).
+   Schibsted Grotesk for text, JetBrains Mono for figures, Barlow tracked caps on the cover only.
+   Every content slide: a sentence title at the top margin, one picture or chart, a few plain lines, page number. */
 
 section {
   background: #0a0d12;
@@ -9,7 +10,7 @@ section {
   padding: 128px 128px 160px;
   display: flex;
   flex-direction: column;
-  gap: 40px;
+  gap: 48px;
 }
 
 h2 {
@@ -19,38 +20,29 @@ h2 {
   line-height: 1.1;
   letter-spacing: -1px;
   color: #eceef2;
+  width: 1500px;
 }
 
-.eyebrow {
-  font-family: 'Barlow', Arial, sans-serif;
-  font-weight: 500;
-  font-size: 24px;
-  line-height: 1.2;
-  letter-spacing: 6px;
-  text-transform: uppercase;
-  color: #8b94a5;
-}
+.lead { font-size: 40px; font-weight: 500; line-height: 1.25; color: #eceef2; }
+.body { font-size: 32px; line-height: 1.35; color: #c6cbd4; }
+.hot { color: #ff8a4c; }
+a { color: inherit; text-decoration: none; }
 
-.head { display: flex; flex-direction: column; gap: 20px; }
+.row { display: flex; flex-direction: row; }
+.col { display: flex; flex-direction: column; }
 
-.lede { font-size: 30px; line-height: 1.45; color: #c6cbd4; }
-
-.foot {
-  position: absolute; left: 128px; bottom: 64px; width: 1200px;
-  font-family: 'Barlow', Arial, sans-serif; font-weight: 500;
-  font-size: 24px; line-height: 1; letter-spacing: 5px; text-transform: uppercase; color: #8b94a5;
-}
 .pg {
   position: absolute; right: 128px; bottom: 64px; width: 200px; text-align: right;
-  font-family: 'JetBrains Mono', 'Courier New', monospace;
-  font-size: 24px; line-height: 1; color: #8b94a5;
+  font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 24px; line-height: 1; color: #8b94a5;
 }
-
-.ember { color: #ff8a4c; }
-.muted { color: #8b94a5; }
+.src { position: absolute; left: 128px; bottom: 64px; width: 1300px; font-size: 24px; line-height: 1; color: #8b94a5; }
 
 /* ---- cover ---- */
 .cover { padding: 128px; gap: 0; }
+.eyebrow {
+  font-family: 'Barlow', Arial, sans-serif; font-weight: 500; font-size: 24px; line-height: 1.2;
+  letter-spacing: 6px; text-transform: uppercase; color: #8b94a5;
+}
 .cover .patch { position: absolute; left: 112px; top: 150px; width: 640px; height: 640px; object-fit: contain; }
 .cover .body { position: absolute; left: 850px; top: 200px; width: 942px; display: flex; flex-direction: column; gap: 28px; }
 .cover .wordmark {
@@ -66,7 +58,6 @@ h2 {
   font-size: 24px; line-height: 1.3; letter-spacing: 5px; text-transform: uppercase; color: #8b94a5;
 }
 .cover .v { width: 690px; font-size: 30px; line-height: 1.3; color: #eceef2; }
-
 .cover .tl { position: absolute; left: 128px; top: 880px; width: 1664px; height: 110px; }
 .tl-m { position: absolute; left: 0; top: 34px; width: 1600px; height: 2px; background: #eceef2; }
 .tl-v { position: absolute; left: 768px; top: 58px; width: 896px; height: 2px; background: #ff8a4c; }
@@ -78,56 +69,91 @@ h2 {
 .tl-ax.a { left: 0; }
 .tl-ax.c { left: 1544px; text-align: right; }
 
-/* ---- two-column slides ---- */
-.cols { display: flex; flex-direction: row; gap: 64px; align-items: flex-start; }
-.col { display: flex; flex-direction: column; gap: 28px; }
+/* ---- bar chart: raw VIIRS-to-MODIS count ratio by year ---- */
+.chart { display: flex; flex-direction: column; gap: 12px; }
+.groups { display: flex; flex-direction: row; }
+.grp { font-size: 24px; line-height: 1.2; color: #8b94a5; padding-bottom: 8px; border-bottom: 2px solid #3a4352; }
+.bars { display: flex; flex-direction: row; align-items: flex-end; position: relative; }
+.bc { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.bv { font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 24px; line-height: 1.2; color: #c6cbd4; text-align: center; }
+.bar { background: #8b94a5; }
+.bar.last { background: #ff8a4c; }
+.bar.dim { background: #2c3644; }
+.years { display: flex; flex-direction: row; }
+.yr { font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 24px; line-height: 1.2; color: #8b94a5; text-align: center; }
+.big .bars { gap: 16px; height: 452px; }
+.big .groups { gap: 16px; }
+.big .years { gap: 16px; }
+.big .bc, .big .bar, .big .yr { width: 72px; }
+.small .bars { gap: 12px; height: 340px; }
+.small .groups { gap: 12px; }
+.small .years { gap: 12px; }
+.small .bc, .small .bar, .small .yr { width: 60px; }
+.hline { position: absolute; left: 0; bottom: 22px; width: 996px; height: 5px; background: #ff8a4c; }
 
-.stat { display: flex; flex-direction: column; gap: 6px; padding-top: 20px; border-top: 1px solid #232b37; }
-.stat .big { font-family: 'JetBrains Mono', 'Courier New', monospace; font-weight: 500; font-size: 64px; line-height: 1.05; color: #eceef2; }
-.stat .big.hot { color: #ff8a4c; }
-.stat .cap { font-size: 24px; line-height: 1.35; color: #8b94a5; }
+/* ---- figure rows (number + what it measures) ---- */
+.figs { display: flex; flex-direction: column; gap: 28px; }
+.fig { display: flex; flex-direction: column; gap: 8px; padding-top: 20px; border-top: 1px solid #232b37; }
+.fig .n { font-family: 'JetBrains Mono', 'Courier New', monospace; font-weight: 500; font-size: 64px; line-height: 1.05; color: #eceef2; }
+.fig .c { font-size: 28px; line-height: 1.3; color: #c6cbd4; }
 
+/* ---- stacked points (short heading + one or two lines) ---- */
+.points { display: flex; flex-direction: column; gap: 28px; }
+.pt { display: flex; flex-direction: column; gap: 8px; padding-top: 24px; border-top: 1px solid #232b37; }
+.pt h3 { font-size: 40px; font-weight: 600; line-height: 1.2; color: #eceef2; }
+.pt .body { font-size: 32px; line-height: 1.35; color: #c6cbd4; }
+.pt.tight h3 { font-size: 36px; }
+
+/* ---- pixel-to-cell diagram ---- */
+.cellrow { display: flex; flex-direction: row; gap: 64px; }
+.cellcol { display: flex; flex-direction: column; gap: 16px; width: 300px; }
+.cell { position: relative; width: 300px; height: 300px; border: 2px dashed #5b6470; }
+.px { position: absolute; background: #8b94a5; }
+.px.v { background: #c6cbd4; }
+.cellcap { font-size: 28px; line-height: 1.3; color: #c6cbd4; }
+.cellcap.m { color: #8b94a5; }
+.formula { font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 24px; line-height: 1.5; color: #8b94a5; }
+
+/* ---- screenshots and captures ---- */
 .shot { border: 1px solid #232b37; background: #0a0d12; object-fit: cover; }
-.caption { font-size: 24px; line-height: 1.35; color: #8b94a5; }
 
-/* ---- method steps ---- */
-.steps { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 1fr; gap: 24px; }
-.step { display: flex; flex-direction: column; gap: 16px; padding: 28px 24px 32px; background: #121720; border-top: 2px solid #232b37; }
-.step.key { border-top: 2px solid #ff8a4c; }
-.step .n { font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 24px; line-height: 1; color: #8b94a5; }
-.step h3 { font-size: 30px; font-weight: 600; line-height: 1.2; color: #eceef2; }
-.step .d { font-size: 24px; line-height: 1.4; color: #c6cbd4; }
-.formula {
-  font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 26px; line-height: 1.5; color: #eceef2;
-  padding: 24px 28px; background: #121720; border-left: 2px solid #ff8a4c;
-}
-
-/* ---- proof ---- */
-.grid4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 40px; }
-.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
-.tbl { font-family: 'Schibsted Grotesk', Arial, sans-serif; font-size: 26px; color: #eceef2; width: 100%; }
-.tblwrap { display: flex; flex-direction: column; gap: 14px; }
-
-/* ---- full-bleed image slide ---- */
-.bleed { padding: 128px 128px 160px; }
-.bleed .bg { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; object-fit: cover; }
-.bleed .scrim { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; background: linear-gradient(90deg, #0a0d12 0%, #0a0d12 26%, rgba(10,13,18,0) 52%); }
-.bleed .panel { width: 640px; display: flex; flex-direction: column; gap: 28px; }
-.feat { display: flex; flex-direction: column; gap: 4px; padding-top: 16px; border-top: 1px solid #232b37; }
-.feat h3 { font-size: 30px; font-weight: 600; line-height: 1.25; color: #eceef2; }
-.feat .d { font-size: 24px; line-height: 1.35; color: #c6cbd4; }
+/* ---- line chart labels (drift) ---- */
+.plot { position: relative; width: 1664px; height: 448px; }
+.plot svg { position: absolute; left: 80px; top: 0; }
+.ax { position: absolute; width: 64px; text-align: right; font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 24px; line-height: 1; color: #8b94a5; }
+.tx { position: absolute; top: 420px; width: 120px; text-align: center; font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 24px; line-height: 1; color: #8b94a5; }
+.el { position: absolute; left: 1300px; width: 360px; font-size: 24px; line-height: 1; color: #c6cbd4; }
+.el .num { font-family: 'JetBrains Mono', 'Courier New', monospace; }
+.band { position: absolute; left: 96px; top: 12px; width: 520px; font-size: 24px; line-height: 1; color: #8b94a5; }
+.notes3 { display: flex; flex-direction: row; gap: 64px; }
+.notes3 .body { width: 512px; }
 
 /* ---- close ---- */
-.close .qrs { position: absolute; left: 1452px; top: 118px; width: 340px; display: flex; flex-direction: row; gap: 40px; }
-.close .qr { width: 150px; display: flex; flex-direction: column; gap: 10px; align-items: center; }
-.close .qrcap { width: 150px; text-align: center; font-family: 'Barlow', Arial, sans-serif; font-weight: 500; font-size: 24px; line-height: 1.1; letter-spacing: 3px; text-transform: uppercase; color: #8b94a5; }
-.who { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 40px; }
-.card { display: flex; flex-direction: column; gap: 12px; padding-top: 20px; border-top: 1px solid #232b37; }
-.card h3 { font-size: 30px; font-weight: 600; line-height: 1.25; color: #eceef2; }
-.card .d { font-size: 24px; line-height: 1.4; color: #c6cbd4; }
-.ded { font-size: 30px; line-height: 1.4; color: #eceef2; padding-left: 24px; border-left: 2px solid #ff8a4c; }
-.credit { font-size: 24px; line-height: 1.4; color: #8b94a5; }
+.link { display: flex; flex-direction: row; gap: 28px; align-items: center; }
+.link .url { font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 32px; line-height: 1.2; color: #eceef2; }
+.link .what { font-size: 24px; line-height: 1.3; color: #8b94a5; }
 
-/* ---- arrival motion: quiet, under a second ---- */
-@keyframes rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
-.stat, .step, .feat, .card { animation: rise 420ms ease-out both; animation-delay: calc(var(--i, 0) * 110ms); }
+/* ---- arrival motion: quiet, well under a second ---- */
+@keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+.fig, .pt { animation: rise 380ms ease-out both; animation-delay: calc(var(--i, 0) * 110ms); }
+
+/* ---- satellite timeline (2000 to 2027, 40 px per year) ---- */
+.sats { display: flex; flex-direction: column; gap: 24px; }
+.sat { display: flex; flex-direction: row; gap: 32px; align-items: center; }
+.sat .nm { width: 520px; font-size: 32px; line-height: 1.15; color: #eceef2; }
+.sat .ag { color: #8b94a5; }
+.sat .trk { position: relative; width: 1080px; height: 52px; }
+.sat .b { position: absolute; top: 0; height: 52px; background: #8b94a5; }
+.sat .b.v { background: #ff8a4c; }
+.sax { position: relative; width: 1080px; height: 30px; }
+.sax p { position: absolute; top: 0; width: 80px; text-align: center; font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 24px; line-height: 1; color: #8b94a5; }
+
+/* ---- drift chart at evidence size ---- */
+.plot2 { position: relative; width: 1180px; height: 404px; }
+.plot2 svg { position: absolute; left: 64px; top: 0; }
+.ax2 { position: absolute; left: 0; width: 52px; text-align: right; font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 24px; line-height: 1; color: #8b94a5; }
+.tx2 { position: absolute; top: 374px; width: 80px; text-align: center; font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 24px; line-height: 1; color: #8b94a5; }
+.el2 { position: absolute; left: 944px; width: 236px; font-size: 24px; line-height: 1; color: #c6cbd4; }
+.band2 { position: absolute; left: 80px; top: 10px; width: 420px; font-size: 24px; line-height: 1; color: #8b94a5; }
+.who b { color: #eceef2; font-weight: 600; }
+.globecap { position: absolute; left: 1032px; top: 936px; width: 760px; text-align: center; font-size: 24px; line-height: 1; color: #8b94a5; }

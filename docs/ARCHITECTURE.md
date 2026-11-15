@@ -30,7 +30,7 @@ web/                       Vite 8 + Svelte 5 + TypeScript single-page app
   server/ai/                          /api/brief, /api/ask
   server/sameOrigin.ts                cross-site guard shared by the three routes
 scripts/                   build-wasm.sh and five test scripts (see the README)
-docs/                      this file, METHOD.md, OPERATIONS.md, design.md, brand/, ux/, deck/
+docs/                      this file, METHOD.md, OPERATIONS.md, SUBMISSION.md, design.md, brand/, ux/, deck/ (slide sources for /demo)
 data/                      git-ignored: raw/ (downloads), work/ (intermediate), dist/ (served)
 ```
 
