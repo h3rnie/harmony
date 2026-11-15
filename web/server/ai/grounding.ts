@@ -257,6 +257,11 @@ export function checkBrief(text: string, d: Dossier): BriefCheck {
   if (!d.month.isLatestMonth && all.some((t) => FUTURE_WORDS.test(t))) {
     problems.push('the viewed month is a past month: do not mention an outlook, forecast or anything about the future')
   }
+  // The units lens: never name the other scale (the glossary tells the model which wording applies).
+  const otherUnit = d.unit === 'viirs' ? /\bMODIS[- ]equivalent\b/i : /\bVIIRS[- ]equivalent\b/i
+  if (all.some((t) => otherUnit.test(t))) {
+    problems.push(`the unit of these statistics is ${d.unit === 'viirs' ? 'VIIRS' : 'MODIS'}-equivalent active-fire cell-days: do not name the other unit`)
+  }
   const bad = [...new Set(ungroundedWithContext(all.join(' \n '), briefPool(d)))]
   if (bad.length) problems.push(`these numbers are not in the statistics: ${bad.slice(0, 5).join('; ')}`)
   return { brief, problems }

@@ -145,7 +145,7 @@
         </select>
       </label>
     </div>
-    <p class="scope small muted">Global evidence, the same for every area you select.</p>
+    <p class="scope muted">Global evidence, the same for every area you select.</p>
 
     <p class="take">
       <strong>{changed ? 'Yes.' : 'Not clearly here.'}</strong>

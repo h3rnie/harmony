@@ -391,6 +391,21 @@
   .opts { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .mode { display: inline-flex; align-items: center; gap: 8px; font-size: var(--fs-sm); color: var(--ink-3); }
   .mode select { min-height: 34px; font-size: var(--fs-sm); color: var(--ink); }
+  /* Phone: the three controls share one row under the title (Colour by takes the slack, Listen keeps its label, the
+     settings button shows its gear and keeps its name for screen readers). The popovers anchor to the row, not to
+     their small cells, so they open at full width. */
+  @media (max-width: 600px) {
+    .head { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+    .opts { position: relative; display: flex; flex-wrap: nowrap; gap: 8px; width: 100%; }
+    .mode { flex: 1; min-width: 0; }
+    .mode select { flex: 1; min-width: 0; }
+    .opts :global(.settings), .opts :global(.listen) { position: static; flex: none; }
+    .opts :global(.settings .lbl) {
+      position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap;
+    }
+    .opts :global(.settings > .btn) { padding-inline: 0.65em; }
+    .opts :global(.panel) { left: 0; right: 0; width: auto; }
+  }
   .opts2 { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
   .back { margin-right: 8px; }
   .chk { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }

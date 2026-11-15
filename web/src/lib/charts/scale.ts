@@ -71,6 +71,28 @@ export function bandPath(xs: number[], lo: (number | null)[], hi: (number | null
   return d
 }
 
+/**
+ * The two long edges of a band (upper and lower bound, no closing sides) as stroke-only polylines. A hairline on the
+ * true bounds keeps a narrow range visible without widening it: the extent drawn is exactly the extent measured.
+ */
+export function bandEdgePath(xs: number[], lo: (number | null)[], hi: (number | null)[]): string {
+  let d = ''
+  let seg: number[] = []
+  const flush = () => {
+    if (seg.length > 1) {
+      d += 'M' + seg.map((i) => `${xs[i].toFixed(1)},${hi[i]!.toFixed(1)}`).join('L')
+      d += 'M' + seg.map((i) => `${xs[i].toFixed(1)},${lo[i]!.toFixed(1)}`).join('L')
+    }
+    seg = []
+  }
+  for (let i = 0; i < xs.length; i++) {
+    if (lo[i] == null || hi[i] == null) flush()
+    else seg.push(i)
+  }
+  flush()
+  return d
+}
+
 /** Short axis label: 0 · 500 · 1.5K · 20K · 3M */
 export function tickLabel(v: number): string {
   const a = Math.abs(v)

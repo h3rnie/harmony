@@ -10,7 +10,8 @@
 //  - Rank fields say which end is which (1 = most active) so the model cannot flip them.
 //  - The area label is the only free text and is untrusted; the server sanitises it again.
 
-export const DOSSIER_VERSION = 2
+// v3: adds `unit` (the units lens: which scale every activity value is on). Bumped because the validator rejects unknown keys.
+export const DOSSIER_VERSION = 3
 export const DOSSIER_MAX_BYTES = 16 * 1024
 export const LABEL_MAX_CHARS = 80
 
@@ -23,8 +24,14 @@ export const ASK_MAX_ANSWER_CHARS = 1600
 export type Level = 'normal' | 'above' | 'well-above' | 'extreme' | 'below' | 'well-below'
 export const LEVELS: readonly Level[] = ['normal', 'above', 'well-above', 'extreme', 'below', 'well-below']
 
+/** The units lens: MODIS-equivalent (AFCD-M) or VIIRS-equivalent (AFCD-V) active-fire cell-days. */
+export type DossierUnit = 'modis' | 'viirs'
+export const DOSSIER_UNITS: readonly DossierUnit[] = ['modis', 'viirs']
+
 export interface Dossier {
   v: typeof DOSSIER_VERSION
+  /** Scale of every activity value below (month.value, intervals, medians, records, detail.afcd, climatology, outlook). */
+  unit: DossierUnit
   area: {
     /** Preset name (trusted) or user-typed / uploaded label (untrusted data). */
     label: string
@@ -39,7 +46,7 @@ export interface Dossier {
     label: string
     monthName: string
     year: number
-    /** AFCD-M: MODIS-equivalent active-fire cell-days. */
+    /** In `unit` (AFCD-M or AFCD-V cell-days). */
     value: number | null
     interval80: [number, number] | null
     /** Median of the same calendar month over the baseline years. */

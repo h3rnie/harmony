@@ -4,7 +4,7 @@
   import { onMount } from 'svelte'
   import { session } from '../session.svelte'
   import { fmtArea, monthIso, monthLong, parseMonthIso } from '../format'
-  import { clusterAoi, watchDoc, watchItems, type WatchDoc } from '../data/watch'
+  import { clusterAoi, outlineAreaKm2, watchDoc, watchItems, type WatchDoc } from '../data/watch'
 
   let doc = $state.raw<WatchDoc | null>(null)
   onMount(() => {
@@ -17,6 +17,9 @@
   const items = $derived(doc && m != null ? watchItems(doc, 6) : [])
   const win = $derived(doc?.windows.month)
   const nYears = $derived(win ? win.record_years[1] - win.record_years[0] + 1 : 0)
+  /** Narrow screens show the top few; the rest sit behind "Show more" (CSS hides the extras only on narrow screens). */
+  const FEW = 3
+  let more = $state(false)
 
   function pick(i: number) {
     if (m == null) return
@@ -39,18 +42,21 @@
     </div>
     <ol class="list">
       {#each items as it, i (it.c.id)}
-        <li>
-          <button class="item" onclick={() => pick(i)} aria-label={`${it.c.label}: ${it.ratio}, ${it.rank}, ${fmtArea(it.c.area_km2)}. Analyse this area for ${monthLong(m)}.`}>
+        <li class:extra={i >= FEW && !more}>
+          <button class="item" onclick={() => pick(i)} aria-label={`${it.c.label}: ${it.ratio}, ${it.rank}, cluster of ${fmtArea(it.c.area_km2)}. Analyse the area around it, ${fmtArea(outlineAreaKm2(it.c))}, for ${monthLong(m)}.`}>
             <span class="lbl">{it.c.label}</span>
             <span class="x num">{it.ratio}</span>
-            <span class="meta">{it.rank} · <span class="num">{fmtArea(it.c.area_km2)}</span></span>
+            <span class="meta">{it.rank} · cluster <span class="num">{fmtArea(it.c.area_km2)}</span></span>
           </button>
         </li>
       {/each}
     </ol>
+    {#if items.length > FEW}
+      <button class="btn more" aria-expanded={more} onclick={() => (more = !more)}>{more ? 'Show fewer' : `Show ${items.length - FEW} more`}</button>
+    {/if}
     <p class="foot">
       <button class="link" onclick={globe}>See all on the globe <span aria-hidden="true">→</span></button>
-      <span class="cav">Ranked against a {nYears}-year harmonized record{win?.provisional ? '; recent months are provisional and may include unscreened static heat sources' : ''}.</span>
+      <span class="cav">Opening one analyses the wider outline around it, so its ratio is lower. Ranked against {nYears} years{win?.provisional ? '; recent months are provisional and may include unscreened static heat sources' : ''}.</span>
     </p>
   </section>
 {/if}
@@ -74,6 +80,11 @@
   .lbl { font-weight: 600; font-size: var(--fs-sm); min-width: 0; }
   .x { font-size: var(--fs-sm); color: var(--ink); white-space: nowrap; }
   .meta { grid-column: 1 / -1; font-size: var(--fs-sm); color: var(--ink-3); }
+  .more { display: none; justify-self: start; }
+  @media (max-width: 600px) {
+    .extra { display: none; }
+    .more { display: inline-flex; }
+  }
   .foot { margin: 0; max-width: none; font-size: var(--fs-sm); color: var(--ink-3); display: flex; flex-wrap: wrap; gap: 2px 12px; align-items: baseline; }
   .link {
     background: none; border: 0; padding: 0; font: inherit; color: var(--ink-2); cursor: pointer; min-height: 24px;

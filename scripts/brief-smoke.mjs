@@ -61,7 +61,7 @@ const sourceOf = (y, m) => (y === Y0 ? '1' : y === 2001 || (y === 2002 && m < 6)
 const label = (y, m) => `${MONTHS[m]} ${y}`
 
 /** view = 'latest' | { year, month (0-based) } */
-export function makeDossier({ view = 'latest', areaLabel = 'Tahoe test area', isPreset = false } = {}) {
+export function makeDossier({ view = 'latest', areaLabel = 'Tahoe test area', isPreset = false, unit = 'modis' } = {}) {
   const vy = view === 'latest' ? YN : view.year
   const vm = view === 'latest' ? LAST_M : view.month
   const latest = view === 'latest'
@@ -92,7 +92,8 @@ export function makeDossier({ view = 'latest', areaLabel = 'Tahoe test area', is
     }).filter(Boolean).sort((a, b) => a.d - b.d).slice(0, 3).map((x) => x.y)
   })()
   const d = {
-    v: 2,
+    v: 3,
+    unit,
     area: { label: areaLabel, isPreset, km2: 8200, centroid: [-120.3, 39.1] },
     month: {
       label: label(vy, vm), monthName: MONTHS[vm], year: vy, value: fix(value, 1), interval80: [fix(value * 0.8, 1), fix(value * 1.2, 1)],
@@ -143,7 +144,7 @@ export function goodBrief(d) {
     y.ratio != null ? `${y.year} ${m.isLatestMonth ? 'is running' : 'ran'} at ${y.ratio.toFixed(1)} times the median through ${y.throughMonth}, ranking ${ord(y.rankMostActive)} of ${y.ofYears} years on record.` : '',
     d.annual ? `As a whole ${d.annual.year} ranks ${ord(d.annual.rankMostActive)} of ${d.annual.ofCompleteYears} complete years.` : '',
     `The normal season runs from ${d.season.startMonth} to ${d.season.endMonth} and peaks in ${d.season.peakMonth}, and ${m.monthName} sits ${d.season.viewedMonthInSeason ? 'inside' : 'outside'} that window.`,
-    d.outlook ? `The outlook beats climatology and expects about ${Math.round(d.outlook.months[0].median)} in ${d.outlook.months[0].label.split(' ')[0]} against a normal of ${Math.round(d.outlook.months[0].normal)} MODIS-equivalent active-fire cell-days.` : '',
+    d.outlook ? `The outlook beats climatology and expects about ${Math.round(d.outlook.months[0].median)} in ${d.outlook.months[0].label.split(' ')[0]} against a normal of ${Math.round(d.outlook.months[0].normal)} ${d.unit === 'viirs' ? 'VIIRS' : 'MODIS'}-equivalent active-fire cell-days.` : '',
     'Readers should treat these figures as an indicator of satellite detection activity in this area, which differs from fire damage or burned land.',
   ].filter(Boolean).join(' ')
   return {
@@ -434,6 +435,23 @@ async function offlineTests() {
   ok(chk({ ...goodBrief(hist), summary: goodBrief(hist).summary + ' No outlook is available.' }, hist).problems.some((p) => /past month/.test(p)), 'historical brief mentioning an outlook rejected ("No outlook is available")')
   ok(chk(goodBrief(hist), hist).problems.length === 0, 'historical brief without outlook passes')
   ok(chk({ ...good, level: 'extreme' }).brief.level === d.month.level, 'level is taken from the dossier, not the echo')
+
+  // units lens (dossier v3 `unit`)
+  const dv = makeDossier({ unit: 'viirs' })
+  ok(d.v === 3 && d.unit === 'modis' && dv.unit === 'viirs' && Object.keys(dv)[1] === 'unit', 'fixture: dossier v3 carries unit (modis | viirs) right after v')
+  ok(chk(goodBrief(dv), dv).problems.length === 0 && /VIIRS-equivalent/.test(goodBrief(dv).summary), 'VIIRS lens: a brief naming VIIRS-equivalent cell-days passes')
+  ok(chk(good, dv).problems.some((p) => /do not name the other unit/.test(p)), 'VIIRS lens: a brief naming MODIS-equivalent cell-days is rejected')
+  ok(chk(goodBrief(dv), d).problems.some((p) => /do not name the other unit/.test(p)), 'MODIS lens: a brief naming VIIRS-equivalent cell-days is rejected')
+  const cv = V.canonicalDossier(V.validateDossier(dv)), cm = V.canonicalDossier(V.validateDossier(d))
+  ok(JSON.parse(cv).unit === 'viirs' && JSON.parse(cm).unit === 'modis' && cv !== cm && cv.startsWith('{"v":3,"unit":"viirs","area"'), 'validator keeps unit in the canonical prefix, so a lens change is a different cache key')
+  ok(V.canonicalDossier(V.validateDossier(dv)) === cv, 'VIIRS-lens dossier is byte-stable')
+  const badUnit = JSON.parse(JSON.stringify(d)); badUnit.unit = 'both'
+  const noUnit = JSON.parse(JSON.stringify(d)); delete noUnit.unit
+  const rej = (x) => { try { V.validateDossier(x); return null } catch (e) { return e } }
+  ok(rej(badUnit)?.status === 400 && rej(noUnit)?.status === 400, 'validator rejects an unknown or missing unit')
+  const P2 = await import(new URL('../web/server/ai/prompt.ts', import.meta.url).href)
+  ok(/"viirs": "VIIRS-equivalent active-fire cell-days"/.test(P2.SYSTEM_PROMPT) && /"modis": "MODIS-equivalent active-fire cell-days"/.test(P2.SYSTEM_PROMPT), 'prompt glossary defines both units')
+  ok(P2.buildContext(cv).includes('"unit":"viirs"'), 'the unit travels in the cached context block')
 
   // validator + canonical stability
   const noisy = JSON.parse(JSON.stringify(d)); noisy.month.ratio = d.month.ratio + 1e-9; noisy.detail.afcd[5][5] = (noisy.detail.afcd[5][5] ?? 0) + 1e-7

@@ -229,7 +229,7 @@
       </div>
       {#if error}<p class="err" role="alert">Sound could not start: {error}</p>{/if}
 
-      <p class="help"><Term id="hearing">What am I hearing?</Term> · Sound is a way in, not evidence.</p>
+      <p class="help"><Term id="hearing">What am I hearing?</Term> · The sound is an aid and a demonstration, not a measurement. The numbers and the text version below are the record.</p>
       <details class="more">
         <summary>Text version</summary>
         <div class="more-body">

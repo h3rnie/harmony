@@ -21,6 +21,8 @@
 
   const available = $derived(!session.isMock && aiStatus.value?.ask === true)
   const dossier = $derived<Dossier | null>(dossierFromSession(a))
+  /** What an answer was computed for: the month, plus the units lens when it is not the default. */
+  const viewOf = (d: Dossier) => (d.unit === 'viirs' ? `${d.month.label}, VIIRS-equivalent units` : d.month.label)
   const suggestions = $derived(dossier ? suggestQuestions(dossier) : [])
 
   let turns = $state<Turn[]>([])
@@ -66,7 +68,7 @@
     ctl?.abort()
     ctl = null
     if (partial.trim()) {
-      turns = [...turns, { role: 'assistant', content: partial.trim().slice(0, ASK_MAX_ANSWER_CHARS), view: dossier?.month.label }]
+      turns = [...turns, { role: 'assistant', content: partial.trim().slice(0, ASK_MAX_ANSWER_CHARS), view: dossier ? viewOf(dossier) : undefined }]
     } else if (turns.length && turns[turns.length - 1].role === 'user') {
       // Stopped before any text arrived: take the question back into the box instead of leaving it unanswered.
       draft = turns[turns.length - 1].content
@@ -109,7 +111,7 @@
       })
       if (ctl !== mine) return
       turns = [...turns, {
-        role: 'assistant', content: done.text.slice(0, ASK_MAX_ANSWER_CHARS), view: d.month.label, model: done.model,
+        role: 'assistant', content: done.text.slice(0, ASK_MAX_ANSWER_CHARS), view: viewOf(d), model: done.model,
         cachedContext: !!done.cache && done.cache.read / Math.max(1, done.usage.input + done.usage.cacheRead + done.usage.cacheWrite) >= 0.5, ungrounded: done.ungrounded,
       }]
     } catch (e) {

@@ -72,7 +72,7 @@ export const GLOSSARY: Record<TermId, GlossaryEntry> = {
   },
   hearing: {
     term: 'Hearing the record',
-    text: 'One note per month. Higher pitch means more fire: the quietest month of this area sounds at the bottom, the busiest about two and a half octaves up, and equal steps in pitch are equal ratios. A soft tick starts each year. Silence is a month outside the record; a soft low tone is a month with no detections. Sound is a way in, not evidence: read the numbers in the calendar or the text version.',
+    text: 'One note per month. Higher pitch means more fire: the quietest month of this area sounds at the bottom, the busiest about two and a half octaves up, and equal steps in pitch are equal ratios. A soft tick starts each year. Silence is a month outside the record; a soft low tone is a month with no detections. The sound is an aid and a demonstration, not a measurement: read the numbers in the calendar or the text version.',
   },
   confidence: {
     term: 'Confidence',

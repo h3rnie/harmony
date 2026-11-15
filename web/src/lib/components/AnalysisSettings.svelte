@@ -67,7 +67,7 @@
 <div class="settings">
   <button bind:this={btn} class="btn gear" aria-expanded={open} aria-controls="analysis-settings" onclick={toggle}>
     <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 5.6a2.4 2.4 0 1 0 0 4.8 2.4 2.4 0 0 0 0-4.8Zm5.6 3.2.9-.8-1-2.2-1.2.2a5 5 0 0 0-.9-.9l.2-1.2-2.2-1-.8.9a5 5 0 0 0-1.2 0L6.6 1l-2.2 1 .2 1.2a5 5 0 0 0-.9.9l-1.2-.2-1 2.2.9.8a5 5 0 0 0 0 1.2l-.9.8 1 2.2 1.2-.2c.3.3.6.6.9.9l-.2 1.2 2.2 1 .8-.9a5 5 0 0 0 1.2 0l.8.9 2.2-1-.2-1.2c.3-.3.6-.6.9-.9l1.2.2 1-2.2-.9-.8a5 5 0 0 0 0-1.2Z" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" /></svg>
-    Years and normal
+    <span class="lbl">Years and normal</span>
     {#if custom}<span class="dot" aria-hidden="true"></span><span class="sr-only">(changed: {summary})</span>{/if}
   </button>
 

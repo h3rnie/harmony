@@ -80,7 +80,7 @@
 {#if em && fu && groups.length && cell && strat}
   <section class="ev" aria-labelledby="fusion-h">
     <h3 id="fusion-h" class="sub-title">How are the satellites combined?</h3>
-    <p class="scope small muted">Global evidence, the same for every area you select.</p>
+    <p class="scope muted">Global evidence, the same for every area you select.</p>
     <p class="take">
       Where both fly, each month is a weighted average of MODIS and calibrated VIIRS: <Term id="fusion">sensor fusion</Term>.
       {#if eraFirst && eraLast}Across 1° cells MODIS typically gets <span class="num">{f2(eraFirst.w)}</span> of the weight in {eraFirst.k.replace('-', '–')}, falling to <span class="num">{f2(eraLast.w)}</span> in {eraLast.k.replace('-', '–')} as its orbit drifts.{/if}

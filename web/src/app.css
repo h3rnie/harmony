@@ -29,7 +29,8 @@
   --s-viirs: #199e70;         /* categorical slot 3 */
   --s-ml: #c98500;            /* method lab challenger */
   --s-harm: #eceef2;
-  --band-80: rgba(236, 238, 242, 0.16);
+  --band-80: rgba(236, 238, 242, 0.2);
+  --band-edge: rgba(236, 238, 242, 0.5);   /* hairline on the 80 % bounds: keeps a narrow range visible */
   --band-95: rgba(236, 238, 242, 0.08);
   --env-outer: rgba(140, 160, 190, 0.12);
   --env-inner: rgba(140, 160, 190, 0.22);
@@ -67,7 +68,8 @@
   --s-viirs: #12805a;
   --s-ml: #9c6800;
   --s-harm: #0d1015;
-  --band-80: rgba(13, 16, 21, 0.14);
+  --band-80: rgba(13, 16, 21, 0.17);
+  --band-edge: rgba(13, 16, 21, 0.5);
   --band-95: rgba(13, 16, 21, 0.07);
   --env-outer: rgba(60, 80, 110, 0.1);
   --env-inner: rgba(60, 80, 110, 0.2);
@@ -109,6 +111,8 @@
   --track-wordmark: 0.34em;
 
   --header-h: 52px;
+  --index-h: 0px;      /* height of the sticky "On this page" index; published by SectionIndex while it is mounted */
+  --jump-gap: 16px;    /* breathing room between the sticky stack and a jumped-to title */
   --radius: 3px;
   --sec-pad: 28px 0 26px;
   --ease: cubic-bezier(0.2, 0.7, 0.1, 1);
@@ -246,6 +250,10 @@ table { border-collapse: collapse; }
   .cal-cell { forced-color-adjust: none; }
 }
 
+/* Jump targets (index buttons, in-page links, #anchors, scrollIntoView): clear the sticky header and, when it is
+   showing, the sticky index. Sections, the sub-sections of "How we know" and their titles all share one rule. */
+section[id], .sub[id], .q-title[id], .sub-title[id] { scroll-margin-top: calc(var(--header-h) + var(--index-h) + var(--jump-gap)); }
+
 /* Section rhythm for the guided scroll: one question title, one plain-language lead, then the evidence. */
 .q-title { font-size: var(--fs-xl); line-height: 1.2; margin: 0; }
 .lead { font-size: var(--fs-lg); line-height: 1.45; color: var(--ink); margin: 8px 0 14px; max-width: var(--measure); }
@@ -265,5 +273,5 @@ details.more > summary::before {
 }
 details.more[open] > summary::before { transform: rotate(45deg); }
 details.more > summary:hover { color: var(--ink); }
-details.more > .more-body { margin-top: 6px; color: var(--ink-2); font-size: var(--fs-sm); max-width: var(--measure); }
+details.more > .more-body { margin-top: 6px; color: var(--ink-2); font-size: var(--fs-base); max-width: var(--measure); }
 .sub-title { font-size: var(--fs-lg); line-height: 1.25; margin: 0; }

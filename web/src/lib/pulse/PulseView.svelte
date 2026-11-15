@@ -16,6 +16,7 @@
   import { clockPale, globeLayout, isStatic, palette, PULSE_MODES, TREND_SHOW, type Frame, type PulseMode, type PulseRenderer } from './shared'
   import { monthColor } from './cyclic'
   import { loadWatch, rankWords, type WatchCluster, type WatchDoc } from './watch'
+  import { clusterAoi } from '../data/watch'
   import Timeline from './Timeline.svelte'
   import BrandMark from '../brand/BrandMark.svelte'
   import Patch from '../brand/Patch.svelte'
@@ -311,8 +312,7 @@
   }
   function analyseCluster(c: WatchCluster) {
     onclose()
-    const ring = c.polygon.map(([x, y]) => [x, y])
-    session.setAoi({ rings: [ring], shape: { kind: 'polygon' }, label: `${c.label} — unusual fire, ${MONTHS_LONG[moyOfM(watchM!)]} ${yearOfM(watchM!)}` }, { focusM: watchM })
+    session.setAoi(clusterAoi(c, watchM!), { focusM: watchM })
   }
 
   // ---------------------------------------------------------------- pointer
@@ -539,7 +539,7 @@
   {#if status === 'ready'}
     <svg class="rings" bind:this={ringSvg} aria-hidden={!ringsOn} class:on={ringsOn}>
       {#each watchClusters as c, i (c.id)}
-        <g class="ring" role="button" tabindex={ringsOn ? 0 : -1} aria-label={`${c.label}: unusual fire, ${fmtRatio(c.ratio)} normal. Analyse this area.`}
+        <g class="ring" role="button" tabindex={ringsOn ? 0 : -1} aria-label={`${c.label}: unusual fire, about ${fmtRatio(c.ratio)} normal. Analyse the area around it.`}
           onpointerenter={(e) => ringEnter(e, c)} onpointermove={(e) => ringEnter(e, c)} onpointerleave={() => (ringHover = null)}
           onclick={() => analyseCluster(c)} onkeydown={(e) => { if (e.key === 'Enter') analyseCluster(c) }}>
           <path class="hit" data-i={i} d="" />
@@ -653,10 +653,10 @@
       <div class="tip small" style:left={`${ringHover.x + 14}px`} style:top={`${ringHover.y + 14}px`} aria-hidden="true">
         <span class="eyebrow">Unusual fire · #{c.rank}</span>
         <strong class="main">{c.label}</strong>
-        <span><span class="num">≈ {fmtNum(c.afcd)}</span> AFCD-M · {c.normal_near_zero ? 'normally almost none' : `${fmtRatio(c.ratio)} normal`}</span>
+        <span><span class="num">≈ {fmtNum(c.afcd)}</span> AFCD-M · {c.normal_near_zero ? 'normally almost none' : `about ${fmtRatio(c.ratio)} normal`}</span>
         <span>{rankWords(c.record_rank, c.record_years, MONTHS_LONG[moyOfM(watchM)])}{c.record_rank > 1 ? ` (most: ${c.record_max_year})` : ''}</span>
         <span class="muted"><span class="num">{Math.round(c.area_km2).toLocaleString('en-US')}</span> km²{c.biome ? ` · ${c.biome}` : ''}</span>
-        <span class="muted">Click to analyse this area</span>
+        <span class="muted">Click to analyse the area around it</span>
       </div>
     {/if}
 

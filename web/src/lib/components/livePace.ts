@@ -29,9 +29,9 @@ export const partOfMonth = (d: Date) => (d.getUTCDate() <= 10 ? 'early' : d.getU
 export function goToSection(id: string, smooth = true) {
   const el = document.getElementById(id)
   if (!el) return
-  const hdr = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--header-h')) || 52
-  const idx = (document.querySelector('nav.index') as HTMLElement | null)?.offsetHeight ?? 0
-  scrollTo({ top: el.getBoundingClientRect().top + scrollY - hdr - idx - 12, behavior: smooth ? 'smooth' : 'auto' })
+  // scroll-margin-top (app.css) is the one definition of the sticky header + index stack above a jump target.
+  const margin = parseFloat(getComputedStyle(el).scrollMarginTop) || 0
+  scrollTo({ top: el.getBoundingClientRect().top + scrollY - margin, behavior: smooth ? 'smooth' : 'auto' })
   const h = el.querySelector<HTMLElement>('h2, h3') ?? el
   if (!h.hasAttribute('tabindex')) h.setAttribute('tabindex', '-1')
   h.focus({ preventScroll: true })

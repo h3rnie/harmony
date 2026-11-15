@@ -25,6 +25,8 @@ export function dossierFromSession(a: Analysis, now?: LiveNow | null): Dossier |
     aquaStartM: meta.aqua_start_m,
     viirsStartM: meta.viirs_start_m,
     analysis: a,
+    // What the kernel actually returned wins over the requested lens (they differ only if the kernel fell back).
+    unit: a.harmonization?.unit ?? session.unit,
     now,
   })
 }

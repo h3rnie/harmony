@@ -5,7 +5,7 @@
 // The area label is the only free text and is reduced to a name-like character set, because it ends up in the prompt.
 import type { ChatTurn, Dossier, Level, LiveNow } from '../../src/lib/brief/dossierTypes.ts'
 import {
-  ASK_MAX_ANSWER_CHARS, ASK_MAX_QUESTION_CHARS, ASK_MAX_TURNS, DOSSIER_MAX_BYTES, DOSSIER_VERSION, LABEL_MAX_CHARS, LEVELS,
+  ASK_MAX_ANSWER_CHARS, ASK_MAX_QUESTION_CHARS, ASK_MAX_TURNS, DOSSIER_MAX_BYTES, DOSSIER_UNITS, DOSSIER_VERSION, LABEL_MAX_CHARS, LEVELS,
 } from '../../src/lib/brief/dossierTypes.ts'
 import { fix, sig } from '../../src/lib/brief/round.ts'
 
@@ -99,8 +99,10 @@ export function validateDossier(raw: unknown): Dossier {
   try { size = Buffer.byteLength(JSON.stringify(raw) ?? '', 'utf8') } catch { throw new PayloadError('invalid JSON') }
   if (size > DOSSIER_MAX_BYTES) throw new PayloadError('payload too large')
 
-  const top = obj(raw, 'dossier', ['v', 'area', 'month', 'yearToDate', 'annual', 'season', 'trend', 'outlook', 'records', 'seam', 'provenance', 'detail'], ['now'])
+  const top = obj(raw, 'dossier', ['v', 'unit', 'area', 'month', 'yearToDate', 'annual', 'season', 'trend', 'outlook', 'records', 'seam', 'provenance', 'detail'], ['now'])
   if (top.v !== DOSSIER_VERSION) throw new PayloadError('dossier.v: unsupported version')
+
+  const unit = oneOf(top.unit, 'unit', DOSSIER_UNITS)
 
   const a = obj(top.area, 'area', ['label', 'isPreset', 'km2', 'centroid'])
   if (typeof a.label !== 'string') throw new PayloadError('area.label: expected string')
@@ -246,7 +248,7 @@ export function validateDossier(raw: unknown): Dossier {
     similarYears: list(d.similarYears, 'detail.similarYears', 3, (x, p) => int(x, p, 1990, 2100)),
   }
 
-  const out: Dossier = { v: DOSSIER_VERSION, area, month, yearToDate, annual, season, trend, outlook, records, seam, provenance, detail }
+  const out: Dossier = { v: DOSSIER_VERSION, unit, area, month, yearToDate, annual, season, trend, outlook, records, seam, provenance, detail }
   if (top.now !== undefined) out.now = validateNow(top.now)
   return out
 }

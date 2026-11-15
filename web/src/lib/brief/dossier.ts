@@ -2,7 +2,7 @@
 import type { Analysis } from '../kernel/types'
 import { monthStats, seriesIndex } from '../analysisUtil'
 import { MONTHS_LONG, monthLong, toM } from '../format'
-import { DOSSIER_VERSION, LEVELS, type Dossier, type Level, type LiveNow } from './dossierTypes'
+import { DOSSIER_VERSION, LEVELS, type Dossier, type DossierUnit, type Level, type LiveNow } from './dossierTypes'
 import { fix, sig } from './round'
 import { yearContext } from './yearContext'
 
@@ -22,6 +22,8 @@ export interface DossierInput {
   aquaStartM: number
   viirsStartM: number
   analysis: Analysis
+  /** Units lens the values are on; defaults to what the analysis itself reports (`harmonization.unit`), else 'modis'. */
+  unit?: DossierUnit
   /** Optional live summary; only passed for follow-up questions. */
   now?: LiveNow | null
 }
@@ -86,6 +88,7 @@ export function buildDossier(i: DossierInput): Dossier | null {
 
   const dossier: Dossier = {
     v: DOSSIER_VERSION,
+    unit: i.unit ?? a.harmonization?.unit ?? 'modis',
     area: {
       label: i.areaLabel,
       isPreset: i.isPreset,

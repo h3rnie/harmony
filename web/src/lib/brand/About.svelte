@@ -8,6 +8,10 @@
 
   let dlg: HTMLDialogElement
 
+  // Public source link (build-time, optional). Only http(s) URLs are linked; anything else shows the text alone.
+  const raw = (import.meta.env.VITE_SOURCE_URL ?? '').trim()
+  const sourceUrl = /^https?:\/\//i.test(raw) ? raw : null
+
   onMount(() => {
     const show = () => { if (!dlg.open) dlg.showModal() }
     addEventListener('harmony:open-about', show)
@@ -61,6 +65,10 @@
           </div>
         </dl>
         <p class="indep">An independent entry to {EVENT}. Not affiliated with or endorsed by NASA.</p>
+        <p class="indep src">
+          {#if sourceUrl}<a href={sourceUrl} target="_blank" rel="noopener">Source code: AGPL-3.0-only</a>{:else}Source code: AGPL-3.0-only{/if}.
+          The Harmony name, mark and patch are not covered by the code licence.
+        </p>
       </div>
     </div>
 </dialog>
@@ -100,7 +108,9 @@
     text-underline-offset: 3px; cursor: pointer; font-size: inherit;
   }
   .link:hover { text-decoration-color: var(--accent); }
-  .indep { margin: 14px 0 0; font-size: var(--fs-sm); color: var(--ink-3); }
+  .indep { margin: 14px 0 0; font-size: var(--fs-sm); color: var(--ink-3); max-width: none; }
+  .indep.src { margin-top: 4px; }
+  .indep a { color: var(--ink-2); }
 
   @media (max-width: 700px) {
     .inner { grid-template-columns: 1fr; gap: 18px; padding: 28px 20px 22px; }

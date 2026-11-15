@@ -45,7 +45,7 @@
 {#if c && oot && rows.length}
   <section class="ev" aria-labelledby="conformal-h">
     <h3 id="conformal-h" class="sub-title">How sure are the ranges?</h3>
-    <p class="scope small muted">Global evidence, the same for every area you select.</p>
+    <p class="scope muted">Global evidence, the same for every area you select.</p>
     <p class="take">
       Ranges are calibrated on held-out years; out of sample they cover {typical} of months at a nominal 80 %.
     </p>

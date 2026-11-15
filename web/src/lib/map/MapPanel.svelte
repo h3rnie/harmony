@@ -299,6 +299,11 @@
       maxPitch: 0,
     })
     map.touchZoomRotate.disableRotation()
+    // The basemap style references a few sprite icons (e.g. "circle-11") its sprite sheet lacks. They were never drawn;
+    // supply an empty image so MapLibre stops warning about each one.
+    map.on('styleimagemissing', (e) => {
+      if (!map?.hasImage(e.id)) map?.addImage(e.id, { width: 1, height: 1, data: new Uint8Array(4) })
+    })
     map.addControl(new NavigationControl({ showCompass: false }), 'bottom-right')
     map.addControl(new ScaleControl({ maxWidth: 110 }), 'bottom-left')
     const useFallback = () => {

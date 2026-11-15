@@ -63,6 +63,8 @@ function harmonyData(): Plugin {
 
 // https://vite.dev/config/
 export default defineConfig({
+  // VITE_* variables (public, shipped in the bundle) come from the same <repo root>/.env* files as the server keys.
+  envDir: fileURLToPath(new URL('..', import.meta.url)),
   // /api/brief + /api/ask (AI situation brief, Ask Harmony) read ANTHROPIC_API_KEY / OPENROUTER_API_KEY and AI_* server-side
   // from <repo root>/.env.local | .env | process env.
   // /api/live proxies FIRMS NRT with FIRMS_MAP_KEY read the same way (never sent to the browser).

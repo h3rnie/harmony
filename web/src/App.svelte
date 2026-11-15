@@ -175,7 +175,6 @@
   }
   .results { transition: opacity 0.25s; }
   .results.stale { opacity: 0.55; }
-  .results :global(section[id]) { scroll-margin-top: calc(var(--header-h) + 56px); }
   .nodata { padding: 26px 0; border-bottom: 1px solid var(--rule); }
   .nodata h2 { margin: 0 0 8px; }
   .error { padding: 24px 0; border-bottom: 1px solid var(--rule); }

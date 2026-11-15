@@ -141,7 +141,7 @@
 </section>
 
 <style>
-  .method { padding: 22px 0 24px; border-bottom: 1px solid var(--rule); scroll-margin-top: calc(var(--header-h) + 64px); }
+  .method { padding: 22px 0 24px; border-bottom: 1px solid var(--rule); }
   .disclosure { display: inline-flex; align-items: center; gap: 8px; background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--ink); cursor: pointer; }
   .disclosure svg { transition: transform 0.2s; }
   .disclosure svg.open { transform: rotate(90deg); }

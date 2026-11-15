@@ -15,10 +15,14 @@
   let nav = $state<HTMLElement>()
   let list = $state<HTMLUListElement>()
 
+  // Sticky stack above the content = header + this index. The index publishes its real height as --index-h, and
+  // app.css derives every jump target's scroll-margin-top from it, so native #anchors, scrollIntoView and the
+  // jumps below all stop at the same line, at any breakpoint.
   function offset(): number {
     const hdr = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--header-h')) || 52
     return hdr + (nav?.offsetHeight ?? 44) + 24
   }
+  const root = document.documentElement
 
   function spy() {
     const y = offset() + 40
@@ -49,14 +53,21 @@
     addEventListener('resize', on)
     const ro = new ResizeObserver(on)
     ro.observe(document.body)
+    const publish = () => { if (nav) root.style.setProperty('--index-h', `${nav.offsetHeight}px`) }
+    const ro2 = new ResizeObserver(publish)
+    if (nav) ro2.observe(nav)
+    publish()
     on()
-    return () => { removeEventListener('scroll', on); removeEventListener('resize', on); ro.disconnect(); cancelAnimationFrame(raf) }
+    return () => {
+      removeEventListener('scroll', on); removeEventListener('resize', on); ro.disconnect(); ro2.disconnect(); cancelAnimationFrame(raf)
+      root.style.removeProperty('--index-h')
+    }
   })
 
   function jump(id: string) {
     const el = document.getElementById(id)
     if (!el) return
-    const top = el.getBoundingClientRect().top + scrollY - offset() + 12
+    const top = el.getBoundingClientRect().top + scrollY - (parseFloat(getComputedStyle(el).scrollMarginTop) || offset() - 12)
     scrollTo({ top, behavior: themeState.reducedMotion ? 'auto' : 'smooth' })
     const h = el.querySelector<HTMLElement>('h2, h3') ?? el
     if (!h.hasAttribute('tabindex')) h.setAttribute('tabindex', '-1')

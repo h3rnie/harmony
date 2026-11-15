@@ -8,7 +8,7 @@
   import type { Analysis } from '../kernel/types'
   import { session } from '../session.svelte'
   import { themeState } from '../theme.svelte'
-  import { linear, linePath, bandPath, niceMax, niceTicks, tickLabel } from '../charts/scale'
+  import { linear, linePath, bandPath, bandEdgePath, niceMax, niceTicks, tickLabel } from '../charts/scale'
   import { fmtNum, fmtRatio, monthShort, toM, yearOf } from '../format'
   import { SOURCE_SHORT } from '../analysisUtil'
   import Term from './Term.svelte'
@@ -63,6 +63,7 @@
   const pathMod = $derived(seg(modRaw, modHarm, vStart, Infinity))
   const pathVii = $derived(linePath(a.months.map((m, i) => (m >= vStart && viiHarm[i] != null ? [xs[i], clampY(viiHarm[i]!)] : null))))
   const band80 = $derived(bandPath(xs, a.series.lo80.map((v) => (v == null ? null : clampY(yHarm(v)))), a.series.hi80.map((v) => (v == null ? null : clampY(yHarm(v))))))
+  const band80Edge = $derived(bandEdgePath(xs, a.series.lo80.map((v) => (v == null ? null : clampY(yHarm(v)))), a.series.hi80.map((v) => (v == null ? null : clampY(yHarm(v))))))
   const band95 = $derived(bandPath(xs, a.series.lo95.map((v) => (v == null ? null : clampY(yHarm(v)))), a.series.hi95.map((v) => (v == null ? null : clampY(yHarm(v))))))
 
   const ticksRaw = $derived(niceTicks(0, rawMax, 4))
@@ -245,6 +246,7 @@
       <!-- uncertainty -->
       <path d={band95} class="band95" style:opacity={k} />
       <path d={band80} class="band80" style:opacity={k} />
+      <path d={band80Edge} class="band-edge" style:opacity={k} />
 
       <!-- MODIS continuing through the overlap -->
       <path d={pathMod} class="line modis thin" style:opacity={lerp(0.85, 0.55, k)} />
@@ -349,6 +351,7 @@
   .era { stroke: var(--ink-3); stroke-width: 1; }
   .era.sw { stroke: var(--ink-2); }
   .band80 { fill: var(--band-80); }
+  .band-edge { fill: none; stroke: var(--band-edge); stroke-width: 1; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
   .band95 { fill: var(--band-95); }
   .line { fill: none; stroke-linejoin: round; stroke-linecap: round; }
   .line.main { stroke-width: 1.6; transition: stroke 0.5s; }
@@ -374,10 +377,10 @@
   .sw.modis { background: var(--s-modis); }
   .sw.viirs { background: var(--s-viirs); }
   .sw.harm { background: var(--s-harm); height: 3px; }
-  .sw.band { height: 9px; background: var(--band-80); }
+  .sw.band { height: 9px; background: var(--band-80); border-top: 1px solid var(--band-edge); border-bottom: 1px solid var(--band-edge); }
   .sw.grad { height: 9px; width: 28px; background: linear-gradient(90deg, var(--s-modis), var(--s-viirs)); }
-  .share { margin: 8px 0 0; font-size: var(--fs-sm); color: var(--ink-2); }
-  .why { margin: 0 0 8px; font-size: var(--fs-sm); color: var(--ink-2); max-width: var(--measure); }
+  .share { margin: 8px 0 0; font-size: var(--fs-base); color: var(--ink-2); }
+  .why { margin: 0 0 8px; font-size: var(--fs-base); color: var(--ink-2); max-width: var(--measure); }
   .more-body { display: grid; gap: 8px; justify-items: start; }
   .slider { display: grid; gap: 2px; font-size: var(--fs-sm); color: var(--ink-2); max-width: 360px; width: 100%; }
 </style>
