@@ -2,6 +2,8 @@
 
 **Two satellites. One fire record.**
 
+**Live app: <https://harmony.hernie.me>** · Slides: [docs/deck](docs/deck) · Deployment: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
+
 Harmony joins two generations of fire-detecting satellites, MODIS (2000, ending) and VIIRS (2012, running on), into one consistent monthly record of burning activity for any area on Earth. It exists because the two instruments report very different numbers of hotspots for the same fires, so a raw count series from 2000 to today has a break in it, and because MODIS Terra and Aqua have drifted away from their original overpass times since about 2021. It is for anyone who needs to say when an area burns, which years were extreme and how this month compares with normal: duty officers, land managers, journalists and fire scientists.
 
 Built by [Toh Yu Heng](https://hello.hernie.me), Singapore, for NASA Space Apps 2026, challenge **Harmonization of MODIS and VIIRS Hot Spots**. Data: NASA FIRMS only.
