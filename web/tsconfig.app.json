@@ -17,5 +17,7 @@
     "checkJs": true,
     "moduleDetection": "force"
   },
-  "include": ["src/**/*.ts", "src/**/*.js", "src/**/*.svelte"]
+  "include": ["src/**/*.ts", "src/**/*.js", "src/**/*.svelte"],
+  // wasm-bindgen output is typed by its own .d.ts; do not type-check the generated JS
+  "exclude": ["src/lib/kernel/pkg/**"]
 }

@@ -4,7 +4,19 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>web</title>
+    <meta name="description" content="Harmony — a harmonized MODIS + VIIRS burning-activity calendar for any area on Earth, 2000 to present." />
+    <meta name="color-scheme" content="dark light" />
+    <title>Harmony — one fire record, two generations of satellites</title>
+    <script>
+      // Apply the theme before first paint (no flash).
+      (function () {
+        var p = null
+        try { p = localStorage.getItem('harmony-theme') } catch (e) {}
+        var t = p === 'dark' || p === 'light' ? p : (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+        document.documentElement.dataset.theme = t
+        document.documentElement.style.colorScheme = t
+      })()
+    </script>
   </head>
   <body>
     <div id="app"></div>

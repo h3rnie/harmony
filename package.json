@@ -1,0 +1,12 @@
+{
+  "name": "harmony",
+  "private": true,
+  "description": "Harmonized MODIS + VIIRS burning activity calendar",
+  "scripts": {
+    "dev": "pnpm --dir web dev",
+    "build": "pnpm --dir web build"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3"
+  }
+}

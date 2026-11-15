@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "build:wasm": "bash ../scripts/build-wasm.sh",
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json"
@@ -12,13 +13,17 @@
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
     "@tsconfig/svelte": "^5.0.8",
+    "@types/d3-scale-chromatic": "^3.1.0",
     "@types/node": "^24.19.2",
+    "sirv": "^3.0.2",
     "svelte": "^5.57.3",
     "svelte-check": "^4.7.7",
     "typescript": "~6.0.3",
     "vite": "^8.3.6"
   },
   "dependencies": {
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@fontsource-variable/schibsted-grotesk": "^5.3.0",
     "@observablehq/plot": "^0.6.19",
     "d3-scale-chromatic": "^3.1.1",
     "hyparquet": "^1.33.0",
