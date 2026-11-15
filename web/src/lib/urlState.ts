@@ -1,14 +1,18 @@
 // Shareable view state in the URL hash:
 //   #p=amazon-2019 | c=lon,lat,km | b=w,s,e,n | g=<polyline>   (AOI)
-//   &m=2019-08 &cal=anomaly &ov=ratio &sw=2023 &bl=2003-2022 &dn=night &r=2000-2026
+//   &m=2019-08 &cal=anomaly &ov=ratio &sw=2023 &bl=2003-2022 &dn=night &r=2000-2026 &rec=switch &u=viirs
+//   (`rec` = how the record is built, fused by default; `u` = units lens. `sw` alone never implies switch mode:
+//   older links carried it for the then-default switch record, so only an explicit `rec=switch` selects it.)
 import type { Aoi } from './geo'
 import { bboxPolygon, circlePolygon, normalizeRings } from './geo'
 import { monthIso, parseMonthIso } from './format'
 import { presetById } from './presets'
 
-export type CalMode = 'activity' | 'anomaly' | 'percentile'
+export type CalMode = 'activity' | 'anomaly' | 'percentile' | 'uncertainty'
 export type OverlayMode = 'harmonized' | 'ratio'
 export type Dn = 'both' | 'day' | 'night'
+export type RecordMode = 'fused' | 'switch'
+export type Unit = 'modis' | 'viirs'
 
 export interface ViewState {
   aoi: Aoi | null
@@ -19,11 +23,13 @@ export interface ViewState {
   baseline: [number, number] | null
   dn: Dn
   rangeYears: [number, number] | null
+  recordMode: RecordMode
+  unit: Unit
 }
 
 export const DEFAULT_VIEW: ViewState = {
   aoi: null, focusM: null, calMode: 'activity', overlay: 'harmonized',
-  switchYear: null, baseline: null, dn: 'both', rangeYears: null,
+  switchYear: null, baseline: null, dn: 'both', rangeYears: null, recordMode: 'fused', unit: 'modis',
 }
 
 // ---- Google polyline (precision 1e4 ~ 11 m) ----
@@ -72,12 +78,14 @@ export function readHash(hash = location.hash): ViewState {
     } catch { /* ignore malformed */ }
   }
   const m = q.get('m'); if (m) v.focusM = parseMonthIso(m)
-  const cal = q.get('cal'); if (cal === 'anomaly' || cal === 'percentile' || cal === 'activity') v.calMode = cal
+  const cal = q.get('cal'); if (cal === 'anomaly' || cal === 'percentile' || cal === 'activity' || cal === 'uncertainty') v.calMode = cal
   const ov = q.get('ov'); if (ov === 'ratio' || ov === 'harmonized') v.overlay = ov
   const sw = Number(q.get('sw')); if (q.get('sw') && Number.isInteger(sw)) v.switchYear = sw
   const bl = (q.get('bl') ?? '').split('-').map(Number); if (bl.length === 2 && bl.every(Number.isInteger)) v.baseline = [bl[0], bl[1]]
   const dn = q.get('dn'); if (dn === 'day' || dn === 'night') v.dn = dn
   const r = (q.get('r') ?? '').split('-').map(Number); if (r.length === 2 && r.every(Number.isInteger)) v.rangeYears = [r[0], r[1]]
+  if (q.get('rec') === 'switch') v.recordMode = 'switch'
+  if (q.get('u') === 'viirs') v.unit = 'viirs'
   return v
 }
 
@@ -97,6 +105,8 @@ export function writeHash(v: ViewState) {
   if (v.baseline) q.push(`bl=${v.baseline.join('-')}`)
   if (v.dn !== 'both') q.push(`dn=${v.dn}`)
   if (v.rangeYears) q.push(`r=${v.rangeYears.join('-')}`)
+  if (v.recordMode !== 'fused') q.push(`rec=${v.recordMode}`)
+  if (v.unit !== 'modis') q.push(`u=${v.unit}`)
   // The Global pulse owns `view`, `t` and `mode`; keep them so a state write while it opens never resets its month.
   const cur = new URLSearchParams(location.hash.replace(/^#/, ''))
   if (cur.get('view') === 'pulse') {

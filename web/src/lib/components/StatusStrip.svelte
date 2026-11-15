@@ -10,6 +10,7 @@
   import { yearContext } from '../brief/yearContext'
   import Term from './Term.svelte'
   import { briefLead } from './briefLead.svelte'
+  import { addsFact } from './leadFacts'
   import { goToSection, livePace, partOfMonth, HINT_KEY } from './livePace'
 
   let {
@@ -74,6 +75,39 @@
     return null
   })
 
+  // Analog years (kernel `analysis.analogs`): one line when the latest month is in view, only if the kernel calls
+  // them informative for this area (hindcast skill and agreement); otherwise they are anecdotes and stay hidden.
+  const analogParts = $derived.by(() => {
+    const an = a.analogs
+    if (analogs != null || !s?.isCurrent || !an?.informative || an.year !== a.current.year) return null
+    const top = an.top.filter((t) => t.restRatio != null).slice(0, 2)
+    if (!top.length) return null
+    const join = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}` : xs[0])
+    return {
+      year: an.year, years: join(top.map((t) => String(t.year))), ratios: join(top.map((t) => fmtRatio(t.restRatio))),
+      one: top.length === 1, note: an.note,
+    }
+  })
+  const analogLine = $derived(
+    analogs ?? (analogParts
+      ? `${analogParts.year} so far most resembles ${analogParts.years}; ${analogParts.one ? 'that year' : 'those years'} went on to finish ${analogParts.ratios} normal for the rest of the year.`
+      : null),
+  )
+
+  // The lifted AI headline earns its line only when it states a number or month the card does not already show.
+  const cardText = $derived(
+    s
+      ? [
+          session.aoi?.label, monthLong(m), `${ratioBig.n}×`, monthName, LEVEL_LABEL[s.level], rankText, seasonText, analogLine,
+          yearFact ? `${yearFact.dt} ${yearFact.dd} ${yearFact.sub}` : '', trendHead, `since ${t.years[0]}`,
+          record ? `${monthLong(record.m)} ${fmtRatio(record.ratio)}` : '',
+          fmtNum(s.value), s.lo80 != null ? fmtNum(s.lo80) : '', s.hi80 != null ? fmtNum(s.hi80) : '', fmtNum(s.median),
+          session.effectiveBaseline.join('–'), s.percentile != null ? ordinal(Math.round(s.percentile)) : '',
+        ].filter(Boolean).join(' ')
+      : '',
+  )
+  const leadLine = $derived(briefLead.text && addsFact(briefLead.text, cardText) ? briefLead.text : '')
+
   // "This week" line: only when the month in view is the latest month, so the card keeps one time frame.
   const pace = $derived(s?.isCurrent && live.available ? livePace(a) : null)
   const nowDate = $derived(new Date(live.now))
@@ -123,8 +157,11 @@
       </div>
     </div>
 
-    {#if analogs}<p class="line">{analogs}</p>{/if}
-    {#if briefLead.text}<p class="line lead-in" transition:fade={{ duration: smooth ? 250 : 0 }}>{briefLead.text}</p>{/if}
+    {#if analogs}<p class="line">{analogs}</p>
+    {:else if analogParts}
+      <p class="line analog">{analogParts.year} so far <Term id="analogs" extra={analogParts.note}>most resembles</Term> {analogParts.years}; {analogParts.one ? 'that year' : 'those years'} went on to finish <span class="num">{analogParts.ratios}</span> normal for the rest of the year.</p>
+    {/if}
+    {#if leadLine}<p class="line lead-in" transition:fade={{ duration: smooth ? 250 : 0 }}>{leadLine}</p>{/if}
     {#if weekLine}
       <p class="line week"><span class="now-dot" aria-hidden="true"></span><button class="link" onclick={() => goToSection('now', smooth)}>{weekLine} <span aria-hidden="true">↓</span></button></p>
     {:else if inProgress != null && s.isCurrent}

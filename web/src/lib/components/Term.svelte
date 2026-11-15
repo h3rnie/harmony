@@ -3,10 +3,12 @@
   // Keyboard: Tab to the word, Enter/Space toggles, Escape closes. Mouse: hover previews, click pins.
   import type { Snippet } from 'svelte'
   import { GLOSSARY, type TermId } from './glossary'
+  import { session } from '../session.svelte'
 
   let { id, extra, children }: { id: TermId; extra?: string; children?: Snippet } = $props()
 
-  const entry = $derived(GLOSSARY[id])
+  // Units lens: every bare unit label follows the record's unit (AFCD-M, or AFCD-V under the VIIRS lens).
+  const entry = $derived(GLOSSARY[id === 'afcdm' && session.unitLabel === 'AFCD-V' ? 'afcdv' : id])
   const uid = `term-${Math.random().toString(36).slice(2, 9)}`
   let pinned = $state(false)
   let hovering = $state(false)

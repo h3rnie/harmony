@@ -28,7 +28,7 @@ export function templateBrief(i: BriefInput): string[] {
   out.push(head + '.')
 
   // 2. Numbers + provisional caveat
-  let n2 = `That is ${fmtNum(s.value)} MODIS-equivalent active-fire cell-days against a ${i.baseline[0]}–${i.baseline[1]} median of ${fmtNum(s.median)}`
+  let n2 = `That is ${fmtNum(s.value)} ${a.harmonization?.unit === 'viirs' ? 'VIIRS' : 'MODIS'}-equivalent active-fire cell-days against a ${i.baseline[0]}–${i.baseline[1]} median of ${fmtNum(s.median)}`
   if (s.lo80 != null && s.hi80 != null) n2 += `, with an 80 % range of ${fmtNum(s.lo80)} to ${fmtNum(s.hi80)}`
   n2 += '.'
   if (s.provisional) n2 += ' These figures are provisional, from near-real-time detections, and may be revised.'

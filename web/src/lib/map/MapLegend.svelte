@@ -6,6 +6,7 @@
   import type { OverlayMode } from './cellOverlay'
   import LiveControl from '../live/LiveControl.svelte'
   import Term from '../components/Term.svelte'
+  import { session } from '../session.svelte'
 
   let { mode, domain, month, readout, onmode, liveOn, liveShown, onlive, compact = false }: {
     mode: OverlayMode; domain: ActDomain; month: string; readout: string | null; onmode: (m: OverlayMode) => void
@@ -40,7 +41,7 @@
       <button class="btn sw more" aria-expanded={expanded} onclick={() => (expanded = !expanded)}>{expanded ? 'Less' : 'More'}</button>
     {/if}
   </div>
-  <div class="bar" style:background={gradient} role="img" aria-label={mode === 'harmonized' ? `Activity from 0 to ${ticks[2]} AFCD-M per cell, log scale` : 'Ratio to the monthly normal, from one eighth to eight times, log scale'}></div>
+  <div class="bar" style:background={gradient} role="img" aria-label={mode === 'harmonized' ? `Activity from 0 to ${ticks[2]} ${session.unitLabel} per cell, log scale` : 'Ratio to the monthly normal, from one eighth to eight times, log scale'}></div>
   <div class="ticks"><span class="num">{ticks[0]}</span>
     <span class="unit">{#if mode === 'harmonized'}<Term id="afcdm" /> per cell{:else}1× = <Term id="normal">normal</Term>{/if}</span>
     <span class="num">{ticks[2]}{mode === 'harmonized' ? '+' : ''}</span></div>

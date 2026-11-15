@@ -130,3 +130,62 @@ export function ratioT(r: number): number {
 export function percentileT(p: number): number {
   return Math.max(-1, Math.min(1, (p - 50) / 50))
 }
+
+// ---- value-suppressing uncertainty palette (Correll, Moritz & Heer, CHI 2018) ----
+// A tree quantisation over the activity ramp: the most certain months get 8 value bins, then 4, 2 and finally a
+// single bin for the least certain. Each coarser level is the parent bin's colour (the ramp at the bin's midpoint)
+// pulled in OKLab towards a neutral grey at the ramp's middle lightness: less chroma and less lightness contrast,
+// so uncertain months cannot be read as precisely, and the most uncertain all look the same.
+// Built on the same inferno ramp as Activity (no new hue). Uncertainty is never colour-only: the calendar adds a
+// dot pattern whose density grows with the class.
+
+export type UncClass = 0 | 1 | 2 | 3
+export const UNC_BINS = [8, 4, 2, 1] as const
+/** Suppression per class: 0 = full colour, 1 = the theme's neutral grey. */
+const UNC_K = [0, 0.42, 0.66, 0.86]
+/** Class edges on the half-width of the 80 % range in log units: about ±15 %, ±35 % and ×/÷1.8. */
+export const UNC_EDGES = [Math.log(1.15), Math.log(1.35), Math.log(1.8)] as const
+export const UNC_WORD = ['high', 'medium', 'low', 'very low'] as const
+export const UNC_RANGE = ['within about ±15 %', 'within about ±35 %', 'within about ±80 %', 'wider, provisional or partial'] as const
+
+/**
+ * Confidence class of one month from its 80 % bounds. Width = half the log ratio of (hi + 1) / (lo + 1): the
+ * one-fire-day offset keeps months near zero finite. No bounds (observed directly) -> most certain; provisional
+ * and partial months -> least certain regardless of their bounds.
+ */
+export function uncertaintyClass(lo: number | null | undefined, hi: number | null | undefined, provisional = false, partial = false): UncClass {
+  if (provisional || partial) return 3
+  if (lo == null || hi == null || !Number.isFinite(lo) || !Number.isFinite(hi)) return 0
+  const h = Math.log((Math.max(hi, lo) + 1) / (Math.max(0, Math.min(hi, lo)) + 1)) / 2
+  return h <= UNC_EDGES[0] ? 0 : h <= UNC_EDGES[1] ? 1 : h <= UNC_EDGES[2] ? 2 : 3
+}
+/** Half-width of the 80 % range as "±x %" text (for tooltips). */
+export function rangeHalfPct(lo: number, hi: number): string {
+  const f = Math.sqrt((Math.max(hi, lo) + 1) / (Math.max(0, Math.min(hi, lo)) + 1))
+  return f >= 1.995 ? `×/÷ ${f.toFixed(1)}` : `±${Math.round((f - 1) * 100)} %`
+}
+
+/** Bin of activity position t (0..1, from activityT) at class u; returns the bin index and its midpoint. */
+export function vsupBin(t: number, u: UncClass): { bin: number; mid: number } {
+  const n = UNC_BINS[u]
+  const bin = Math.max(0, Math.min(n - 1, Math.floor(Math.max(0, Math.min(1, t)) * n)))
+  return { bin, mid: (bin + 0.5) / n }
+}
+
+const VSUP_CACHE: Record<Theme, Map<string, string>> = { dark: new Map(), light: new Map() }
+/** Colour of bin `bin` at class u. */
+export function vsupBinColor(bin: number, u: UncClass, theme: Theme): string {
+  const key = `${u}:${bin}`
+  const hit = VSUP_CACHE[theme].get(key)
+  if (hit) return hit
+  const base = toOklab(seqColor((bin + 0.5) / UNC_BINS[u], theme))
+  const midL = toOklab(seqColor(0.5, theme))[0]
+  const k = UNC_K[u]
+  const out = fromOklab([base[0] + (midL - base[0]) * k, base[1] * (1 - k), base[2] * (1 - k)])
+  VSUP_CACHE[theme].set(key, out)
+  return out
+}
+/** Value-suppressing colour for activity position t at confidence class u. */
+export function vsupColor(t: number, u: UncClass, theme: Theme): string {
+  return vsupBinColor(vsupBin(t, u).bin, u, theme)
+}

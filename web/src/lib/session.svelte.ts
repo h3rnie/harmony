@@ -4,7 +4,7 @@ import type { Aoi } from './geo'
 import { selectKernel, type KernelSelection } from './kernelSelect'
 import { beginTileRun, mapLimit, readTile, tileInfo } from './data/tileReader'
 import { DEBOUNCE_MS, DEFAULT_BASELINE, FETCH_CONCURRENCY, MAX_AOI_BYTES, MAX_AOI_CELLS } from './config'
-import { readHash, writeHash, type CalMode, type Dn, type OverlayMode } from './urlState'
+import { readHash, writeHash, type CalMode, type Dn, type OverlayMode, type RecordMode, type Unit } from './urlState'
 import { fmtRatio, monthLong, ordinal, toM, yearOf } from './format'
 import { presetById } from './presets'
 
@@ -31,6 +31,10 @@ class Session {
   baseline = $state<[number, number] | null>(null)
   dn = $state<Dn>('both')
   rangeYears = $state<[number, number] | null>(null)
+  /** How the record is built: precision-weighted fusion (default) or the original hard switch. */
+  recordMode = $state<RecordMode>('fused')
+  /** Units lens: MODIS-equivalent (default) or VIIRS-equivalent cell-days. */
+  unit = $state<Unit>('modis')
 
   /** Polite live-region text. */
   announce = $state('')
@@ -70,7 +74,14 @@ class Session {
       baseline: this.effectiveBaseline,
       dn: this.dn,
       range: r ? [Math.max(m.m_first, toM(r[0], 1)), Math.min(m.m_last, toM(r[1], 12))] : [m.m_first, m.m_last],
+      mode: this.recordMode,
+      unit: this.unit,
     }
+  }
+  /** Unit label of every harmonized value on screen: what the kernel actually returned, else the requested lens. */
+  get unitLabel(): 'AFCD-M' | 'AFCD-V' {
+    const u = this.analysis?.harmonization?.unit ?? this.unit
+    return u === 'viirs' ? 'AFCD-V' : 'AFCD-M'
   }
   /** The month the status strip and map overlay describe. */
   get focus(): number | null {
@@ -98,6 +109,8 @@ class Session {
     this.baseline = v.baseline
     this.dn = v.dn
     this.rangeYears = v.rangeYears
+    this.recordMode = v.recordMode
+    this.unit = v.unit
     this.status = 'idle'
     // A shared preset link without an explicit month opens on the preset's story month.
     if (v.aoi) this.setAoi(v.aoi, v.aoi.presetId && v.focusM == null ? {} : { keepFocus: true })
@@ -109,8 +122,10 @@ class Session {
     const sameAoi = JSON.stringify(v.aoi?.rings) === JSON.stringify(this.aoi?.rings)
     this.focusM = v.focusM; this.calMode = v.calMode; this.overlay = v.overlay
     const optsChanged = v.switchYear !== this.switchYear || v.dn !== this.dn ||
-      String(v.baseline) !== String(this.baseline) || String(v.rangeYears) !== String(this.rangeYears)
+      String(v.baseline) !== String(this.baseline) || String(v.rangeYears) !== String(this.rangeYears) ||
+      v.recordMode !== this.recordMode || v.unit !== this.unit
     this.switchYear = v.switchYear; this.baseline = v.baseline; this.dn = v.dn; this.rangeYears = v.rangeYears
+    this.recordMode = v.recordMode; this.unit = v.unit
     if (!sameAoi && v.aoi) this.setAoi(v.aoi, v.aoi.presetId && v.focusM == null ? {} : { keepFocus: true })
     else if (optsChanged) this.scheduleAnalyze()
     else this.refreshLayer()
@@ -120,6 +135,7 @@ class Session {
     writeHash({
       aoi: this.aoi, focusM: this.focusM, calMode: this.calMode, overlay: this.overlay,
       switchYear: this.switchYear, baseline: this.baseline, dn: this.dn, rangeYears: this.rangeYears,
+      recordMode: this.recordMode, unit: this.unit,
     })
   }
 
@@ -165,6 +181,8 @@ class Session {
   setBaseline(b: [number, number] | null) { this.baseline = b; this.syncHash(); this.scheduleAnalyze() }
   setDn(dn: Dn) { this.dn = dn; this.syncHash(); this.scheduleAnalyze() }
   setRange(r: [number, number] | null) { this.rangeYears = r; this.syncHash(); this.scheduleAnalyze() }
+  setRecordMode(mode: RecordMode) { this.recordMode = mode; this.syncHash(); this.scheduleAnalyze() }
+  setUnit(u: Unit) { this.unit = u; this.syncHash(); this.scheduleAnalyze() }
 
   // ---------------------------------------------------------------- pipeline
 
@@ -291,14 +309,28 @@ class Session {
         if (!this.dataReady) throw new Stale()
         return this.kernel!.cellLayer({
           mFrom: m, mTo: m, mode: this.overlay, switchM: this.effectiveSwitchM, baseline: this.effectiveBaseline, dn: this.dn,
+          seriesMode: this.recordMode,
         })
       })
       this.check(id)
-      this.layer = layer
+      this.layer = this.lensLayer(layer, m)
       this.layerM = m
     } catch (e) {
       if (!(e instanceof Stale)) console.warn('cell layer failed', e)
     }
+  }
+
+  /**
+   * The cell layer has no unit option, so under the VIIRS lens its single-month activity values are divided here by
+   * the area's own factor for that calendar month (the same f_k the kernel applies to the series, METHOD.md section 18).
+   * Ratios to normal are unit-free and left alone.
+   */
+  private lensLayer(layer: CellLayer, m: number): CellLayer {
+    const f = this.analysis?.harmonization?.lensFactor
+    if (this.overlay !== 'harmonized' || this.analysis?.harmonization?.unit !== 'viirs' || !f) return layer
+    const k = f[((m % 12) + 12) % 12]
+    if (!(k > 0) || k === 1) return layer
+    return { ...layer, values: layer.values.map((v) => v / k) }
   }
 
   private fail(e: unknown) {

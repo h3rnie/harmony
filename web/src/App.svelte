@@ -11,6 +11,8 @@
   import NowCard from './lib/components/NowCard.svelte'
   import { live } from './lib/live/store.svelte'
   import CalendarView from './lib/components/CalendarView.svelte'
+  import ListenControl from './lib/components/ListenControl.svelte'
+  import Watchlist from './lib/components/Watchlist.svelte'
   import SeasonView from './lib/components/SeasonView.svelte'
   import TrendView from './lib/components/TrendView.svelte'
   import OutlookView from './lib/components/OutlookView.svelte'
@@ -107,7 +109,7 @@
     {/if}
 
     {#if !session.aoi}
-      <Intro />
+      <Intro>{#snippet watchlist()}<Watchlist />{/snippet}</Intro>
       <MethodSection />
     {:else if a && noDetections}
       <div class="nodata" class:stale={busy} role="status">
@@ -119,7 +121,7 @@
       <div class="results" class:stale={busy}>
         <StatusStrip {a} />
         <SectionIndex items={index} />
-        <CalendarView {a} />
+        <CalendarView {a}>{#snippet tools()}<ListenControl {a} />{/snippet}</CalendarView>
         <!-- Below the first screen: built once the answer has painted (or on approach). -->
         <Deferred minHeight={520}><SeasonView {a} /></Deferred>
         <Deferred minHeight={420}><TrendView {a} /></Deferred>

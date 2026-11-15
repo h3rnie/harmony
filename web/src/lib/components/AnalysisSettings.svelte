@@ -21,11 +21,13 @@
   const span = $derived(session.yearSpan)
   const range = $derived<[number, number]>(session.rangeYears ?? span)
   const baseline = $derived(session.effectiveBaseline)
-  const custom = $derived(session.rangeYears != null || session.baseline != null || session.dn !== 'both')
+  const custom = $derived(session.rangeYears != null || session.baseline != null || session.dn !== 'both' || session.unit !== 'modis')
   const summary = $derived(
-    [session.rangeYears ? `${range[0]}–${range[1]}` : null, session.baseline ? `normal ${baseline[0]}–${baseline[1]}` : null, session.dn !== 'both' ? `${session.dn} passes` : null]
+    [session.rangeYears ? `${range[0]}–${range[1]}` : null, session.baseline ? `normal ${baseline[0]}–${baseline[1]}` : null, session.dn !== 'both' ? `${session.dn} passes` : null,
+      session.unit !== 'modis' ? 'VIIRS-equivalent units' : null]
       .filter(Boolean).join(' · '),
   )
+  const lensFallback = $derived(session.analysis?.harmonization?.lensFallback ?? false)
 
   const DN: [Dn, string][] = [['both', 'Day and night'], ['day', 'Day only'], ['night', 'Night only']]
 
@@ -37,7 +39,7 @@
     session.setBaseline(v)
   }
   function reset() {
-    session.setRange(null); session.setBaseline(null); session.setDn('both')
+    session.setRange(null); session.setBaseline(null); session.setDn('both'); session.setUnit('modis')
   }
   async function toggle() {
     open = !open
@@ -99,7 +101,21 @@
               {/each}
             </div>
           </div>
-          {#if units}<div class="field">{@render units()}</div>{/if}
+          {#if units}<div class="field">{@render units()}</div>
+          {:else}
+            <!-- Units lens (docs/METHOD.md section 18): the same record in MODIS- or VIIRS-equivalent cell-days. -->
+            <div class="field">
+              <span class="fl" id="as-unit">Show in</span>
+              <div class="seg" role="radiogroup" aria-labelledby="as-unit">
+                <button role="radio" aria-checked={session.unit === 'modis'} onclick={() => session.setUnit('modis')}>MODIS-equivalent</button>
+                <button role="radio" aria-checked={session.unit === 'viirs'} onclick={() => session.setUnit('viirs')}>VIIRS-equivalent</button>
+              </div>
+              <p class="help">
+                {#if session.unit === 'viirs'}Values in <Term id="afcdv">AFCD-V</Term>, the units of VIIRS, which carries the record after MODIS ends.{:else}Values in <Term id="modiseq">MODIS-equivalent</Term> cell-days (AFCD-M).{/if}
+                Ratios to normal, percentiles and ranks within a month do not change; only totals do.{#if session.unit === 'viirs' && lensFallback} Some calendar months had no VIIRS in the fit years and use a pooled factor.{/if}
+              </p>
+            </div>
+          {/if}
         </div>
       </details>
 

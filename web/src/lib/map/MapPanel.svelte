@@ -331,7 +331,7 @@
     map.on('mousemove', (e) => {
       if (!overlay) { readout = null; return }
       const hit = overlay.lookup(e.lngLat.lng, e.lngLat.lat)
-      readout = hit ? (overlay.mode === 'ratio' ? `${fmtRatio(hit.value)} the normal` : `${fmtNum(hit.value)} AFCD-M`) : null
+      readout = hit ? (overlay.mode === 'ratio' ? `${fmtRatio(hit.value)} the normal` : `${fmtNum(hit.value)} ${session.unitLabel}`) : null
     })
     map.on('mouseout', () => (readout = null))
     map.on('click', 'h-live-pts', (e) => {

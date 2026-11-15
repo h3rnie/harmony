@@ -119,7 +119,7 @@
       </figcaption>
       <div class="chart" bind:clientWidth={w2}>
         <svg width={w2} height={H} role="img" onpointermove={(e) => (hy = pick(e, w2, yx))} onpointerleave={() => (hy = null)}
-          aria-label={`Year to date: ${fmtNum(yt.current[yt.current.length - 1])} AFCD-M through ${MONTHS_SHORT[yt.throughMonth - 1]}, ${fmtRatio(yt.ratio)} the median, rank ${yt.rank} of ${yt.of}.`}>
+          aria-label={`Year to date: ${fmtNum(yt.current[yt.current.length - 1])} ${session.unitLabel} through ${MONTHS_SHORT[yt.throughMonth - 1]}, ${fmtRatio(yt.ratio)} the median, rank ${yt.rank} of ${yt.of}.`}>
           {#each niceTicks(0, yMax, 4) as v (v)}
             <line class="grid" x1={M.l} x2={w2 - M.r} y1={yy(v)} y2={yy(v)} />
             <text class="tk" x={M.l - 6} y={yy(v)} dy="0.32em" text-anchor="end">{tickLabel(v)}</text>

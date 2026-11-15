@@ -3,15 +3,17 @@
   import type { Analysis } from '../kernel/types'
   import { session } from '../session.svelte'
   import { themeState } from '../theme.svelte'
-  import { activityDomain, activityInverse, activityT, divColor, inkOn, percentileT, ratioT, seqColor } from '../color'
+  import { activityDomain, activityInverse, activityT, divColor, inkOn, percentileT, rangeHalfPct, ratioT, seqColor, uncertaintyClass, vsupColor, UNC_WORD, type UncClass } from '../color'
   import { MONTHS_LONG, MONTHS_SHORT, fmtCell, fmtNum, fmtRatio, ordinal, toM } from '../format'
-  import { monthStats, seriesIndex, SOURCE_LABEL } from '../analysisUtil'
+  import { monthStats, seriesIndex, SOURCE_LABEL, SOURCE_SHORT } from '../analysisUtil'
   import type { SourceCode } from '../kernel/types'
   import type { CalMode } from '../urlState'
   import type { Snippet } from 'svelte'
   import AnalysisSettings from './AnalysisSettings.svelte'
   import Term from './Term.svelte'
   import { HINT_KEY } from './livePace'
+  import UncertaintyLegend from './UncertaintyLegend.svelte'
+  import { listen } from '../sound/listen.svelte'
 
   let {
     a,
@@ -30,6 +32,7 @@
     { v: 'activity', label: 'Activity' },
     { v: 'anomaly', label: 'Compared with normal' },
     { v: 'percentile', label: 'Rank among years' },
+    { v: 'uncertainty', label: 'Activity with confidence' },
   ]
   const lead = $derived.by(() => {
     const se = a.season
@@ -49,6 +52,7 @@
   let wrapEl: HTMLDivElement | undefined = $state()
 
   const mode = $derived(session.calMode)
+  const modeLabel = $derived(MODES.find((x) => x.v === mode)?.label ?? mode)
   const theme = $derived(themeState.theme)
   // Rows: latest year on top.
   const rows = $derived(a.calendar.years.map((y, i) => ({ y, i })).reverse())
@@ -57,17 +61,21 @@
   const switchYear = $derived(Math.floor(session.effectiveSwitchM / 12) + 2000)
   const focusM = $derived(session.focus)
 
-  type Cell = { m: number; v: number | null; fill: string; ink: string; label: string; src: SourceCode; prov: boolean; partial: boolean; empty: boolean }
+  type Cell = {
+    m: number; v: number | null; fill: string; ink: string; label: string; src: SourceCode; prov: boolean; partial: boolean; empty: boolean
+    lo: number | null; hi: number | null; u: UncClass
+  }
 
-  function colorFor(v: number | null, ratio: number | null, pct: number | null): string | null {
+  function colorFor(v: number | null, ratio: number | null, pct: number | null, u: UncClass): string | null {
     if (v == null) return null
     if (mode === 'activity') return seqColor(activityT(v, dom), theme)
+    if (mode === 'uncertainty') return vsupColor(activityT(v, dom), u, theme)
     if (mode === 'anomaly') return ratio == null ? (v > 0 ? divColor(1, theme) : divColor(0, theme)) : divColor(ratioT(ratio), theme)
     return pct == null ? divColor(0, theme) : divColor(percentileT(pct), theme)
   }
   function labelFor(v: number | null, ratio: number | null, pct: number | null): string {
     if (v == null) return ''
-    if (mode === 'activity') return fmtCell(v)
+    if (mode === 'activity' || mode === 'uncertainty') return fmtCell(v)
     if (mode === 'anomaly') return ratio == null ? 'new' : ratio >= 10 ? String(Math.round(ratio)) : ratio.toFixed(1)
     return pct == null ? '' : String(Math.round(pct))
   }
@@ -78,19 +86,23 @@
         const v = a.calendar.value[i][c], ratio = a.calendar.ratio[i][c], pct = a.calendar.percentile[i][c]
         const m = toM(y, c + 1)
         const si = seriesIndex(a, m)
-        const fill = colorFor(v, ratio, pct)
+        const prov = si >= 0 ? a.series.provisional[si] : false
+        const partial = si >= 0 && v != null ? (a.series.partial?.[si] ?? false) : false
+        const lo = si >= 0 ? (a.series.lo80?.[si] ?? null) : null, hi = si >= 0 ? (a.series.hi80?.[si] ?? null) : null
+        const u = uncertaintyClass(lo, hi, prov, partial)
+        const fill = colorFor(v, ratio, pct, u)
         return {
           m, v, fill: fill ?? 'transparent', ink: fill ? inkOn(fill) : 'var(--ink-3)', label: labelFor(v, ratio, pct),
-          src: (si >= 0 ? a.series.source[si] : 0) as SourceCode, prov: si >= 0 ? a.series.provisional[si] : false,
-          partial: si >= 0 && v != null ? (a.series.partial?.[si] ?? false) : false, empty: v == null,
+          src: (si >= 0 ? a.series.source[si] : 0) as SourceCode, prov, partial, empty: v == null, lo, hi, u,
         }
       }),
     ),
   )
   const medianRow = $derived(
     a.climatology.median.map((v) => {
-      const fill = mode === 'activity' ? seqColor(activityT(v, dom), theme) : divColor(0, theme)
-      return { v, fill, ink: inkOn(fill), label: mode === 'activity' ? fmtCell(v) : mode === 'anomaly' ? '1.0' : '50' }
+      const act = mode === 'activity' || mode === 'uncertainty'
+      const fill = act ? seqColor(activityT(v, dom), theme) : divColor(0, theme)
+      return { v, fill, ink: inkOn(fill), label: act ? fmtCell(v) : mode === 'anomaly' ? '1.0' : '50' }
     }),
   )
 
@@ -99,7 +111,11 @@
     if (cell.empty) return `${name}: outside the record`
     const s = monthStats(a, cell.m)
     if (!s) return name
-    const parts = [`${name}: ${fmtNum(s.value)} AFCD-M`]
+    const parts = [`${name}: ${fmtNum(s.value)} ${session.unitLabel}`]
+    if (mode === 'uncertainty') {
+      parts.push(cell.lo != null && cell.hi != null ? `likely range ${fmtNum(cell.lo)} to ${fmtNum(cell.hi)}` : 'no modelled range')
+      parts.push(`${UNC_WORD[cell.u]} confidence`)
+    }
     if (s.ratio != null) parts.push(`${fmtRatio(s.ratio)} the normal`)
     if (s.percentile != null) parts.push(`${ordinal(Math.round(s.percentile))} percentile`)
     parts.push(SOURCE_LABEL[cell.src])
@@ -167,7 +183,7 @@
       : mode === 'anomaly' ? ['⅛×', '¼×', '1×', '4×', '8×'] : ['0', '25', '50', '75', '100'],
   )
   const legendCaption = $derived(
-    mode === 'activity' ? 'AFCD-M per month (log scale)' : mode === 'anomaly' ? 'Ratio to the baseline median of the same month (log₂)' : 'Percentile among baseline years for the same month',
+    mode === 'activity' ? `${session.unitLabel} per month (log scale)` : mode === 'anomaly' ? 'Ratio to the baseline median of the same month (log₂)' : 'Percentile among baseline years for the same month',
   )
 </script>
 
@@ -194,7 +210,7 @@
           class="grid"
           class:nums={showNumbers}
           role="grid"
-          aria-label={`Burning calendar, ${mode} mode. Rows are years, latest first; columns are months. Use arrow keys to move and Enter to show a month on the map.`}
+          aria-label={`Burning calendar, coloured by ${modeLabel.toLowerCase()}. Rows are years, latest first; columns are months. Use arrow keys to move and Enter to show a month on the map.`}
           aria-rowcount={rows.length + 2}
           bind:this={gridEl}
           onkeydown={onKey}
@@ -221,6 +237,10 @@
                   class="cal-cell"
                   class:empty={cell.empty}
                   class:prov={cell.prov || cell.partial}
+                  class:u1={mode === 'uncertainty' && !cell.empty && cell.u === 1}
+                  class:u2={mode === 'uncertainty' && !cell.empty && cell.u === 2}
+                  class:u3={mode === 'uncertainty' && !cell.empty && cell.u === 3}
+                  class:playing={listen.m === cell.m}
                   class:current={cell.m === a.current.m}
                   class:focus={cell.m === focusM}
                   role="gridcell"
@@ -241,7 +261,7 @@
                   {#if showNumbers && !cell.empty}<span class="n num" aria-hidden="true">{cell.label}</span>{/if}
                 </div>
               {/each}
-              <span class="ann" role="gridcell" aria-label={total == null ? `${row.y}: no data` : `${row.y} total ${fmtNum(total)} AFCD-M${complete ? (rank ? `, rank ${rank}` : '') : ', incomplete year'}`}>
+              <span class="ann" role="gridcell" aria-label={total == null ? `${row.y}: no data` : `${row.y} total ${fmtNum(total)} ${session.unitLabel}${complete ? (rank ? `, rank ${rank}` : '') : ', incomplete year'}`}>
                 {#if total != null}
                   <span class="bar" class:partial={!complete} style:width={`${(72 * total) / maxTotal}%`}></span>
                   {#if complete && rank != null && rank <= 3}<span class="rk num" aria-hidden="true">#{rank}</span>{/if}
@@ -254,7 +274,7 @@
             <span class="yl" role="rowheader">Normal</span>
             {#each medianRow as cell, c (c)}
               <span class="cal-cell med" role="gridcell" style:background={cell.fill} style:color={cell.ink}
-                aria-label={`${MONTHS_LONG[c]} normal (baseline median): ${fmtNum(cell.v)} AFCD-M`}>
+                aria-label={`${MONTHS_LONG[c]} normal (baseline median): ${fmtNum(cell.v)} ${session.unitLabel}`}>
                 {#if showNumbers}<span class="n num" aria-hidden="true">{cell.label}</span>{/if}
               </span>
             {/each}
@@ -267,8 +287,9 @@
         <div class="tip" class:below={tip.below} style:left={`${tip.x}px`} style:top={`${tip.y}px`} role="tooltip">
           <p class="tt">{MONTHS_LONG[tipStats.month - 1]} {tipStats.year}{tipCell.partial ? ' · partial month' : tipStats.provisional ? ' · provisional' : ''}</p>
           <dl>
-            <dt>Activity</dt><dd class="num">{fmtNum(tipStats.value)} AFCD-M</dd>
+            <dt>Activity</dt><dd class="num">{fmtNum(tipStats.value)} {session.unitLabel}</dd>
             {#if tipStats.lo80 != null && tipStats.hi80 != null}<dt>Likely range</dt><dd class="num">{fmtNum(tipStats.lo80)} – {fmtNum(tipStats.hi80)}</dd>{/if}
+            {#if mode === 'uncertainty'}<dt>Confidence</dt><dd>{UNC_WORD[tipCell.u]}{tipCell.lo != null && tipCell.hi != null ? ` (${rangeHalfPct(tipCell.lo, tipCell.hi)})` : ''}</dd>{/if}
             <dt>Normal</dt><dd class="num">{fmtNum(tipStats.median)}</dd>
             <dt>vs normal</dt><dd class="num">{fmtRatio(tipStats.ratio)}</dd>
             <dt>Percentile</dt><dd class="num">{tipStats.percentile == null ? '—' : ordinal(Math.round(tipStats.percentile))}</dd>
@@ -280,6 +301,9 @@
     </div>
 
     <div class="legend">
+      {#if mode === 'uncertainty'}
+        <UncertaintyLegend {dom} {theme} />
+      {:else}
       <div class="ramp">
         <div class="bar" style:background={`linear-gradient(90deg, ${legendStops})`}></div>
         <div class="ticks num">{#each legendTicks as t, i (i)}<span>{t}</span>{/each}</div>
@@ -289,6 +313,7 @@
           {:else}<Term id="percentile" /> among the years that define normal{/if}
         </p>
       </div>
+      {/if}
       <div class="opts2">
         <label class="chk"><input type="checkbox" name="cell-numbers" bind:checked={showNumbers} /> Show numbers</label>
         <button class="btn" aria-pressed={showTable} onclick={() => (showTable = !showTable)}>View as table</button>
@@ -308,10 +333,35 @@
         <p>Era marks never change the colours: every cell is in the same <Term id="modiseq">MODIS-equivalent</Term> unit.</p>
       </div>
     </details>
+  {:else if mode === 'uncertainty'}
+    <div class="table-wrap">
+      <table class="cal-table long">
+        <caption class="small muted"><button class="btn back" onclick={() => (showTable = false)}>View as calendar</button> Harmonized activity by month ({session.unitLabel}) with the likely range (80 %) and confidence, newest first; * provisional</caption>
+        <thead>
+          <tr><th scope="col">Month</th><th scope="col">Activity</th><th scope="col">Likely range, low</th><th scope="col">Likely range, high</th><th scope="col">Confidence</th><th scope="col">Source</th></tr>
+        </thead>
+        <tbody>
+          {#each grid as rowCells, r (rows[r].y)}
+            {#each [...rowCells].reverse() as cell (cell.m)}
+              {#if !cell.empty}
+                <tr>
+                  <th scope="row" class="num">{MONTHS_SHORT[cell.m % 12]} {rows[r].y}{cell.prov ? '*' : ''}</th>
+                  <td class="num">{fmtNum(cell.v)}</td>
+                  <td class="num">{cell.lo == null ? '—' : fmtNum(cell.lo)}</td>
+                  <td class="num">{cell.hi == null ? '—' : fmtNum(cell.hi)}</td>
+                  <td class="conf">{UNC_WORD[cell.u]}{cell.partial ? ' (partial month)' : ''}</td>
+                  <td class="conf">{SOURCE_SHORT[cell.src]}</td>
+                </tr>
+              {/if}
+            {/each}
+          {/each}
+        </tbody>
+      </table>
+    </div>
   {:else}
     <div class="table-wrap">
       <table class="cal-table">
-        <caption class="small muted"><button class="btn back" onclick={() => (showTable = false)}>View as calendar</button> Harmonized activity by month ({mode === 'activity' ? 'AFCD-M' : mode === 'anomaly' ? 'ratio to median' : 'percentile'}); * provisional</caption>
+        <caption class="small muted"><button class="btn back" onclick={() => (showTable = false)}>View as calendar</button> Harmonized activity by month ({mode === 'activity' ? session.unitLabel : mode === 'anomaly' ? 'ratio to median' : 'percentile'}); * provisional</caption>
         <thead>
           <tr><th scope="col">Year</th>{#each MONTHS_SHORT as mo (mo)}<th scope="col">{mo}</th>{/each}<th scope="col">Total</th></tr>
         </thead>
@@ -368,9 +418,19 @@
     content: ''; position: absolute; inset: 0;
     background: repeating-linear-gradient(135deg, transparent 0 3px, var(--hatch) 3px 4.5px);
   }
+  /* Uncertainty mode, second cue: a dot pattern that gets denser as confidence falls (never colour alone). */
+  .cal-cell.u1::before, .cal-cell.u2::before, .cal-cell.u3::before {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background-image: radial-gradient(circle, currentColor 0.9px, transparent 1.3px);
+  }
+  .cal-cell.u1::before { background-size: 7px 7px; opacity: 0.45; }
+  .cal-cell.u2::before { background-size: 4.5px 4.5px; opacity: 0.55; }
+  .cal-cell.u3::before { background-size: 3px 3px; opacity: 0.6; }
   .cal-cell.current { box-shadow: 0 0 0 2px var(--bg), 0 0 0 3.5px var(--accent); z-index: 1; }
   .cal-cell.focus { box-shadow: inset 0 0 0 2px var(--bg), 0 0 0 2px var(--ink); z-index: 2; }
   .cal-cell.focus.current { box-shadow: inset 0 0 0 2px var(--bg), 0 0 0 2px var(--ink), 0 0 0 4px var(--accent); }
+  /* Listening: the month that is sounding (not shown with reduced motion). */
+  .cal-cell.playing, .cal-cell.playing.focus, .cal-cell.playing.current { box-shadow: inset 0 0 0 2px var(--bg), 0 0 0 2px var(--focus); z-index: 4; }
   .cal-cell:focus-visible { outline: 2px solid var(--focus); z-index: 3; }
   .n { font-size: var(--fs-2xs); font-weight: 500; letter-spacing: -0.03em; position: relative; z-index: 1; }
   .mk { position: absolute; pointer-events: none; }
@@ -425,4 +485,5 @@
   .cal-table th, .cal-table td { padding: 3px 6px; text-align: right; border-bottom: 1px solid var(--rule); white-space: nowrap; }
   .cal-table thead th { position: sticky; top: 0; background: var(--bg); color: var(--ink-3); font-weight: 500; }
   .cal-table th[scope='row'] { color: var(--ink-2); font-weight: 500; }
+  .cal-table.long td.conf { text-align: left; font-family: var(--font-ui); color: var(--ink-2); }
 </style>

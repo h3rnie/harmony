@@ -3,7 +3,7 @@ import type { Analysis } from '../kernel/types'
 import { FIRMS_ACK } from '../config'
 import { aoiToGeoJSON, type Aoi } from '../geo'
 import { MONTHS_SHORT, monthIso, toM, fmtCell, fmtNum } from '../format'
-import { activityDomain, activityInverse, activityT, divColor, inkOn, percentileT, ratioT, seqColor, type Theme } from '../color'
+import { activityDomain, activityInverse, activityT, divColor, inkOn, percentileT, ratioT, seqColor, uncertaintyClass, vsupColor, type Theme } from '../color'
 import { seriesIndex, SOURCE_SHORT } from '../analysisUtil'
 import type { CalMode } from '../urlState'
 
@@ -39,12 +39,25 @@ const csvCell = (v: unknown) => {
 }
 const csvRow = (cells: unknown[]) => cells.map(csvCell).join(',')
 
+/** Unit code of every harmonized value in the export (follows the units lens). */
+const unitOf = (a: Analysis) => (a.harmonization?.unit === 'viirs' ? 'AFCD-V' : 'AFCD-M')
+
 function header(ctx: ExportContext, what: string): string {
+  const h = ctx.analysis.harmonization
+  const fused = h?.mode === 'fused'
   return [
     `# Harmony — ${what}`,
     `# Area: ${ctx.aoi.label}; level L${ctx.analysis.aoi.level}; ${Math.round(ctx.analysis.aoi.areaKm2)} km2`,
-    `# Unit: AFCD-M = MODIS-equivalent active-fire cell-days per month (detections, not burned area)`,
-    `# Baseline ${ctx.baseline.join('-')}; calibrated VIIRS from ${monthIso(ctx.switchM)}; overpass ${ctx.dn}; data through ${ctx.dataThrough}`,
+    h?.unit === 'viirs'
+      ? `# Unit: AFCD-V = VIIRS-equivalent active-fire cell-days per month (each MODIS-equivalent value divided by this area's VIIRS-to-MODIS factor for its calendar month; ratios, percentiles and same-month ranks unchanged; detections, not burned area)`
+      : `# Unit: AFCD-M = MODIS-equivalent active-fire cell-days per month (detections, not burned area)`,
+    fused
+      ? `# Record: fused — each month a precision-weighted combination of MODIS (drift-corrected from 2020) and calibrated VIIRS; modis_weight = share carried by MODIS`
+      : `# Record: switch — MODIS before ${monthIso(ctx.switchM)}, calibrated VIIRS from it; modis_weight is 1 or 0`,
+    h?.intervals === 'conformal'
+      ? `# Intervals: lo/hi 80 % and 95 % for every covered month, conformal multipliers by biome group and size class (empirical held-out coverage, not a guarantee)`
+      : `# Intervals: lo/hi 80 % and 95 % (legacy formula, VIIRS and bridge months only)`,
+    `# Baseline ${ctx.baseline.join('-')}; overpass ${ctx.dn}; data through ${ctx.dataThrough}`,
     ctx.kernel === 'mock' ? '# WARNING: demo output from the mock kernel (synthetic numbers, not FIRMS data)' : `# Generated ${new Date().toISOString()}`,
     `# ${FIRMS_ACK}`,
   ].join('\n') + '\n'
@@ -52,7 +65,9 @@ function header(ctx: ExportContext, what: string): string {
 
 export function calendarCsv(ctx: ExportContext): string {
   const a = ctx.analysis
-  const lines = [csvRow(['year', 'month', 'harmonized', 'lo80', 'hi80', 'median', 'ratio', 'percentile', 'source', 'provisional'])]
+  const w = a.series.modisWeight
+  const unit = unitOf(a)
+  const lines = [csvRow(['year', 'month', 'harmonized', 'lo80', 'hi80', 'lo95', 'hi95', 'median', 'ratio', 'percentile', 'modis_weight', 'source', 'provisional', 'unit'])]
   a.calendar.years.forEach((y, yi) => {
     for (let c = 0; c < 12; c++) {
       const v = a.calendar.value[yi][c]
@@ -60,8 +75,10 @@ export function calendarCsv(ctx: ExportContext): string {
       const si = seriesIndex(a, toM(y, c + 1))
       lines.push(csvRow([
         y, c + 1, v, si >= 0 ? a.series.lo80[si] : null, si >= 0 ? a.series.hi80[si] : null,
+        si >= 0 ? a.series.lo95[si] : null, si >= 0 ? a.series.hi95[si] : null,
         a.climatology.median[c], a.calendar.ratio[yi][c], a.calendar.percentile[yi][c],
-        si >= 0 ? SOURCE_SHORT[a.series.source[si]] : '', si >= 0 ? (a.series.provisional[si] ? 1 : 0) : 0,
+        si >= 0 && w ? w[si] : null,
+        si >= 0 ? SOURCE_SHORT[a.series.source[si]] : '', si >= 0 ? (a.series.provisional[si] ? 1 : 0) : 0, unit,
       ]))
     }
   })
@@ -70,11 +87,17 @@ export function calendarCsv(ctx: ExportContext): string {
 
 export function seriesCsv(ctx: ExportContext): string {
   const a = ctx.analysis, s = a.series
-  const lines = [csvRow(['month', 'harmonized', 'lo80', 'hi80', 'lo95', 'hi95', 'modis_eq', 'viirs_cal', 'viirs_raw', 'raw_modis_count', 'raw_viirs_count', 'naive_count', 'source', 'provisional'])]
+  const unit = unitOf(a)
+  const lines = [csvRow(['month', 'harmonized', 'lo80', 'hi80', 'lo95', 'hi95', 'modis_eq', 'modis_drift_corrected', 'viirs_cal', 'modis_weight', 'viirs_raw', 'raw_modis_count', 'raw_viirs_count', 'naive_count', 'source', 'provisional', 'partial', 'unit'])]
   a.months.forEach((m, i) => {
-    lines.push(csvRow([monthIso(m), s.harmonized[i], s.lo80[i], s.hi80[i], s.lo95[i], s.hi95[i], s.modisEq[i], s.viirsCal[i], s.viirsRaw[i], s.rawModisCount[i], s.rawViirsCount[i], s.naive[i], SOURCE_SHORT[s.source[i]], s.provisional[i] ? 1 : 0]))
+    lines.push(csvRow([
+      monthIso(m), s.harmonized[i], s.lo80[i], s.hi80[i], s.lo95[i], s.hi95[i], s.modisEq[i], s.modisAdj?.[i] ?? s.modisEq[i], s.viirsCal[i],
+      s.modisWeight?.[i] ?? null, s.viirsRaw[i], s.rawModisCount[i], s.rawViirsCount[i], s.naive[i], SOURCE_SHORT[s.source[i]],
+      s.provisional[i] ? 1 : 0, s.partial?.[i] ? 1 : 0, unit,
+    ]))
   })
-  return header(ctx, 'full monthly series') + lines.join('\n') + '\n'
+  const cols = `# Columns: harmonized/lo*/hi*/modis_eq/modis_drift_corrected/viirs_cal in ${unit}; viirs_raw = uncalibrated VIIRS cell-days; *_count = accepted hotspot detections; source = stream carrying most weight; partial = month in progress (not used in statistics)`
+  return header(ctx, 'full monthly series') + cols + '\n' + lines.join('\n') + '\n'
 }
 
 export function aoiGeoJson(ctx: ExportContext): string {
@@ -101,6 +124,11 @@ export function calendarSvg(ctx: ExportContext, mode: CalMode, theme: Theme): { 
     const v = a.calendar.value[yi][c]
     if (v == null) return null
     if (mode === 'activity') return seqColor(activityT(v, dom), theme)
+    if (mode === 'uncertainty') {
+      const si = seriesIndex(a, toM(a.calendar.years[yi], c + 1))
+      const u = si < 0 ? 0 : uncertaintyClass(a.series.lo80[si], a.series.hi80[si], a.series.provisional[si], a.series.partial?.[si] ?? false)
+      return vsupColor(activityT(v, dom), u, theme)
+    }
     if (mode === 'anomaly') { const r = a.calendar.ratio[yi][c]; return r == null ? divColor(v > 0 ? 1 : 0, theme) : divColor(ratioT(r), theme) }
     const p = a.calendar.percentile[yi][c]
     return divColor(p == null ? 0 : percentileT(p), theme)
@@ -112,7 +140,7 @@ export function calendarSvg(ctx: ExportContext, mode: CalMode, theme: Theme): { 
   out.push(`<defs><pattern id="h" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="4" stroke="${ink}" stroke-opacity="0.45" stroke-width="1.4"/></pattern></defs>`)
   out.push(`<rect width="100%" height="100%" fill="${bg}"/>`)
   out.push(`<text x="${left - 40}" y="32" ${font} font-size="20" font-weight="700" fill="${ink}">Harmony · burning calendar</text>`)
-  out.push(`<text x="${left - 40}" y="54" ${font} font-size="13" fill="${ink3}">${esc(ctx.aoi.label)} · ${mode} · AFCD-M (MODIS-equivalent active-fire cell-days) · baseline ${ctx.baseline.join('–')}${ctx.kernel === 'mock' ? ' · DEMO DATA' : ''}</text>`)
+  out.push(`<text x="${left - 40}" y="54" ${font} font-size="13" fill="${ink3}">${esc(ctx.aoi.label)} · ${mode} · ${unitOf(a) === 'AFCD-V' ? 'AFCD-V (VIIRS-equivalent active-fire cell-days)' : 'AFCD-M (MODIS-equivalent active-fire cell-days)'} · baseline ${ctx.baseline.join('–')}${ctx.kernel === 'mock' ? ' · DEMO DATA' : ''}</text>`)
   MONTHS_SHORT.forEach((m, c) => out.push(`<text x="${left + c * (cw + gap) + cw / 2}" y="${top - 8}" text-anchor="middle" ${font} font-size="10" fill="${ink3}">${m}</text>`))
   years.forEach((y, r) => {
     const yi = a.calendar.years.indexOf(y)
@@ -127,7 +155,7 @@ export function calendarSvg(ctx: ExportContext, mode: CalMode, theme: Theme): { 
       if (si >= 0 && a.series.provisional[si]) out.push(`<rect x="${x}" y="${yy}" width="${cw}" height="${ch}" rx="2" fill="url(#h)"/>`)
       if (m === a.current.m) out.push(`<rect x="${x - 1.5}" y="${yy - 1.5}" width="${cw + 3}" height="${ch + 3}" rx="3" fill="none" stroke="${accent}" stroke-width="2"/>`)
       const v = a.calendar.value[yi][c]!
-      const label = mode === 'activity' ? fmtCell(v) : mode === 'anomaly' ? (a.calendar.ratio[yi][c]?.toFixed(1) ?? '') : String(Math.round(a.calendar.percentile[yi][c] ?? 0))
+      const label = mode === 'activity' || mode === 'uncertainty' ? fmtCell(v) : mode === 'anomaly' ? (a.calendar.ratio[yi][c]?.toFixed(1) ?? '') : String(Math.round(a.calendar.percentile[yi][c] ?? 0))
       out.push(`<text x="${x + cw / 2}" y="${yy + ch / 2 + 3.5}" text-anchor="middle" ${mono} font-size="9" fill="${inkOn(fill)}">${label}</text>`)
     }
     const ai = a.annual.years.indexOf(y)
@@ -142,7 +170,7 @@ export function calendarSvg(ctx: ExportContext, mode: CalMode, theme: Theme): { 
   const my = top + gridH + 10
   out.push(`<text x="${left - 8}" y="${my + ch / 2 + 3.5}" text-anchor="end" ${font} font-size="10" fill="${ink3}">Median</text>`)
   a.climatology.median.forEach((v, c) => {
-    const fill = mode === 'activity' ? seqColor(activityT(v, dom), theme) : divColor(0, theme)
+    const fill = mode === 'activity' || mode === 'uncertainty' ? seqColor(activityT(v, dom), theme) : divColor(0, theme)
     const x = left + c * (cw + gap)
     out.push(`<rect x="${x}" y="${my}" width="${cw}" height="${ch}" rx="2" fill="${fill}"/>`)
     out.push(`<text x="${x + cw / 2}" y="${my + ch / 2 + 3.5}" text-anchor="middle" ${mono} font-size="9" fill="${inkOn(fill)}">${fmtCell(v)}</text>`)
@@ -151,12 +179,12 @@ export function calendarSvg(ctx: ExportContext, mode: CalMode, theme: Theme): { 
   const ly = my + ch + 22
   for (let i = 0; i < 60; i++) {
     const t = i / 59
-    const fill = mode === 'activity' ? seqColor(t, theme) : divColor(t * 2 - 1, theme)
+    const fill = mode === 'activity' || mode === 'uncertainty' ? seqColor(t, theme) : divColor(t * 2 - 1, theme)
     out.push(`<rect x="${left + i * 4}" y="${ly}" width="4.2" height="9" fill="${fill}"/>`)
   }
-  const lt = mode === 'activity' ? ['0', fmtNum(activityInverse(1, dom))] : mode === 'anomaly' ? ['⅛×', '8×'] : ['0', '100']
+  const lt = mode === 'activity' || mode === 'uncertainty' ? ['0', fmtNum(activityInverse(1, dom))] : mode === 'anomaly' ? ['⅛×', '8×'] : ['0', '100']
   out.push(`<text x="${left}" y="${ly + 22}" ${mono} font-size="9" fill="${ink3}">${lt[0]}</text><text x="${left + 240}" y="${ly + 22}" text-anchor="end" ${mono} font-size="9" fill="${ink3}">${esc(lt[1])}</text>`)
-  out.push(`<text x="${left + 256}" y="${ly + 8}" ${font} font-size="10" fill="${ink3}">${mode === 'activity' ? 'log scale' : mode === 'anomaly' ? 'ratio to median, log₂' : 'percentile'} · hatched = provisional · outlined = latest month</text>`)
+  out.push(`<text x="${left + 256}" y="${ly + 8}" ${font} font-size="10" fill="${ink3}">${mode === 'activity' ? 'log scale' : mode === 'uncertainty' ? 'log scale; faded colours = less certain (wider likely range)' : mode === 'anomaly' ? 'ratio to median, log₂' : 'percentile'} · hatched = provisional · outlined = latest month</text>`)
   // acknowledgement (wrapped)
   const words = FIRMS_ACK.split(' ')
   const lines: string[] = []

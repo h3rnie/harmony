@@ -26,7 +26,7 @@
   const nowDate = $derived(new Date(live.now))
   const monthName = $derived(MONTHS_LONG[nowDate.getUTCMonth()])
   const partOf = $derived(nowDate.getUTCDate() <= 10 ? 'early' : nowDate.getUTCDate() <= 20 ? 'mid' : 'late')
-  const unit = $derived(pace?.calibration === 'none' ? 'VIIRS cell-days' : 'AFCD-M')
+  const unit = $derived(pace?.calibration === 'none' ? 'VIIRS cell-days' : session.unitLabel)
   const tone = $derived(pace?.level ? LEVEL_TONE[pace.level] ?? 'neutral' : 'neutral')
   const failed = $derived(d ? LIVE_SOURCES.filter((s) => d.sources[s].error) : [])
   const dnNote = $derived(session.dn === 'both' ? '' : ` (${session.dn} overpasses only)`)
