@@ -117,7 +117,10 @@ A month drives statistics only when the stream(s) serving it delivered data on a
 larger of the used streams. Below it the month is *partial*: drawn (`Series.harmonized`, `Calendar.value`) and
 flagged (`Series.partial`, `Calendar.partial`), but excluded from every baseline, ratio, percentile, level, rank,
 annual total, YTD, record, analog, outlook origin, trend and the seam. When the last month of the record is partial
-the analysis carries `inProgress { m, coverage, daysCovered, daysInMonth }`. Without `days_*` arrays the kernel uses
+the analysis carries `inProgress { m, coverage, daysCovered, daysInMonth, projected? }`. A partial month's values
+are what was detected so far: the kernel undoes the tiles' 1/coverage scaling (`method.coverage_correction.min_cov`,
+`max_factor`; defaults 0.5 and 2) and keeps the scaled value as `inProgress.projected`, the full-month projection
+(absent when the month was not scaled). Without `days_*` arrays the kernel uses
 `cov_*`; without `complete_min_coverage` it uses 0.9. In the 2026-11-15 build the partial months are 2001-06
 (Terra-only, 15 of 30 days), 2002-03 (Terra-only, 0.71) and 2026-11 (in progress, 15 of 30 days).
 
@@ -179,7 +182,7 @@ Groups `g` = stratum × dn present in the AOI. Per month and group: `M_g = Σ w_
 - **Analysis additions** (optional): `harmonization { mode, unit, intervals: 'conformal' | 'legacy', lensFactor,
   lensFallback }` (`mode` is the effective mode: 'switch' when meta has no error model) and `analogs`
   (`web/src/lib/kernel/types.ts`, docs/METHOD.md section 17). 2026-11 review: `activity { meanAnnual, sparse, reason?,
-  nonzeroMonths, baselineMonths, modisEraMean, viirsEraMean }`, `inProgress { m, coverage, daysCovered, daysInMonth }`,
+  nonzeroMonths, baselineMonths, modisEraMean, viirsEraMean }`, `inProgress { m, coverage, daysCovered, daysInMonth, projected? }`,
   `trend.suppressed`, `season.defined`, `calendar.partial`, and the level value `undefined`.
 
 ## Interval formula (legacy kernel, used when the fields above are absent)

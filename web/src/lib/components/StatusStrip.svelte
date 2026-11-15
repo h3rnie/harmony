@@ -5,7 +5,7 @@
   import { session } from '../session.svelte'
   import { themeState } from '../theme.svelte'
   import { live } from '../live/store.svelte'
-  import { activityOf, monthStats, LEVEL_TONE, hasLevel, inProgressDays, inProgressOf, isSparse, meanAnnual, seasonUndefined, trendSuppressed } from '../analysisUtil'
+  import { activityOf, monthStats, LEVEL_TONE, hasLevel, inProgressDays, inProgressOf, isSparse, meanAnnual, onPace, seasonSentence, trendSuppressed } from '../analysisUtil'
   import { MONTHS_LONG, MONTHS_SHORT, LEVEL_LABEL, fmtArea, fmtNum, fmtRatio, monthLong, ordinal, rankFromEnds } from '../format'
   import { yearContext } from '../brief/yearContext'
   import Term from './Term.svelte'
@@ -35,12 +35,8 @@
   })
   const unit = $derived(session.unitLabel)
   const meanYear = $derived(sparse ? meanAnnual(a) : null)
-  const season = $derived(a.season)
-  const seasonText = $derived(
-    seasonUndefined(a) ? 'There is no regular fire season here.' : season.lengthMonths >= 12
-      ? `Fires occur all year here, peaking in ${MONTHS_LONG[season.peakMonth - 1]}.`
-      : `The fire season here runs ${MONTHS_LONG[season.startMonth - 1]} to ${MONTHS_LONG[season.endMonth - 1]} and peaks in ${MONTHS_LONG[season.peakMonth - 1]}${season.secondPeak ? ` and ${MONTHS_LONG[season.secondPeak - 1]}` : ''}.`,
-  )
+  // Nothing is said about a season where none can be described (see seasonSentence).
+  const seasonText = $derived(seasonSentence(a) ?? '')
   const rankText = $derived.by(() => {
     if (!s) return ''
     if (s.value === 0 && s.median === 0) return `No detections, as usual for ${monthName} here.`
@@ -157,7 +153,7 @@
         </p>
       {:else if s.inProgress}
         <p class="hero calm">
-          <span class="statement">{ipLine ?? `${monthLong(m)} is still in progress`}: <span class="num">{fmtNum(s.value)}</span> <Term id="afcdm" />.</span>
+          <span class="statement">{ipLine ?? `${monthLong(m)} is still in progress`}: <span class="num">{fmtNum(s.value)}</span> <Term id="afcdm" />{#if ip?.m === m && onPace(ip)}{` (${onPace(ip)})`}{/if}.</span>
           <span class="cap">A month is compared with normal and ranked only once it is complete.</span>
         </p>
       {:else}

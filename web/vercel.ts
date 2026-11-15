@@ -76,6 +76,6 @@ export const config: VercelConfig = {
     { source: '/', headers: [{ key: 'Cache-Control', value: 'public, max-age=0, must-revalidate' }] },
     { source: '/index.html', headers: [{ key: 'Cache-Control', value: 'public, max-age=0, must-revalidate' }] },
     { source: '/theme-init.js', headers: [{ key: 'Cache-Control', value: 'public, max-age=0, must-revalidate' }] },
-    { source: '/(favicon.svg|favicon-32.png|apple-touch-icon.png|og.png)', headers: [{ key: 'Cache-Control', value: 'public, max-age=86400' }] },
+    { source: '/(favicon.svg|favicon-32.png|apple-touch-icon.png|og.png|robots.txt|sitemap.xml)', headers: [{ key: 'Cache-Control', value: 'public, max-age=86400' }] },
   ],
 }

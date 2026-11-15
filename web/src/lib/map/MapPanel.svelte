@@ -12,7 +12,7 @@
   import { session } from '../session.svelte'
   import { themeState } from '../theme.svelte'
   import { renderCellLayer, type RenderedOverlay } from './cellOverlay'
-  import { circleFromRing, circlePolygon, normalizeRings, polygonFromGeoJSON, ringsBbox, type Aoi } from '../geo'
+  import { circleFromRing, circlePolygon, MIN_CIRCLE_KM, normalizeRings, polygonFromGeoJSON, ringsBbox, type Aoi } from '../geo'
   import { circleLabel } from '../urlState'
   import { PRESETS, type Preset } from '../presets'
   import { fmtNum, fmtRatio, monthShort } from '../format'
@@ -212,6 +212,12 @@
       fitNext = false
       // A drawn circle is kept as a circle (centre + radius), so its share link is `c=lon,lat,km`, not 64 vertices.
       const c = drawMode === 'circle' ? circleFromRing(rings[0]) : null
+      // A double-click (or a tiny drag) gives a circle of almost no size: ignore it and stay in circle mode.
+      if (drawMode === 'circle' && !(c && c.km >= MIN_CIRCLE_KM)) {
+        draw?.clear()
+        notice = `Circle ignored: give it a radius of at least ${MIN_CIRCLE_KM} km (click the centre, then click again further out).`
+        return
+      }
       if (c) {
         const lon = +c.lon.toFixed(4), lat = +c.lat.toFixed(4), km = +c.km.toFixed(1)
         session.setAoi({ rings: circlePolygon(lon, lat, km), shape: { kind: 'circle', lon, lat, km }, label: circleLabel(lon, lat, km) })
@@ -558,7 +564,7 @@
       onmode={(m) => session.setOverlay(m)}
       {liveOn}
       liveShown={liveShown}
-      onlive={(on) => (liveChoice = on)}
+      onlive={(on) => { liveChoice = on; if (on) live.request() }}
       compact={panelWidth < 480 || panelHeight < 440}
     />
   {/if}

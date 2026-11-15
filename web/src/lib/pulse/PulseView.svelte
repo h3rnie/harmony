@@ -69,6 +69,17 @@
   const mEnd = $derived(meta ? Math.min(meta.m_last, meta.m_last_data ?? meta.m_last) : 0)
   const cur = $derived(Math.floor(playhead))
   const total = $derived(meta ? meta.global_monthly[cur - meta.m_first] ?? 0 : 0)
+  /**
+   * The month in view is still in progress. Its atlas and total were scaled up from the days so far to a full month
+   * (the pipeline's coverage correction), so they are read out as a pace ("on pace for"), never as a count.
+   */
+  const curIp = $derived(!!meta && meta.last_month_partial && cur === meta.m_last)
+  /** Days observed so far in that month: the day of `data_through` when it falls in it. */
+  const ipDays = $derived.by(() => {
+    const d = /^(\d{4})-(\d{2})-(\d{2})/.exec(meta?.data_through ?? '')
+    return d && curIp && +d[1] === yearOfM(cur) && +d[2] === moyOfM(cur) + 1 ? +d[3] : null
+  })
+  const ipFrom = $derived(ipDays != null ? `first ${ipDays} ${ipDays === 1 ? 'day' : 'days'}` : 'days so far')
   const regional = $derived(meta?.scope?.startsWith('regional') ? meta.scope.replace(/^regional:\s*/, '') : '')
   const still = $derived(isStatic(mode))
   const baseline = $derived(meta ? `${meta.clim.baseline[0]}–${meta.clim.baseline[1]}` : '')
@@ -446,6 +457,13 @@
         hint,
       }
     }
+    if (curIp) {
+      return {
+        main: s.value > 0 ? `On pace for ≈ ${fmtNum(s.value)} AFCD-M` : 'No fire so far',
+        details: [`projection from the ${ipFrom}`, `normal ${s.normal > 0 ? `≈ ${fmtNum(s.normal)}` : '0'} (${baseline} median)`],
+        hint,
+      }
+    }
     return {
       main: `${s.value > 0 ? `≈ ${fmtNum(s.value)}` : '0'} AFCD-M`,
       details: [`normal ${s.normal > 0 ? `≈ ${fmtNum(s.normal)}` : '0'} (${baseline} median)`],
@@ -564,7 +582,11 @@
           <p class="sub">Change in harmonized fire activity across the MODIS → VIIRS hand-over</p>
         {:else}
           <p class="when num" aria-live="off"><span class="mo">{MONTHS_LONG[moyOfM(cur)]}</span> <span class="yr">{yearOfM(cur)}</span></p>
-          <p class="sub"><span class="num">{fmtNum(total)}</span> active-fire cell-days{regional ? ' in the regional build' : ' worldwide'}{meta.last_month_partial && cur === meta.m_last ? ' · month in progress' : ''}</p>
+          {#if curIp}
+            <p class="sub">On pace for <span class="num">{fmtNum(total)}</span> active-fire cell-days{regional ? ' in the regional build' : ' worldwide'} · projected from the {ipFrom} · month in progress</p>
+          {:else}
+            <p class="sub"><span class="num">{fmtNum(total)}</span> active-fire cell-days{regional ? ' in the regional build' : ' worldwide'}</p>
+          {/if}
         {/if}
         {#if regional}<p class="scope small">Regional data build: {regional}. The full global record replaces it when the pipeline finishes.</p>{/if}
       {/if}

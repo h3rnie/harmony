@@ -71,7 +71,8 @@ export function readHash(hash = location.hash): ViewState {
   const preset = presetById(q.get('p'))
   const c = nums(q.get('c')), b = nums(q.get('b')), g = q.get('g')
   if (preset) v.aoi = { rings: preset.rings, shape: { kind: 'polygon' }, label: preset.title, presetId: preset.id }
-  else if (okNums(c, 3) && c[2] > 0) v.aoi = { rings: circlePolygon(c[0], c[1], c[2]), shape: { kind: 'circle', lon: c[0], lat: c[1], km: c[2] }, label: circleLabel(c[0], c[1], c[2]) }
+  // Any finite radius is read, so a too-small one reaches geo.aoiProblem, which clears it with a message.
+  else if (okNums(c, 3)) v.aoi = { rings: circlePolygon(c[0], c[1], c[2]), shape: { kind: 'circle', lon: c[0], lat: c[1], km: c[2] }, label: circleLabel(c[0], c[1], c[2]) }
   // Any four numbers make a box; one the app cannot analyse (e.g. east < west across the 180° meridian) is still read,
   // so the viewer gets a clear message instead of a link that silently does nothing (see geo.aoiProblem).
   else if (okNums(b, 4)) v.aoi = { rings: bboxPolygon(b[0], b[1], b[2], b[3]), shape: { kind: 'bbox', w: b[0], s: b[1], e: b[2], n: b[3] }, label: 'Bounding box' }

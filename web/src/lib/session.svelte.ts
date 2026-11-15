@@ -12,6 +12,9 @@ export type Status = 'booting' | 'idle' | 'loading' | 'analyzing' | 'ready' | 'e
 
 class Stale extends Error {}
 
+/** Kernel messages about an unusable area geometry (crates/harmony-core/src/geom.rs). */
+const KERNEL_AREA_ERROR = /distinct points|zero size|has no rings|lon\/lat pairs|ring offsets|finite numbers|latitude .* outside/i
+
 class Session {
   status = $state<Status>('booting')
   error = $state<string | null>(null)
@@ -361,6 +364,22 @@ class Session {
   private fail(e: unknown) {
     console.error(e)
     const msg = e instanceof Error ? e.message : String(e)
+    // The kernel rejected the area's geometry: retrying cannot help, so drop the area (and its hash) and go back to
+    // the start with a short message instead of a dead end.
+    if (KERNEL_AREA_ERROR.test(msg) && this.aoi) {
+      const why = `That area could not be used (${msg}). Draw or pick another area.`
+      clearTimeout(this.fullTimer)
+      this.abort?.abort()
+      this.runId++
+      this.aoi = null; this.analysis = null; this.layer = null; this.layerM = null; this.aoiInfo = null
+      this.focusM = null; this.pendingMonth = null; this.dataReady = false
+      this.syncHash('replace')
+      this.error = why
+      this.errorKind = 'area'
+      this.status = 'error'
+      this.announce = why
+      return
+    }
     // The kernel's own limit, phrased for people (it is checked up front too, see geo.aoiProblem).
     this.error = /area too large/i.test(msg) ? 'This area is too large to analyse; the Global pulse shows the whole planet.' : msg
     this.errorKind = /area too large/i.test(msg) ? 'area' : 'run'

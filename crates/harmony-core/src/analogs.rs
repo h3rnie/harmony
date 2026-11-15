@@ -220,6 +220,7 @@ mod tests {
             provisional: vec![false; n],
             partial: vec![false; n],
             coverage: vec![1.0; n],
+            projected: vec![None; n],
             modis_full: vec![true; n],
             viirs_full: vec![false; n],
             conformal: false,

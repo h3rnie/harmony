@@ -4,7 +4,7 @@ import { FIRMS_ACK } from '../config'
 import { aoiToGeoJSON, type Aoi } from '../geo'
 import { MONTHS_SHORT, monthIso, toM, fmtCell, fmtNum } from '../format'
 import { activityDomain, activityInverse, activityT, divColor, inkOn, percentileT, ratioT, seqColor, uncertaintyClass, vsupColor, type Theme } from '../color'
-import { inProgressOf, isSparse, monthSource, seriesIndex } from '../analysisUtil'
+import { inProgressOf, isSparse, monthSource, seriesIndex, type InProgress } from '../analysisUtil'
 import type { CalMode } from '../urlState'
 
 export interface ExportContext {
@@ -63,6 +63,14 @@ function header(ctx: ExportContext, what: string): string {
   ].join('\n') + '\n'
 }
 
+/** Comment line for a month in progress: its values are detections so far; the projection is stated apart. */
+function ipNote(ip: InProgress | null, unit: string): string {
+  if (!ip) return ''
+  const days = ip.daysCovered != null ? `the first ${Math.round(ip.daysCovered)} days` : 'the days so far'
+  const pace = ip.projected != null ? `; at that pace the full month would be about ${fmtNum(ip.projected)} ${unit} (a projection, not a count)` : ''
+  return `# ${monthIso(ip.m)} is in progress: its values are what was detected in ${days}${pace}\n`
+}
+
 export function calendarCsv(ctx: ExportContext): string {
   const a = ctx.analysis
   const w = a.series.modisWeight
@@ -88,13 +96,14 @@ export function calendarCsv(ctx: ExportContext): string {
     }
   })
   const cols = '# Columns: partial = 1 for a month still in progress (drawn, not compared with normal or ranked); source = MODIS, VIIRS, Terra-bridged or Fused with the MODIS share'
-  return header(ctx, 'burning calendar') + cols + '\n' + lines.join('\n') + '\n'
+  return header(ctx, 'burning calendar') + cols + '\n' + ipNote(ip, unit) + lines.join('\n') + '\n'
 }
 
 export function seriesCsv(ctx: ExportContext): string {
   const a = ctx.analysis, s = a.series
   const unit = unitOf(a)
-  const ipm = inProgressOf(a)?.m ?? null
+  const ip = inProgressOf(a)
+  const ipm = ip?.m ?? null
   const lines = [csvRow(['month', 'harmonized', 'lo80', 'hi80', 'lo95', 'hi95', 'modis_eq', 'modis_drift_corrected', 'viirs_cal', 'modis_weight', 'viirs_raw', 'raw_modis_count', 'raw_viirs_count', 'naive_count', 'source', 'provisional', 'partial', 'unit'])]
   a.months.forEach((m, i) => {
     lines.push(csvRow([
@@ -104,7 +113,7 @@ export function seriesCsv(ctx: ExportContext): string {
     ]))
   })
   const cols = `# Columns: harmonized/lo*/hi*/modis_eq/modis_drift_corrected/viirs_cal in ${unit}; viirs_raw = uncalibrated VIIRS cell-days; *_count = accepted hotspot detections; source = stream carrying most weight; partial = month in progress (not used in statistics)`
-  return header(ctx, 'full monthly series') + cols + '\n' + lines.join('\n') + '\n'
+  return header(ctx, 'full monthly series') + cols + '\n' + ipNote(ip, unit) + lines.join('\n') + '\n'
 }
 
 export function aoiGeoJson(ctx: ExportContext): string {

@@ -129,6 +129,8 @@ def build_meta(con, cal: dict) -> dict:
                                         "dilation": "8-neighbourhood, 1 sub-cell"}},
             "availability": "regional: operating period minus known outages" if is_regional()
                             else f"global: count > {C.AVAIL_FRACTION} x centred {C.AVAIL_WINDOW}-day median",
+            # Read by the kernel to undo the scaling of a partial (in-progress) month: it shows what was
+            # detected so far and keeps the scaled value as the full-month projection.
             "coverage_correction": {"min_cov": C.COV_MIN, "max_factor": C.COV_MAX_CORR},
             "completeness": f"a month enters statistics when its serving stream(s) delivered data on >= "
                             f"{C.COV_COMPLETE} of its days (months.days_modis / days_viirs); below that it is "

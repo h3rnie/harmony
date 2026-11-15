@@ -31,7 +31,9 @@
     </div>
 
     {#if on}
-      {#if live.phase === 'loading' && !live.data}
+      {#if live.phase === 'idle' && !live.data}
+        <p class="msg" role="status"><button class="link" onclick={() => live.request()}>Load live detections</button></p>
+      {:else if live.phase === 'loading' && !live.data}
         <p class="msg" role="status">Loading live detections…</p>
       {:else if live.phase === 'too-large'}
         <p class="msg" role="status">Area too large for live data. Draw a smaller area.</p>

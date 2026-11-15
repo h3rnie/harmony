@@ -1,6 +1,6 @@
 <script lang="ts">
   import { FIRMS_ACK } from '../config'
-  import { AUTHOR, COPYRIGHT_YEAR, openAbout, openMethod } from './copy'
+  import { AUTHOR, COPYRIGHT_YEAR, SOURCE_URL, openAbout, openMethod } from './copy'
   import { themeState } from '../theme.svelte'
 </script>
 
@@ -10,6 +10,10 @@
     <button class="lk" onclick={openAbout}>About</button>
     <span aria-hidden="true">·</span>
     <button class="lk" onclick={() => openMethod(!themeState.reducedMotion)}>Method</button>
+    {#if SOURCE_URL}
+      <span aria-hidden="true">·</span>
+      <a class="lk" href={SOURCE_URL} target="_blank" rel="noopener">Source code</a>
+    {/if}
   </p>
   <p class="ack">{FIRMS_ACK}</p>
   <p class="ack">NASA Space Apps 2026 entry · MODIS C6.1 and VIIRS 375 m active fires harmonized to MODIS-equivalent active-fire cell-days (AFCD-M). Basemap © OpenFreeMap, © OpenStreetMap contributors.</p>

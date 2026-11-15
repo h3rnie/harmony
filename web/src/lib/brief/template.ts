@@ -1,6 +1,6 @@
 // Rule-based situation brief: 4-6 plain sentences a duty officer can read aloud.
 import type { Analysis } from '../kernel/types'
-import { hasLevel, inProgressDays, inProgressOf, isSparse, meanAnnual, monthStats, seasonUndefined, trendSuppressed, trendWords } from '../analysisUtil'
+import { hasLevel, inProgressDays, inProgressOf, isSparse, meanAnnual, monthStats, onPace, seasonOneMonth, seasonUndefined, trendSuppressed, trendWords } from '../analysisUtil'
 import { yearContext } from './yearContext'
 import { LEVEL_LABEL, MONTHS_LONG, fmtArea, fmtNum, fmtRatio, monthLong, ordinal, rankFromEnds, rankPhrase } from '../format'
 
@@ -39,7 +39,8 @@ export function templateBrief(i: BriefInput): string[] {
 
   // The month in view is still in progress: what has been seen so far, never a level or a rank.
   if (s.inProgress) {
-    out.push(`${where}: ${ipPhrase(i.focusM)}; ${s.value ? `${fmtNum(s.value)} ${unit}-equivalent active-fire cell-days so far` : 'no fire detected so far'}.`)
+    const pace = ip?.m === i.focusM ? onPace(ip) : null
+    out.push(`${where}: ${ipPhrase(i.focusM)}; ${s.value ? `${fmtNum(s.value)} ${unit}-equivalent active-fire cell-days so far` : 'no fire detected so far'}${pace ? ` (${pace})` : ''}.`)
     out.push('It is compared with normal and ranked once the month is complete; see what is burning right now for the latest days.')
     return out
   }
@@ -86,9 +87,10 @@ export function templateBrief(i: BriefInput): string[] {
 
   // 4. Season context
   const se = a.season
-  if (seasonUndefined(a)) {
-    out.push('There is no regular fire season here.')
-  } else {
+  // Nothing is said about a season where none can be described.
+  if (!seasonUndefined(a) && seasonOneMonth(a)) {
+    out.push(`Most burning here normally happens in ${MONTHS_LONG[se.peakMonth - 1]}${s.month === se.peakMonth ? ', the month in view' : ''}.`)
+  } else if (!seasonUndefined(a)) {
     const inSeason = ((s.month - se.startMonth + 12) % 12) < se.lengthMonths
     out.push(
       `The fire season here normally runs ${MONTHS_LONG[se.startMonth - 1]} to ${MONTHS_LONG[se.endMonth - 1]} and peaks in ${MONTHS_LONG[se.peakMonth - 1]}` +

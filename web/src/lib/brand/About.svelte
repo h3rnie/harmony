@@ -2,15 +2,14 @@
   // About / credits: one of the few human moments (patch, mission, dedication). Opened by `harmony:open-about`.
   import { onMount } from 'svelte'
   import Patch from './Patch.svelte'
-  import { AUTHOR, CHALLENGE, DEDICATION, EVENT, MISSION, TAGLINE, openMethod } from './copy'
+  import { AUTHOR, CHALLENGE, DEDICATION, EVENT, MISSION, SOURCE_URL, TAGLINE, openMethod } from './copy'
   import { FIRMS_ACK } from '../config'
   import { themeState } from '../theme.svelte'
 
   let dlg: HTMLDialogElement
 
   // Public source link (build-time, optional). Only http(s) URLs are linked; anything else shows the text alone.
-  const raw = (import.meta.env.VITE_SOURCE_URL ?? '').trim()
-  const sourceUrl = /^https?:\/\//i.test(raw) ? raw : null
+  const sourceUrl = SOURCE_URL
 
   onMount(() => {
     const show = () => { if (!dlg.open) dlg.showModal() }

@@ -5,7 +5,7 @@
   import { themeState } from '../theme.svelte'
   import { activityDomain, activityInverse, activityT, divColor, inkOn, percentileT, rangeHalfPct, ratioT, seqColor, uncertaintyClass, vsupColor, UNC_WORD, type UncClass } from '../color'
   import { MONTHS_LONG, MONTHS_SHORT, fmtCell, fmtNum, fmtRatio, ordinal, toM, yearOf } from '../format'
-  import { inProgressDays, inProgressOf, isSparse, monthSource, monthStats, seriesIndex, viirsMark, type MonthSource } from '../analysisUtil'
+  import { inProgressDays, inProgressOf, isSparse, monthSource, monthStats, onPace, seasonOneMonth, seasonUndefined, seriesIndex, viirsMark, type MonthSource } from '../analysisUtil'
   import type { CalMode } from '../urlState'
   import type { Snippet } from 'svelte'
   import AnalysisSettings from './AnalysisSettings.svelte'
@@ -40,10 +40,12 @@
     const se = a.season
     if (sparse) return 'Too little fire here to describe a season: the calendar shows what was detected, without ranks.'
     const top = a.records.topYears[0]
-    const when = se.lengthMonths >= 12
+    const when = seasonUndefined(a) ? '' : se.lengthMonths >= 12
       ? `Fires occur all year here, most in ${MONTHS_LONG[se.peakMonth - 1]}.`
-      : `Most burning here happens from ${MONTHS_LONG[se.startMonth - 1]} to ${MONTHS_LONG[se.endMonth - 1]}, peaking in ${MONTHS_LONG[se.peakMonth - 1]}.`
-    return top ? `${when} The most active year was ${top.year}.` : when
+      : seasonOneMonth(a)
+        ? `Most burning here happens in ${MONTHS_LONG[se.peakMonth - 1]}.`
+        : `Most burning here happens from ${MONTHS_LONG[se.startMonth - 1]} to ${MONTHS_LONG[se.endMonth - 1]}, peaking in ${MONTHS_LONG[se.peakMonth - 1]}.`
+    return [when, top ? `The most active year was ${top.year}.` : ''].filter(Boolean).join(' ')
   })
 
   let showNumbers = $state(false)
@@ -131,7 +133,7 @@
     const s = monthStats(a, cell.m)
     if (!s) return name
     if (cell.ip) {
-      return `${name}: in progress${ipDays != null ? `, first ${ipDays} days` : ''}, ${fmtNum(s.value)} ${session.unitLabel} so far; not compared with normal or ranked until complete; ${cell.src.label}`
+      return `${name}: in progress${ipDays != null ? `, first ${ipDays} days` : ''}, ${fmtNum(s.value)} ${session.unitLabel} so far${onPace(ip) ? ` (${onPace(ip)})` : ''}; not compared with normal or ranked until complete; ${cell.src.label}`
     }
     const parts = [`${name}: ${fmtNum(s.value)} ${session.unitLabel}`]
     if (mode === 'uncertainty') {
@@ -322,6 +324,7 @@
           <dl>
             <dt>So far</dt><dd class="num">{fmtNum(tipStats.value)} {session.unitLabel}</dd>
             {#if ipDays != null}<dt>Days observed</dt><dd class="num">{ipDays}</dd>{/if}
+            {#if ip?.projected != null}<dt>On pace for</dt><dd class="num">about {fmtNum(ip.projected)}</dd>{/if}
             <dt>Source</dt><dd>{tipCell.src.label}</dd>
           </dl>
           <p class="tnote">Compared with normal and ranked once the month is complete.</p>

@@ -99,6 +99,11 @@ pub struct InProgress {
     /// `round(coverage x daysInMonth)`: "first 15 days so far".
     pub days_covered: u32,
     pub days_in_month: u32,
+    /// The month's value is what was detected so far (`series.harmonized`); this is the full-month
+    /// projection the pipeline stored (scaled by 1/coverage, at most ×2): "on pace for about P".
+    /// Absent when the month was not scaled (coverage below the correction threshold).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub projected: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -201,7 +206,13 @@ fn statistics(mo: &Monthly, o: &AnalyzeOptions, range: (i32, i32)) -> Analysis {
         let m = mo.m_first + i as i32;
         let dim = days_in_month(m);
         let coverage = mo.coverage[i].clamp(0.0, 1.0);
-        InProgress { m, coverage, days_covered: (coverage * dim as f64).round() as u32, days_in_month: dim }
+        InProgress {
+            m,
+            coverage,
+            days_covered: (coverage * dim as f64).round() as u32,
+            days_in_month: dim,
+            projected: mo.projected[i],
+        }
     });
     Analysis {
         months,
@@ -280,6 +291,9 @@ fn relens(a: &mut Analysis, mol: &Monthly, l: &Lens, o: &AnalyzeOptions, range: 
     }
     if let Some(an) = &mut a.analogs {
         an.rescale_units(mol);
+    }
+    if let Some(ip) = &mut a.in_progress {
+        ip.projected = mol.index(ip.m).and_then(|i| mol.projected[i]);
     }
 }
 
@@ -812,6 +826,77 @@ pub(crate) mod tests {
 
     fn square() -> Vec<Vec<[f64; 2]>> {
         vec![vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]]
+    }
+
+    #[test]
+    fn in_progress_month_shows_detections_so_far_and_the_projection() {
+        use serde_json::json;
+        let cols = synthetic(10, 312);
+        // Month 312 (Jan 2026) with the given coverages; the stored tile values are those of `cols`.
+        let run = |cov_m: f64, cov_v: f64, cc: Option<serde_json::Value>, unit: Unit| {
+            let mut meta: serde_json::Value = serde_json::from_str(&model_meta_json(10, 312)).unwrap();
+            meta["months"]["cov_modis"][312] = json!(cov_m);
+            meta["months"]["cov_viirs"][312] = json!(cov_v);
+            if let Some(cc) = cc {
+                meta["method"]["coverage_correction"] = cc;
+            }
+            let e = engine_meta(&meta.to_string(), square(), &cols);
+            let a = e.analyze(&AnalyzeOptions { unit, ..opts([10, 312], Dn::Both) }).unwrap();
+            let cl = e
+                .cell_layer(&CellLayerOptions {
+                    m_from: 312, m_to: 312, mode: cells::CellMode::Harmonized, switch_m: 276,
+                    baseline: [2003, 2022], dn: Dn::Both, series_mode: Mode::Fused,
+                })
+                .unwrap();
+            let cell_sum: f64 = cl.values.iter().zip(&cl.weights).map(|(v, w)| *v as f64 * *w as f64).sum();
+            (a, cell_sum)
+        };
+        let close = |a: f64, b: f64| (a - b).abs() <= 1e-6 * a.abs().max(b.abs()).max(1.0);
+        let (full, _) = run(1.0, 1.0, None, Unit::Modis);
+        let last = full.months.len() - 1;
+        let stored_kv = full.series.viirs_cal[last].unwrap();
+        let stored_v = full.series.viirs_raw[last].unwrap();
+        assert!(full.in_progress.is_none());
+
+        // The November 2026 case: MODIS just under the correction threshold (dropped, never scaled),
+        // VIIRS on exactly half of the days (stored ×2). The month shows what was detected so far.
+        let (a, cell_sum) = run(0.4833, 0.5, None, Unit::Modis);
+        assert!(a.series.partial[last]);
+        let h = a.series.harmonized[last].unwrap();
+        assert!(close(a.series.viirs_cal[last].unwrap(), stored_kv / 2.0));
+        assert!(close(a.series.viirs_raw[last].unwrap(), stored_v / 2.0));
+        assert_eq!(a.series.modis_eq[last], full.series.modis_eq[last], "MODIS below 0.5 was never scaled");
+        assert_eq!(a.series.raw_viirs_count[last], full.series.raw_viirs_count[last], "counts are never scaled");
+        assert!(close(h, stored_kv / 2.0), "VIIRS only: {h} vs {}", stored_kv / 2.0);
+        assert!(a.series.lo80[last].unwrap() <= h && h <= a.series.hi80[last].unwrap());
+        assert_eq!(a.calendar.value[26][0], Some(h));
+        assert!(close(cell_sum, h), "map cells sum to the series: {cell_sum} vs {h}");
+        let ip = a.in_progress.as_ref().unwrap();
+        assert!(close(ip.projected.unwrap(), stored_kv), "projection = the stored ×2 value");
+        assert!(close(ip.projected.unwrap(), 2.0 * h));
+        // Complete months are untouched.
+        assert_eq!(a.series.harmonized[last - 1], full.series.harmonized[last - 1]);
+        // The projection follows the lens.
+        let (l, _) = run(0.4833, 0.5, None, Unit::Viirs);
+        let lh = l.series.harmonized[last].unwrap();
+        assert!(!close(lh, h) && close(l.in_progress.as_ref().unwrap().projected.unwrap(), 2.0 * lh));
+
+        // The rule is read from meta.json (method.coverage_correction): a ×1.5 cap.
+        let (c, _) = run(0.4833, 0.5, Some(json!({ "min_cov": 0.5, "max_factor": 1.5 })), Unit::Modis);
+        assert!(close(c.series.harmonized[last].unwrap(), stored_kv / 1.5));
+        assert!(close(c.in_progress.as_ref().unwrap().projected.unwrap(), stored_kv));
+        // ... and its threshold: from 0.6, a 0.5 month was never scaled, so there is no projection.
+        let (t, _) = run(0.4833, 0.5, Some(json!({ "min_cov": 0.6, "max_factor": 2 })), Unit::Modis);
+        assert!(t.series.partial[last] && t.in_progress.as_ref().unwrap().projected.is_none());
+        assert!(close(t.series.viirs_cal[last].unwrap(), stored_kv));
+
+        // Both streams below the threshold: nothing was scaled, nothing is projected.
+        let (u, _) = run(0.3, 0.3, None, Unit::Modis);
+        assert!(u.series.partial[last] && u.in_progress.as_ref().unwrap().projected.is_none());
+        assert_eq!(u.series.modis_eq[last], full.series.modis_eq[last]);
+        assert!(close(u.series.viirs_cal[last].unwrap(), stored_kv));
+        assert!(!serde_json::to_string(&u).unwrap().contains("projected"));
+        assert_no_bad_nulls(&serde_json::to_string(&a).unwrap());
     }
 
     #[test]

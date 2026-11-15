@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte'
   import type { Analysis } from '../kernel/types'
   import { session } from '../session.svelte'
   import { themeState } from '../theme.svelte'
@@ -11,6 +12,22 @@
   import { LEVEL_LABEL, MONTHS_LONG, MONTHS_SHORT, fmtNum, fmtRatio } from '../format'
 
   let { a }: { a: Analysis } = $props()
+
+  // Live data is fetched only once this section is (nearly) in view, for each area shown while it is: loading an
+  // area without scrolling here makes no /api/live request (the header badge reads /api/live/status only).
+  let sectionEl = $state<HTMLElement>()
+  let inView = $state(false)
+  $effect(() => {
+    const el = sectionEl
+    if (!el) return
+    const io = new IntersectionObserver((es) => { inView = es.some((e) => e.isIntersecting) }, { rootMargin: '200px 0px' })
+    io.observe(el)
+    return () => io.disconnect()
+  })
+  $effect(() => {
+    void session.aoi
+    if (inView) untrack(() => live.request())
+  })
 
   const SOURCE_NAME: Record<LiveSource, string> = { VIIRS_NOAA20_NRT: 'NOAA-20', VIIRS_NOAA21_NRT: 'NOAA-21', MODIS_NRT: 'MODIS' }
   const nf = new Intl.NumberFormat('en-US')
@@ -99,7 +116,7 @@
 </script>
 
 {#if live.available && session.aoi}
-  <section class="now" id="now" aria-labelledby="now-h" aria-busy={live.phase === 'loading'}>
+  <section class="now" id="now" aria-labelledby="now-h" aria-busy={live.phase === 'loading'} bind:this={sectionEl}>
     <div class="top">
       <h2 id="now-h" class="q-title">What is burning right now?</h2>
       {#if d}

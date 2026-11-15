@@ -184,7 +184,13 @@ assert.ok(nv.some((v, i) => v < values[i]), 'night layer differs from both')
   assert.deepEqual(p.outlook.months, [M_LAST, M_LAST + 1, M_LAST + 2])
   assert.ok(isNum(p.calendar.value.at(-1)[11]))
   assert.equal(p.calendar.partial.at(-1)[11], true); assert.equal(p.calendar.percentile.at(-1)[11], null)
-  assert.deepEqual(p.inProgress, { m: M_LAST, coverage: 0.5, daysCovered: 16, daysInMonth: 31 })
+  const { projected, ...ip } = p.inProgress
+  assert.deepEqual(ip, { m: M_LAST, coverage: 0.5, daysCovered: 16, daysInMonth: 31 })
+  // Its value is what was detected in those days (the stored x2 value halved); the stored value is the projection.
+  const full = a.series.harmonized[i], close = (x, y) => Math.abs(x - y) <= 1e-6 * Math.max(1, Math.abs(y))
+  assert.ok(full > 0 && close(p.series.harmonized[i], full / 2), `${p.series.harmonized[i]} vs ${full / 2}`)
+  assert.ok(close(projected, full), `${projected} vs ${full}`)
+  assert.ok(close(p.calendar.value.at(-1)[11], full / 2))
   k.free()
 }
 

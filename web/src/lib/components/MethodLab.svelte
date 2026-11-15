@@ -167,7 +167,14 @@
     const d = new Date(iso)
     return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
   }
-  const trainedOn = $derived(fmtDay(model?.trained_on_build))
+  /** The data build the model was trained on: `trained_on_build` as a date string or as an object naming the build, else the model's own date. */
+  const trainedIso = (m: ModelJson | null): string | undefined => {
+    const t = m?.trained_on_build
+    if (typeof t === 'string' && t) return t
+    const v = t && typeof t === 'object' ? (t.meta_generated ?? t.data_through ?? t.trained) : undefined
+    return (typeof v === 'string' && v) || m?.generated || undefined
+  }
+  const trainedOn = $derived(fmtDay(trainedIso(model)))
   const dataBuild = $derived(fmtDay(session.meta?.generated))
   const OOT_ROWS = ['production', 'challenger', 'challenger_raw', 'naive']
   const ootLabel: Record<string, string> = { production: 'Production ratio method', challenger: 'ML challenger', challenger_raw: 'ML challenger, before mass balance', naive: 'Naive global ratio' }

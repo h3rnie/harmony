@@ -236,11 +236,29 @@ pub struct Plan {
     /// `meta.complete_min` of its days (the month in progress, or an outage month): drawn, never
     /// used in a statistic.
     pub partial: bool,
+    /// Multipliers `[MODIS, VIIRS]` that turn the stored (coverage-corrected) values of this month
+    /// into what was actually detected: `1 / factor` of the pipeline's 1/coverage scaling for a
+    /// partial month, `[1, 1]` otherwise (complete months keep the correction).
+    pub unscale: [f64; 2],
 }
 
 impl Plan {
     pub fn covered(&self) -> bool {
         self.use_m || self.use_v
+    }
+
+    /// The stored values of this month were scaled up for missing days and are shown unscaled.
+    pub fn scaled(&self) -> bool {
+        self.unscale != [1.0, 1.0]
+    }
+}
+
+/// `unscale` of a month (see [`Plan::unscale`]).
+fn unscale(meta: &Meta, m: i32, partial: bool) -> [f64; 2] {
+    if partial {
+        [1.0 / meta.modis_factor(m), 1.0 / meta.viirs_factor(m)]
+    } else {
+        [1.0, 1.0]
     }
 }
 
@@ -260,15 +278,17 @@ pub fn plan(meta: &Meta, m: i32, mode: Mode, switch_m: i32, model: bool) -> Plan
         let (use_m, use_v) = (matches!(src, Source::Bridge | Source::Modis), src == Source::Viirs);
         let coverage = coverage_of(use_m, use_v);
         let partial = (use_m || use_v) && coverage < meta.complete_min;
-        return Plan { m, use_m, use_v, bridge, drift_idx: None, era, coverage, partial };
+        let unscale = unscale(meta, m, partial);
+        return Plan { m, use_m, use_v, bridge, drift_idx: None, era, coverage, partial, unscale };
     }
-    // Fused: a stream below MIN_COVERAGE (not coverage-corrected) is dropped when the other one reaches it.
+    // Fused: a stream below `cov_min` (not coverage-corrected) is dropped when the other one reaches it.
     let use_m = mok && (mfull || !vfull);
     let use_v = vok && (vfull || !mfull);
     let coverage = coverage_of(use_m, use_v);
     let partial = (use_m || use_v) && coverage < meta.complete_min;
     let drift_idx = if mok { meta.drift.as_ref().and_then(|d| d.index(year_of(m))) } else { None };
-    Plan { m, use_m, use_v, bridge, drift_idx, era, coverage, partial }
+    let unscale = unscale(meta, m, partial);
+    Plan { m, use_m, use_v, bridge, drift_idx, era, coverage, partial, unscale }
 }
 
 /// Estimate of one stratum × dn group (or one tile row) for a month.
@@ -342,6 +362,9 @@ pub struct Monthly {
     pub partial: Vec<bool>,
     /// Day coverage of the serving stream(s) ([`Plan::coverage`]).
     pub coverage: Vec<f64>,
+    /// Partial months whose stored values were scaled up for missing days: the scaled full-month
+    /// projection (`h` holds what was detected so far). `None` elsewhere.
+    pub projected: Vec<Option<f64>>,
     /// MODIS / calibrated VIIRS delivered data on at least `meta.complete_min` of the month's
     /// days (for the seam).
     pub modis_full: Vec<bool>,
@@ -400,6 +423,96 @@ struct Group {
     kv: f64,
     kvsq_w2: f64,
     meq: f64,
+}
+
+/// Inputs of one month's estimate.
+struct MonthCtx<'a> {
+    meta: &'a Meta,
+    pl: &'a Plan,
+    params: &'a [StratumMeta],
+    act: &'a [f64],
+    gs: &'a [Group],
+    model: bool,
+}
+
+/// Harmonized value, bounds, MODIS share and drift-corrected MODIS of one month.
+struct MonthEst {
+    h: Option<f64>,
+    band: Option<[f64; 4]>,
+    w_modis: Option<f64>,
+    madj: f64,
+}
+
+/// Month totals `[meq, kv, v, nmod, nvii]` with the MODIS / VIIRS values multiplied by `s`
+/// (detection counts are never coverage-corrected).
+fn scaled_totals(t: &[f64; 5], s: [f64; 2]) -> [f64; 5] {
+    [t[0] * s[0], t[1] * s[1], t[2] * s[1], t[3], t[4]]
+}
+
+/// The month's harmonized value with the stored MODIS / VIIRS values multiplied by `s`.
+fn month_estimate(c: &MonthCtx, t: &[f64; 5], s: [f64; 2], parts: &mut Vec<(i32, f64)>) -> MonthEst {
+    let (meta, pl, params) = (c.meta, c.pl, c.params);
+    let [meq, kv, ..] = scaled_totals(t, s);
+    let scaled = |g: &Group| Group { meq: g.meq * s[0], kv: g.kv * s[1], kvsq_w2: g.kvsq_w2 * s[1] * s[1] };
+    let param = |k: usize| (&params[k / 2], k % 2);
+    if c.model {
+        let (mut h, mut var, mut wh, mut madj) = (0.0, 0.0, 0.0, 0.0);
+        parts.clear();
+        for (k, g) in c.gs.iter().enumerate() {
+            if g.meq <= 0.0 && g.kv <= 0.0 {
+                continue;
+            }
+            let g = scaled(g);
+            let (p, d) = param(k);
+            let e = estimate(meta, pl, p, d, g.meq, g.kv);
+            h += e.h;
+            var += e.var;
+            wh += e.w * e.h;
+            madj += e.madj;
+            parts.push((p.biome, e.h));
+        }
+        // A single uncorrected stream: its exact total (sums over groups differ in the last bits).
+        if pl.drift_idx.is_none() {
+            madj = meq;
+            match (pl.use_m, pl.use_v) {
+                (true, false) => (h, wh) = (meq, meq),
+                (false, true) => (h, wh) = (kv, 0.0),
+                _ => {}
+            }
+        }
+        if pl.covered() {
+            let q = month_q(meta, parts, h);
+            let w = (h > 0.0).then(|| (wh / h).clamp(0.0, 1.0));
+            let var = var.max(var_floor(meta, pl, params, c.act));
+            MonthEst { h: Some(h), band: Some(bounds_shifted(h, var, q[0], q[1])), w_modis: w, madj }
+        } else {
+            MonthEst { h: None, band: None, w_modis: None, madj }
+        }
+    } else {
+        // Legacy record and intervals (no error model in meta.json).
+        let (h, band) = if pl.use_m {
+            if pl.bridge {
+                let terms = c.gs.iter().enumerate().map(|(k, g)| {
+                    let (p, d) = param(k);
+                    (p.relvar_bridge[d], g.meq * s[0])
+                });
+                (Some(meq), Some(bounds(meq, bridge_variance(terms, meta.ci_scale))))
+            } else {
+                (Some(meq), None)
+            }
+        } else if pl.use_v {
+            let terms = c.gs.iter().enumerate().map(|(k, g)| {
+                let (p, d) = param(k);
+                let g = scaled(g);
+                (p.relvar[d], p.alpha[d], g.kv, g.kvsq_w2)
+            });
+            (Some(kv), Some(bounds(kv, viirs_variance(terms, meta.ci_scale))))
+        } else {
+            (None, None)
+        };
+        let w = h.filter(|&h| h > 0.0).map(|_| if pl.use_m { 1.0 } else { 0.0 });
+        MonthEst { h, band, w_modis: w, madj: meq }
+    }
 }
 
 /// `[q80, q95]` multipliers on σ_log for a month: H-weighted over its groups' biome groups, the
@@ -519,6 +632,7 @@ pub fn aggregate(meta: &Meta, store: &Store, dn: Dn, mode: Mode, switch_m: i32) 
         provisional: Vec::with_capacity(n),
         partial: Vec::with_capacity(n),
         coverage: Vec::with_capacity(n),
+        projected: Vec::with_capacity(n),
         modis_full: Vec::with_capacity(n),
         viirs_full: Vec::with_capacity(n),
         conformal: model && meta.conformal.is_some(),
@@ -532,67 +646,16 @@ pub fn aggregate(meta: &Meta, store: &Store, dn: Dn, mode: Mode, switch_m: i32) 
         }
     }
     let mut parts: Vec<(i32, f64)> = Vec::with_capacity(ns * 2);
-    for (i, &[meq, kv, v, nmod, nvii]) in tot.iter().enumerate() {
+    for (i, t) in tot.iter().enumerate() {
         let m = meta.m_first + i as i32;
         let pl = plan(meta, m, mode, switch_m, model);
         let gs = &groups[i * ns * 2..(i + 1) * ns * 2];
-        let param = |k: usize| (&params[k / 2], k % 2);
-        let (h, band, w_modis, madj) = if model {
-            let (mut h, mut var, mut wh, mut madj) = (0.0, 0.0, 0.0, 0.0);
-            parts.clear();
-            for (k, g) in gs.iter().enumerate() {
-                if g.meq <= 0.0 && g.kv <= 0.0 {
-                    continue;
-                }
-                let (p, d) = param(k);
-                let e = estimate(meta, &pl, p, d, g.meq, g.kv);
-                h += e.h;
-                var += e.var;
-                wh += e.w * e.h;
-                madj += e.madj;
-                parts.push((p.biome, e.h));
-            }
-            // A single uncorrected stream: its exact total (sums over groups differ in the last bits).
-            if pl.drift_idx.is_none() {
-                madj = meq;
-                match (pl.use_m, pl.use_v) {
-                    (true, false) => (h, wh) = (meq, meq),
-                    (false, true) => (h, wh) = (kv, 0.0),
-                    _ => {}
-                }
-            }
-            if pl.covered() {
-                let q = month_q(meta, &parts, h);
-                let w = (h > 0.0).then(|| (wh / h).clamp(0.0, 1.0));
-                let var = var.max(var_floor(meta, &pl, &params, &act));
-                (Some(h), Some(bounds_shifted(h, var, q[0], q[1])), w, madj)
-            } else {
-                (None, None, None, madj)
-            }
-        } else {
-            // Legacy record and intervals (no error model in meta.json).
-            let (h, band) = if pl.use_m {
-                if pl.bridge {
-                    let terms = gs.iter().enumerate().map(|(k, g)| {
-                        let (p, d) = param(k);
-                        (p.relvar_bridge[d], g.meq)
-                    });
-                    (Some(meq), Some(bounds(meq, bridge_variance(terms, meta.ci_scale))))
-                } else {
-                    (Some(meq), None)
-                }
-            } else if pl.use_v {
-                let terms = gs.iter().enumerate().map(|(k, g)| {
-                    let (p, d) = param(k);
-                    (p.relvar[d], p.alpha[d], g.kv, g.kvsq_w2)
-                });
-                (Some(kv), Some(bounds(kv, viirs_variance(terms, meta.ci_scale))))
-            } else {
-                (None, None)
-            };
-            let w = h.filter(|&h| h > 0.0).map(|_| if pl.use_m { 1.0 } else { 0.0 });
-            (h, band, w, meq)
-        };
+        let ctx = MonthCtx { meta, pl: &pl, params: &params, act: &act, gs, model };
+        // A partial month shows what was detected so far; the stored (scaled) values give the projection.
+        let est = month_estimate(&ctx, t, pl.unscale, &mut parts);
+        let projected = if pl.scaled() && est.h.is_some() { month_estimate(&ctx, t, [1.0, 1.0], &mut parts).h } else { None };
+        let (h, band, w_modis, madj) = (est.h, est.band, est.w_modis, est.madj);
+        let [meq, kv, v, nmod, nvii] = scaled_totals(t, pl.unscale);
         let source = if !pl.covered() {
             Source::None
         } else if pl.use_v && (!pl.use_m || w_modis.is_some_and(|w| w < 0.5)) {
@@ -615,6 +678,7 @@ pub fn aggregate(meta: &Meta, store: &Store, dn: Dn, mode: Mode, switch_m: i32) 
         out.provisional.push(meta.provisional(m));
         out.partial.push(pl.partial);
         out.coverage.push(pl.coverage);
+        out.projected.push(projected);
         out.modis_full.push(meta.modis_ok(m) && meta.modis_days(m) >= meta.complete_min);
         out.viirs_full.push(meta.viirs_ok(m) && meta.viirs_days(m) >= meta.complete_min);
     }
@@ -674,6 +738,7 @@ pub fn apply_lens(mo: &mut Monthly, l: &Lens) {
         div(&mut mo.meq[i]);
         div(&mut mo.kv[i]);
         div(&mut mo.madj[i]);
+        div(&mut mo.projected[i]);
         if let Some(b) = &mut mo.band[i] {
             b.iter_mut().for_each(|x| *x /= f);
         }

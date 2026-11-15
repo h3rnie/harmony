@@ -94,7 +94,8 @@ pub fn cell_layer(meta: &Meta, store: &Store, o: &CellLayerOptions) -> CellLayer
         if !pl.covered() {
             continue;
         }
-        let (meq, kv) = (store.meq[r] as f64 / 100.0, store.kv[r] as f64 / 100.0);
+        // A partial month shows what was detected so far, as the series does.
+        let (meq, kv) = (store.meq[r] as f64 / 100.0 * pl.unscale[0], store.kv[r] as f64 / 100.0 * pl.unscale[1]);
         let val = if model {
             let p = meta.strata.get(store.stratum[r] as usize).unwrap_or(&no_params);
             estimate(meta, pl, p, store.dn[r] as usize, meq, kv).h

@@ -1,6 +1,6 @@
 // Vite plugin that serves the AI routes in `vite dev` and `vite preview`, delegating to core.ts.
 //
-//   GET  /api/brief -> 200 { available, ask, provider, model, profile, effort, fallback, cacheTtl, problem, usage }
+//   GET  /api/brief -> 200 { available, ask, provider, model, profile, capReached } (detail and usage go to the log)
 //                      (cheap probe; never an error status; never a secret)
 //   POST /api/brief -> body = the area dossier. 200 application/x-ndjson stream:
 //                      {"type":"delta","field":"headline"|"summary","text"} ... {"type":"reset"}? ... {"type":"done","brief",...meta}
@@ -15,7 +15,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { loadEnv, type Connect, type Plugin, type ResolvedConfig } from 'vite'
 import { ASK_MAX_ANSWER_CHARS, ASK_MAX_QUESTION_CHARS, ASK_MAX_TURNS, DOSSIER_MAX_BYTES } from '../../src/lib/brief/dossierTypes.ts'
-import { AiError, assertSameOrigin, getAnswer, getBrief, getStatus, type AiEnv } from './core.ts'
+import { AiError, assertSameOrigin, getAnswer, getBrief, getStatus, statusLogLine, type AiEnv } from './core.ts'
 
 const ENV_KEYS = [
   'AI_PROVIDER', 'AI_MODEL', 'AI_PROFILE', 'AI_FALLBACK', 'AI_FALLBACK_MODEL', 'AI_CACHE_TTL', 'BRIEF_MODEL',
@@ -70,7 +70,7 @@ export function aiPlugin(opts: { envDir: string }): Plugin {
         log(`${mode} ${err.status} ${err.code} (${err.message})`)
         return json(res, err.status, { error: err.code })
       }
-      if (req.method === 'GET' && mode === 'brief') return json(res, 200, getStatus(readEnv()))
+      if (req.method === 'GET' && mode === 'brief') { log(statusLogLine(readEnv())); return json(res, 200, getStatus(readEnv())) }
       if (req.method !== 'POST') return json(res, 405, { error: 'method_not_allowed' }, { Allow: mode === 'brief' ? 'GET, POST' : 'POST' })
 
       // Requiring a JSON content type forces a CORS preflight on cross-site pages, which we never approve:

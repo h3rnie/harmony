@@ -4,6 +4,9 @@ export const MISSION =
   'Harmony joins two generations of fire-detecting satellites into one consistent record, so anyone responsible for a landscape can see when it burns, which years were extreme, and how this month compares with normal.'
 export const DEDICATION = 'For everyone who works the fire line, the dispatch desk and the long night after.'
 export const AUTHOR = { name: 'Toh Yu Heng', url: 'https://hello.hernie.me', place: 'Singapore' } as const
+
+/** Public source link (build-time `VITE_SOURCE_URL`, optional). Only an http(s) URL is linked; otherwise null. */
+export const SOURCE_URL: string | null = ((raw) => (/^https?:\/\//i.test(raw) ? raw : null))((import.meta.env?.VITE_SOURCE_URL ?? '').trim())
 export const EVENT = 'NASA Space Apps 2026'
 export const CHALLENGE = 'Harmonization of MODIS and VIIRS Hot Spots'
 export const COPYRIGHT_YEAR = 2026

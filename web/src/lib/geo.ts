@@ -143,6 +143,10 @@ const MAX_BBOX_DEG2 = 12_000_000 * 0.05 * 0.05
 
 export const AOI_MSG_ANTIMERIDIAN = 'Areas that cross the 180° meridian are not supported yet — split it in two.'
 export const AOI_MSG_TOO_LARGE = 'This area is too large to analyse; the Global pulse shows the whole planet.'
+/** Smallest circle radius accepted (km): a double-click while drawing gives a zero-size circle. */
+export const MIN_CIRCLE_KM = 1
+export const AOI_MSG_TOO_SMALL = `That circle is too small to analyse; give it a radius of at least ${MIN_CIRCLE_KM} km.`
+export const AOI_MSG_DEGENERATE = 'That outline has too few distinct points to make an area.'
 
 /** True when a ring jumps across the antimeridian (or leaves −180…180), which the record's grid cannot represent. */
 export function crossesAntimeridian(rings: Rings): boolean {
@@ -164,10 +168,12 @@ export function aoiProblem(aoi: Aoi): string | null {
     if (!(sh.e > sh.w)) return AOI_MSG_ANTIMERIDIAN
   }
   if (sh.kind === 'circle') {
+    if (!(Number.isFinite(sh.km) && sh.km >= MIN_CIRCLE_KM)) return AOI_MSG_TOO_SMALL
     const dLon = sh.km / (111.32 * Math.max(0.01, Math.cos((Math.min(89, Math.abs(sh.lat) + sh.km / 111.32) * Math.PI) / 180)))
     if (sh.lon - dLon < -180 || sh.lon + dLon > 180) return AOI_MSG_ANTIMERIDIAN
   }
   if (!aoi.rings.length || aoi.rings[0].length < 4) return 'That outline has too few points to make an area.'
+  if (new Set(aoi.rings[0].map(([x, y]) => `${x},${y}`)).size < 3) return AOI_MSG_DEGENERATE
   if (crossesAntimeridian(aoi.rings)) return AOI_MSG_ANTIMERIDIAN
   const [w, s, e, n] = ringsBbox(aoi.rings)
   if ((e - w) * (n - s) > MAX_BBOX_DEG2) return AOI_MSG_TOO_LARGE

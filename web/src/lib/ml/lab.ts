@@ -11,8 +11,11 @@ export interface Metric { n?: number; r_log1p?: number; log_rmse?: number; bias_
 export interface ModelJson {
   version: number
   generated: string
-  /** Data build (meta.json `generated`) the model was trained on; absent in older model files. */
-  trained_on_build?: string
+  /**
+   * Data build the model was trained on: the build's meta.json `generated` (older files), or an object naming it
+   * (`meta_generated`, `data_through`, `snapshot_taken`, `calib_m_last`, `trained`); absent in the oldest files.
+   */
+  trained_on_build?: string | { meta_generated?: string; data_through?: string; snapshot_taken?: string; calib_m_last?: number; trained?: string }
   n_params: number
   architecture: string
   form: string

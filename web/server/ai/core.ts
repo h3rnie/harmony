@@ -119,36 +119,42 @@ const sha = (...parts: string[]): string => {
   return h.digest('hex')
 }
 
+/**
+ * Public status (GET /api/brief): only what the page needs to offer the brief and Ask. Never a key, and no usage
+ * counters or configuration detail; those go to the server log (`statusLogLine`).
+ */
 export interface AiStatus {
   available: boolean
-  /** Ask Harmony is offered (same condition as `available`: a configured primary provider). */
+  /** Ask Harmony is offered (same condition as `available`: a configured primary provider, cap not reached). */
   ask: boolean
   provider: string | null
   model: string | null
   profile: string
-  effort: string | null
-  fallback: { provider: string; model: string } | null
-  cacheTtl: string
-  problem: string | null
-  /** Since process start: calls, tokens and prompt-cache reads/writes. No secrets. */
-  usage: typeof totals
+  /** The shared daily cap of AI requests is reached (until UTC midnight). */
+  capReached: boolean
 }
 
-export function getStatus(env: AiEnv): AiStatus {
+export function getStatus(env: AiEnv, o: { capReached?: boolean } = {}): AiStatus {
   const cfg = resolveConfig(env)
   const p = cfg.primary
+  const capReached = p != null && o.capReached === true
   return {
-    available: p != null,
-    ask: p != null,
+    available: p != null && !capReached,
+    ask: p != null && !capReached,
     provider: p?.id ?? null,
     model: p?.model ?? null,
     profile: cfg.profile,
-    effort: p?.effort ?? null,
-    fallback: cfg.fallback ? { provider: cfg.fallback.id, model: cfg.fallback.model } : null,
-    cacheTtl: cfg.cacheTtl,
-    problem: cfg.problem,
-    usage: { ...totals },
+    capReached,
   }
+}
+
+/** Server-log line for a status probe: configuration problems and the usage counters since process start. */
+export function statusLogLine(env: AiEnv): string {
+  const cfg = resolveConfig(env)
+  const p = cfg.primary
+  const fb = cfg.fallback ? `${cfg.fallback.id}/${cfg.fallback.model}` : 'none'
+  return `status ${p ? `${p.id}/${p.model} effort=${p.effort ?? '-'}` : `unavailable (${cfg.problem ?? 'unknown'})`} fallback=${fb} ` +
+    `cacheTtl=${cfg.cacheTtl} usage=${JSON.stringify(totals)}`
 }
 
 // ---------------------------------------------------------------- provider orchestration

@@ -39,6 +39,11 @@ class LiveStore {
   private timer: ReturnType<typeof setTimeout> | undefined
   private due = false
   private forAoi: Aoi | null = null
+  /**
+   * The area whose live data has been asked for: the "Right now" section came into view, or the viewer turned live
+   * detections on. Nothing is fetched from /api/live for an area until then (the header badge uses /api/live/status).
+   */
+  private wantedFor: Aoi | null = null
 
   get available(): boolean { return this.status?.available === true }
   get limitDeg2(): number { return this.status?.limits.maxAreaDeg2 ?? 900 }
@@ -72,6 +77,12 @@ class LiveStore {
 
   retry() { this.load() }
 
+  /** Fetch the live data for the current area if it has not been fetched yet (idempotent). */
+  request() {
+    this.wantedFor = session.aoi
+    if (this.forAoi && this.forAoi === session.aoi && this.phase === 'idle' && !this.data) this.load()
+  }
+
   private onAoi(aoi: Aoi | null) {
     if (aoi === this.forAoi) return
     this.forAoi = aoi
@@ -87,7 +98,8 @@ class LiveStore {
       return
     }
     this.window = this.userWindow ?? '24h'
-    this.load()
+    this.phase = 'idle'
+    if (this.wantedFor === aoi) this.load()
   }
 
   async load() {

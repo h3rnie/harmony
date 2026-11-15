@@ -29,8 +29,10 @@ export interface AiStatus {
   provider: string | null
   model: string | null
   profile: string | null
+  /** The shared daily cap of AI requests is reached (the brief and Ask return after UTC midnight). */
+  capReached: boolean
 }
-const OFF: AiStatus = { available: false, ask: false, provider: null, model: null, profile: null }
+const OFF: AiStatus = { available: false, ask: false, provider: null, model: null, profile: null, capReached: false }
 
 export class AiClientError extends Error {
   readonly code: string
@@ -52,6 +54,7 @@ export async function probeAi(signal?: AbortSignal): Promise<AiStatus> {
       provider: typeof b?.provider === 'string' ? b.provider : null,
       model: typeof b?.model === 'string' ? b.model : null,
       profile: typeof b?.profile === 'string' ? b.profile : null,
+      capReached: b?.capReached === true,
     }
   } catch {
     return OFF

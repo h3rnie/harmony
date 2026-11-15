@@ -1,15 +1,19 @@
 import type { Analysis, Meta, MonthIndex, SourceCode } from './kernel/types'
-import { levelFromPercentile, monthOf, toM as toYm, yearOf } from './format'
+import { fmtNum, levelFromPercentile, monthOf, MONTHS_LONG as MONTH_NAMES, toM as toYm, yearOf } from './format'
 
 /** Short per-code labels. Prefer `monthSource`, which also reads the per-month MODIS weight. */
 export const SOURCE_SHORT: Record<SourceCode, string> = { 0: '—', 1: 'Terra-bridged', 2: 'MODIS', 3: 'VIIRS' }
 
 // ---- optional kernel fields (newer kernels; read defensively so older kernels and mocks keep working) ----
 
-export interface InProgress { m: MonthIndex; coverage: number | null; daysCovered: number | null }
+export interface InProgress {
+  m: MonthIndex; coverage: number | null; daysCovered: number | null
+  /** Full-month projection from the days so far (the month's own values are what was detected so far). */
+  projected: number | null
+}
 export interface Activity { meanAnnual: number | null; sparse: boolean; reason: string | null }
 type Extras = {
-  inProgress?: { m?: number; coverage?: number; daysCovered?: number } | null
+  inProgress?: { m?: number; coverage?: number; daysCovered?: number; projected?: number } | null
   activity?: { meanAnnual?: number; sparse?: boolean; reason?: string } | null
 }
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
@@ -22,16 +26,23 @@ const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFi
 export function inProgressOf(a: Analysis): InProgress | null {
   const x = (a as Analysis & Extras).inProgress
   const xm = num(x?.m)
-  if (x && xm != null) return { m: xm, coverage: num(x.coverage), daysCovered: num(x.daysCovered) }
+  if (x && xm != null) return { m: xm, coverage: num(x.coverage), daysCovered: num(x.daysCovered), projected: num(x.projected) }
   const p = a.series.partial
   if (!p) return null
   for (let i = a.months.length - 1; i >= 0; i--) {
     if (a.series.harmonized[i] == null) continue
-    return p[i] && a.months[i] > a.current.m ? { m: a.months[i], coverage: null, daysCovered: null } : null
+    return p[i] && a.months[i] > a.current.m ? { m: a.months[i], coverage: null, daysCovered: null, projected: null } : null
   }
   return null
 }
 export const isInProgress = (a: Analysis, m: MonthIndex): boolean => inProgressOf(a)?.m === m
+
+/**
+ * The in-progress month's values are what was detected so far; when the kernel also gives the full-month projection
+ * (the days so far scaled up to the whole month), it is stated beside them, never in their place: "on pace for about P".
+ */
+export const onPace = (ip: InProgress | null | undefined): string | null =>
+  ip?.projected != null ? `on pace for about ${fmtNum(ip.projected)}` : null
 
 /** Days observed so far in the in-progress month: the kernel's count, else the day of `data_through` in that month. */
 export function inProgressDays(ip: InProgress, meta: Pick<Meta, 'data_through'> | null | undefined): number | null {
@@ -52,6 +63,23 @@ export const isSparse = (a: Analysis): boolean => activityOf(a)?.sparse === true
 export const trendSuppressed = (a: Analysis): boolean => (a.trend as { suppressed?: boolean }).suppressed === true || isSparse(a)
 /** The fire season is not defined here (kernel `season.defined === false`, or a sparse area). */
 export const seasonUndefined = (a: Analysis): boolean => (a.season as { defined?: boolean }).defined === false || isSparse(a)
+/** The season is a single month (the 80 % window is one month long). */
+export const seasonOneMonth = (a: Analysis): boolean => a.season.lengthMonths <= 1 || a.season.startMonth === a.season.endMonth
+
+/**
+ * One sentence on when this area burns; null when no season can be described (kernel `season.defined === false`, or
+ * a sparse area), so nothing is said about a season then. A one-month season reads "Most burning here happens in
+ * November", never "runs November to November"; a window across the new year reads "runs November to February".
+ */
+export function seasonSentence(a: Analysis): string | null {
+  if (seasonUndefined(a)) return null
+  const se = a.season
+  const name = (k: number) => MONTH_NAMES[(k - 1 + 12) % 12]
+  if (se.lengthMonths >= 12) return `Fires occur all year here, peaking in ${name(se.peakMonth)}.`
+  if (seasonOneMonth(a)) return `Most burning here happens in ${name(se.peakMonth)}.`
+  return `The fire season here runs ${name(se.startMonth)} to ${name(se.endMonth)} and peaks in ${name(se.peakMonth)}${se.secondPeak ? ` and ${name(se.secondPeak)}` : ''}.`
+}
+
 /** Mean annual activity for the sparse-area sentence: the kernel's figure, else the mean of complete years. */
 export function meanAnnual(a: Analysis): number | null {
   const k = activityOf(a)?.meanAnnual

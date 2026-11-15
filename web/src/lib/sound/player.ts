@@ -24,6 +24,7 @@ export class SonificationPlayer {
   private offset = 0
   private pumpTimer: ReturnType<typeof setInterval> | undefined
   private posTimer: ReturnType<typeof setInterval> | undefined
+  private idleTimer: ReturnType<typeof setTimeout> | undefined
   private live = new Set<{ src: AudioScheduledSourceNode; gain: GainNode }>()
   private lastKey = ''
   private year: number | null = null
@@ -68,6 +69,7 @@ export class SonificationPlayer {
       let seed = 1
       for (let i = 0; i < len; i++) { seed = (seed * 16807) % 2147483647; ch[i] = (seed / 2147483647) * 2 - 1 }
     }
+    clearTimeout(this.idleTimer)
     if (this.ctx.state === 'suspended') await this.ctx.resume()
     if (this.offset >= this.schedule.duration) { this.offset = 0; this.next = 0 }
     const now = this.ctx.currentTime
@@ -101,6 +103,7 @@ export class SonificationPlayer {
 
   async dispose() {
     this.stop()
+    clearTimeout(this.idleTimer)
     const c = this.ctx
     this.ctx = null; this.master = null
     if (c) try { await c.close() } catch { /* already closed */ }
@@ -125,6 +128,13 @@ export class SonificationPlayer {
       this.master.gain.cancelScheduledValues(now)
       this.master.gain.setTargetAtTime(0, now, 0.02)
     }
+    // Once the fade-out has finished, suspend the context so the audio device is released while nothing plays;
+    // play() resumes it.
+    const c = this.ctx
+    clearTimeout(this.idleTimer)
+    this.idleTimer = setTimeout(() => {
+      if (!this.playing && this.ctx === c && c.state === 'running') c.suspend().catch(() => { /* closed */ })
+    }, 250)
   }
 
   private pump() {

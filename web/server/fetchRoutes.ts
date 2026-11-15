@@ -17,7 +17,7 @@
 import { promisify } from 'node:util'
 import zlib from 'node:zlib'
 import { ASK_MAX_ANSWER_CHARS, ASK_MAX_QUESTION_CHARS, ASK_MAX_TURNS, DOSSIER_MAX_BYTES } from '../src/lib/brief/dossierTypes.ts'
-import { AiError, assertSameOrigin as aiSameOrigin, getAnswer, getBrief, getStatus, type AiEnv } from './ai/core.ts'
+import { AiError, assertSameOrigin as aiSameOrigin, getAnswer, getBrief, getStatus, statusLogLine, type AiEnv } from './ai/core.ts'
 import { clientIp, dailyCap, dailyUsed, getStore, secondsToUtcMidnight, takeDailySlot, takeVisitorSlot, visitorId, type LimitsEnv } from './limits.ts'
 import { LiveError, assertSameOrigin as liveSameOrigin, getLive, liveMaxAge, liveStatus, redact, type LiveEnv } from './liveCore.ts'
 
@@ -184,12 +184,9 @@ export async function handleAi(req: Request, env: ServerEnv, mode: 'brief' | 'as
     const cap = dailyCap(env)
 
     if (req.method === 'GET' && mode === 'brief') {
-      const status = getStatus(aiEnv)
-      if (status.available) {
-        const used = await dailyUsed(store)
-        if (used >= cap) return json(200, { ...status, available: false, ask: false, problem: 'daily_cap' })
-      }
-      return json(200, status)
+      say(statusLogLine(aiEnv))
+      const capReached = getStatus(aiEnv).available && (await dailyUsed(store)) >= cap
+      return json(200, getStatus(aiEnv, { capReached }))
     }
     if (req.method !== 'POST') return json(405, { error: 'method_not_allowed' }, { Allow: mode === 'brief' ? 'GET, POST' : 'POST' })
 

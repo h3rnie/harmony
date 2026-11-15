@@ -179,6 +179,8 @@ pub struct Meta {
     drift_raw: Value,
     #[serde(default, rename = "conformal")]
     conformal_raw: Value,
+    #[serde(default, rename = "method")]
+    method_raw: Value,
     #[serde(skip)]
     pub fit_window_m: Option<[i32; 2]>,
     /// Correlation of the MODIS and VIIRS stratum-coherent error components, `[day, night]`.
@@ -188,12 +190,24 @@ pub struct Meta {
     pub drift: Option<Drift>,
     #[serde(skip)]
     pub conformal: Option<Conformal>,
+    /// Coverage from which the pipeline scaled a month by 1/coverage
+    /// (`method.coverage_correction.min_cov`; absent: [`MIN_COVERAGE`]).
+    #[serde(skip)]
+    pub cov_min: f64,
+    /// Cap of that scaling (`method.coverage_correction.max_factor`; absent: [`MAX_COVERAGE_FACTOR`]).
+    #[serde(skip)]
+    pub cov_max_factor: f64,
 }
 
-/// Coverage from which a stream is coverage-corrected and used in the fusion. The pipeline
-/// (`calibrate.py`, `COV_MIN`) scales a month by 1/coverage (at most ×2) only from this threshold
-/// and leaves it raw below; in fused mode a stream below it is dropped when the other one reaches it.
+/// Default coverage from which a stream is coverage-corrected and used in the fusion. The pipeline
+/// (`calibrate.py` `cf`, `config.COV_MIN`, written as `method.coverage_correction.min_cov`) scales a
+/// month by 1/coverage (at most [`MAX_COVERAGE_FACTOR`]) only from this threshold and leaves it raw
+/// below; in fused mode a stream below it is dropped when the other one reaches it.
 pub const MIN_COVERAGE: f64 = 0.5;
+
+/// Default cap of the pipeline's 1/coverage scaling (`config.COV_MAX_CORR`, written as
+/// `method.coverage_correction.max_factor`).
+pub const MAX_COVERAGE_FACTOR: f64 = 2.0;
 
 /// Default day coverage from which a month drives statistics (`meta.complete_min_coverage`,
 /// pipeline `config.COV_COMPLETE`). A month whose serving stream(s) delivered data on fewer of
@@ -365,7 +379,16 @@ impl Meta {
         meta.kappa = pair(&meta.fusion_raw["kappa"]).map(|k| k.min(1.0));
         meta.drift = parse_drift(&meta.drift_raw);
         meta.conformal = parse_conformal(&meta.conformal_raw);
-        for raw in [&mut meta.fit_window_raw, &mut meta.fusion_raw, &mut meta.drift_raw, &mut meta.conformal_raw] {
+        let cc = &meta.method_raw["coverage_correction"];
+        meta.cov_min = cc["min_cov"].as_f64().filter(|x| x.is_finite() && (0.0..=1.0).contains(x)).unwrap_or(MIN_COVERAGE);
+        meta.cov_max_factor = cc["max_factor"].as_f64().filter(|x| x.is_finite() && *x >= 1.0).unwrap_or(MAX_COVERAGE_FACTOR);
+        for raw in [
+            &mut meta.fit_window_raw,
+            &mut meta.fusion_raw,
+            &mut meta.drift_raw,
+            &mut meta.conformal_raw,
+            &mut meta.method_raw,
+        ] {
             *raw = Value::Null;
         }
         Ok(meta)
@@ -396,14 +419,42 @@ impl Meta {
         self.in_record(m) && m >= self.viirs_start_m && month_value(&self.months.cov_viirs, m, 1.0) > 0.0
     }
 
-    /// MODIS coverage of month `m` is at least [`MIN_COVERAGE`].
+    /// MODIS coverage of month `m` is at least `cov_min` (it was coverage-corrected).
     pub fn modis_full(&self, m: i32) -> bool {
-        self.modis_ok(m) && month_value(&self.months.cov_modis, m, 1.0) >= MIN_COVERAGE
+        self.modis_ok(m) && month_value(&self.months.cov_modis, m, 1.0) >= self.cov_min
     }
 
-    /// Calibrated VIIRS coverage of month `m` is at least [`MIN_COVERAGE`].
+    /// Calibrated VIIRS coverage of month `m` is at least `cov_min` (it was coverage-corrected).
     pub fn viirs_full(&self, m: i32) -> bool {
-        self.viirs_ok(m) && month_value(&self.months.cov_viirs, m, 1.0) >= MIN_COVERAGE
+        self.viirs_ok(m) && month_value(&self.months.cov_viirs, m, 1.0) >= self.cov_min
+    }
+
+    /// The pipeline's coverage-correction factor for a coverage: `min(1/cov, cov_max_factor)` from
+    /// `cov_min`, 1 below it (`calibrate.py` `cf`).
+    pub fn coverage_factor(&self, cov: f64) -> f64 {
+        if cov.is_finite() && cov > 0.0 && cov >= self.cov_min {
+            (1.0 / cov).min(self.cov_max_factor).max(1.0)
+        } else {
+            1.0
+        }
+    }
+
+    /// Factor by which the stored MODIS-derived values of month `m` were scaled. The pipeline divides
+    /// by the union-aware Terra∪Aqua coverage (per overpass), gated on `cov_modis`; `cov_modis` is used
+    /// here, which equals it when both satellites stop on the same day (a month in progress).
+    pub fn modis_factor(&self, m: i32) -> f64 {
+        if !self.modis_ok(m) {
+            return 1.0;
+        }
+        self.coverage_factor(month_value(&self.months.cov_modis, m, 1.0))
+    }
+
+    /// Factor by which the stored VIIRS values (`v`, `kv`) of month `m` were scaled (1/`cov_viirs`).
+    pub fn viirs_factor(&self, m: i32) -> f64 {
+        if !self.viirs_ok(m) {
+            return 1.0;
+        }
+        self.coverage_factor(month_value(&self.months.cov_viirs, m, 1.0))
     }
 
     /// Fraction of the days of month `m` on which MODIS delivered data (`months.days_modis`,
@@ -501,5 +552,30 @@ mod tests {
         let m = Meta::parse(&bare.to_string()).unwrap();
         assert!(m.drift.is_none() && m.conformal.is_none() && m.fit_window_m.is_none() && !m.has_err_model());
         assert_eq!(m.viirs_era(5), 0);
+    }
+
+    #[test]
+    fn coverage_correction_rule_from_meta_or_defaults() {
+        let base = |cc: serde_json::Value| {
+            serde_json::json!({ "m_first": 10, "m_last": 12, "aqua_start_m": 30, "viirs_start_m": 11,
+                "levels": [{ "level": 0, "cell_deg": 0.05, "tile_deg": 2.5 }],
+                "months": { "cov_modis": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0.4833, 0.75],
+                            "cov_viirs": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0.5, 0.25] },
+                "method": { "coverage_correction": cc } })
+            .to_string()
+        };
+        let m = Meta::parse(&base(serde_json::json!(null))).unwrap();
+        assert_eq!((m.cov_min, m.cov_max_factor), (MIN_COVERAGE, MAX_COVERAGE_FACTOR));
+        assert_eq!((m.modis_factor(10), m.viirs_factor(10)), (1.0, 1.0));
+        assert_eq!((m.modis_factor(11), m.viirs_factor(11)), (1.0, 2.0)); // 0.4833 < 0.5: never scaled
+        assert!((m.modis_factor(12) - 1.0 / 0.75).abs() < 1e-12);
+        assert_eq!(m.viirs_factor(12), 1.0);
+        assert_eq!(m.coverage_factor(0.1), 1.0);
+        assert_eq!(m.coverage_factor(f64::NAN), 1.0);
+        let m = Meta::parse(&base(serde_json::json!({ "min_cov": 0.4, "max_factor": 1.5 }))).unwrap();
+        assert_eq!((m.modis_factor(11), m.viirs_factor(11)), (1.5, 1.5));
+        assert!(m.modis_full(11));
+        let bad = Meta::parse(&base(serde_json::json!({ "min_cov": 7, "max_factor": 0.2 }))).unwrap();
+        assert_eq!((bad.cov_min, bad.cov_max_factor), (MIN_COVERAGE, MAX_COVERAGE_FACTOR));
     }
 }

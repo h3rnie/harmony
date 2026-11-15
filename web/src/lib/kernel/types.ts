@@ -292,6 +292,11 @@ export interface InProgress {
   /** round(coverage x daysInMonth). */
   daysCovered: number
   daysInMonth?: number
+  /**
+   * The month's values are what was detected so far; this is the full-month projection the pipeline stored
+   * (scaled by 1/coverage, at most x2): "on pace for about P". Absent when the month was not scaled.
+   */
+  projected?: number
 }
 
 export interface Analysis {

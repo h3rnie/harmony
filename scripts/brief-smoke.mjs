@@ -206,8 +206,8 @@ const showAsk = (title, q, r) => {
 async function httpTests() {
   const status = await fetch(URL_BASE + '/api/brief').then((r) => r.json()).catch(() => null)
   if (!status) { console.error(`Cannot reach ${URL_BASE}/api/brief. Start: pnpm --dir web dev --port 5196 --strictPort`); process.exit(2) }
-  console.log('GET /api/brief status:', JSON.stringify({ ...status, usage: undefined }))
-  console.log('server usage totals:', JSON.stringify(status.usage))
+  console.log('GET /api/brief status:', JSON.stringify(status))
+  ok(!('usage' in status) && !('problem' in status) && !('fallback' in status), 'GET /api/brief carries no usage counters or config detail')
 
   if (flag('expect-no-key')) {
     ok(status.available === false && status.ask === false, 'status reports available:false / ask:false without a key')
@@ -489,6 +489,13 @@ async function offlineTests() {
   ok(cfg({ ANTHROPIC_API_KEY: 'k', AI_PROVIDER: 'bogus' }).problem === 'bad_provider', 'config: unknown provider -> bad_config')
   const st = C.getStatus({ ANTHROPIC_API_KEY: 'sk-ant-SECRET-1234' })
   ok(!JSON.stringify(st).includes('SECRET') && st.available && st.ask && st.provider === 'anthropic', 'status: names provider/model/profile, never the key')
+  ok(JSON.stringify(Object.keys(st).sort()) === JSON.stringify(['ask', 'available', 'capReached', 'model', 'profile', 'provider']),
+    `status: only the fields the page needs, no usage counters or config detail (got ${Object.keys(st).join(', ')})`)
+  const capped = C.getStatus({ ANTHROPIC_API_KEY: 'k' }, { capReached: true })
+  ok(capped.capReached && !capped.available && !capped.ask, 'status: daily cap reached -> capReached, not available')
+  ok(C.getStatus({}, { capReached: true }).capReached === false && C.getStatus({}).available === false, 'status: no key -> unavailable, cap not reported')
+  ok(/usage=\{"requests":\d+/.test(C.statusLogLine({ ANTHROPIC_API_KEY: 'sk-ant-SECRET-1234' })) && !C.statusLogLine({ ANTHROPIC_API_KEY: 'sk-ant-SECRET-1234' }).includes('SECRET'),
+    'status log line carries the usage counters (server log only), never the key')
   C.resetAiState()
   const nk = await C.getBrief(d, {}).then(() => null, (e) => e)
   ok(nk?.status === 503 && nk?.code === 'no_key', `core: no key -> 503 no_key (got ${nk?.status} ${nk?.code})`)
