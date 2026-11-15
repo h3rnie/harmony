@@ -66,7 +66,7 @@ const rgba = (hex: string, a = 1): RGBA => { const [r, g, b] = parseColor(hex); 
 export function palette(theme: Theme): Palette {
   return theme === 'dark'
     ? { bg: rgba('#0a0d12'), ocean: rgba('#0b1017'), land: rgba('#1c2430'), grid: rgba('#8ca0be', 0.08), rim: rgba('#6aa8ec', 0.5), light: false, glow: 1.15 }
-    : { bg: rgba('#f3f1ec'), ocean: rgba('#d9dee3'), land: rgba('#c4bfb2'), grid: rgba('#3c4658', 0.09), rim: rgba('#7fa6d4', 0.3), light: true, glow: 0.55 }
+    : { bg: rgba('#f6f7f9'), ocean: rgba('#dde2e8'), land: rgba('#c3c8cf'), grid: rgba('#3c4658', 0.09), rim: rgba('#7fa6d4', 0.3), light: true, glow: 0.55 }
 }
 
 /** 256 x 2 RGBA ramp: row 0 sequential (inferno, app's ramp), row 1 diverging (blue <-> orange). */

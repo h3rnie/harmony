@@ -210,19 +210,19 @@
 </section>
 
 <style>
-  .seam { padding: 26px 0 22px; border-bottom: 1px solid var(--rule); }
+  .seam { padding: var(--sec-pad); border-bottom: 1px solid var(--rule); }
   .head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
-  .toggle button { min-height: 34px; padding: 0 14px; font-size: 0.86rem; }
+  .toggle button { min-height: 34px; padding: 0 14px; font-size: var(--fs-md); }
   .lede { color: var(--ink-2); max-width: 62ch; margin: 10px 0 12px; min-height: 3em; }
   .nums { display: flex; flex-wrap: wrap; gap: 8px 26px; align-items: flex-end; margin-bottom: 8px; }
   .nums > div { display: grid; }
-  .nums strong { font-size: 1.45rem; font-weight: 600; letter-spacing: -0.03em; }
+  .nums strong { font-size: var(--fs-stat); font-weight: 600; letter-spacing: -0.03em; }
   .ov { align-self: end; }
   .chart { position: relative; width: 100%; }
   svg { display: block; overflow: visible; touch-action: pan-y; }
   .grid { stroke: var(--rule); stroke-width: 1; }
-  .axis text, .xt, .unit, .era-l { font-family: var(--font-num); font-size: 10px; fill: var(--ink-3); }
-  .unit { font-family: var(--font-ui); font-size: 11px; }
+  .axis text, .xt, .unit, .era-l { font-family: var(--font-num); font-size: var(--fs-xs); fill: var(--ink-3); }
+  .unit { font-family: var(--font-ui); font-size: var(--fs-sm); }
   .era { stroke: var(--ink-3); stroke-width: 1; }
   .era.sw { stroke: var(--ink-2); }
   .band80 { fill: var(--band-80); }
@@ -236,18 +236,18 @@
   .tip {
     position: absolute; top: 18px; pointer-events: none; z-index: 5; min-width: 180px;
     background: var(--surface); border: 1px solid var(--rule-strong); border-radius: var(--radius); box-shadow: var(--shadow);
-    padding: 6px 9px; font-size: 0.76rem;
+    padding: 6px 9px; font-size: var(--fs-sm);
   }
   .tip p { margin: 0; display: flex; align-items: center; gap: 6px; }
   .tip .num { margin-left: auto; padding-left: 10px; }
   .tt { font-weight: 600; margin-bottom: 3px !important; }
   .foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
-  .keys { list-style: none; display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0; padding: 0; font-size: 0.76rem; color: var(--ink-2); }
+  .keys { list-style: none; display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0; padding: 0; font-size: var(--fs-sm); color: var(--ink-2); }
   .keys li { display: flex; align-items: center; gap: 6px; }
   .sw { display: inline-block; width: 14px; height: 2px; background: var(--ink); flex: none; }
   .sw.modis { background: var(--s-modis); }
   .sw.viirs { background: var(--s-viirs); }
   .sw.harm { background: var(--s-harm); height: 3px; }
   .sw.band { height: 9px; background: var(--band-80); }
-  .slider { display: grid; gap: 2px; font-size: 0.8rem; color: var(--ink-2); min-width: 240px; }
+  .slider { display: grid; gap: 2px; font-size: var(--fs-sm); color: var(--ink-2); min-width: 240px; }
 </style>

@@ -26,7 +26,7 @@
 
 <style>
   .yr { display: flex; align-items: center; gap: 8px; min-width: 0; }
-  .val { font-size: 0.8rem; color: var(--ink); min-width: 6.6em; }
+  .val { font-size: var(--fs-sm); color: var(--ink); min-width: 6.6em; }
   .track { position: relative; flex: 1; min-width: 110px; height: 24px; }
   .track::before { content: ''; position: absolute; left: 0; right: 0; top: 11px; height: 2px; background: var(--rule-strong); border-radius: 1px; }
   .fill { position: absolute; top: 11px; height: 2px; background: var(--ink-2); }

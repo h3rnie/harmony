@@ -286,7 +286,7 @@
 </section>
 
 <style>
-  .cal-section { padding: 26px 0 22px; border-bottom: 1px solid var(--rule); }
+  .cal-section { padding: var(--sec-pad); border-bottom: 1px solid var(--rule); }
   .head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
   .opts { display: flex; gap: 12px; align-items: center; }
   .chk { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
@@ -299,10 +299,10 @@
   @keyframes reveal { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
   .row.header { animation: none; }
   .row.switch .cal-cell { box-shadow: 0 -2px 0 0 var(--bg), 0 -3px 0 0 var(--ink-3); }
-  .yl { font-size: 0.72rem; color: var(--ink-3); align-self: center; text-align: right; padding-right: 6px; }
-  .mh { font-size: 0.68rem; color: var(--ink-3); text-align: center; text-transform: uppercase; letter-spacing: 0.06em; }
+  .yl { font-size: var(--fs-xs); color: var(--ink-3); align-self: center; text-align: right; padding-right: 6px; }
+  .mh { font-size: var(--fs-xs); color: var(--ink-3); text-align: center; text-transform: uppercase; letter-spacing: 0.06em; }
   .mh .ini { display: none; }
-  .ah { font-size: 0.68rem; color: var(--ink-3); padding-left: 6px; text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap; overflow: hidden; }
+  .ah { font-size: var(--fs-xs); color: var(--ink-3); padding-left: 6px; text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap; overflow: hidden; }
   .cal-cell {
     position: relative; height: 18px; border-radius: 2px; cursor: pointer; display: grid; place-items: center; overflow: hidden;
     outline-offset: 1px;
@@ -318,20 +318,20 @@
   .cal-cell.focus { box-shadow: inset 0 0 0 2px var(--bg), 0 0 0 2px var(--ink); z-index: 2; }
   .cal-cell.focus.current { box-shadow: inset 0 0 0 2px var(--bg), 0 0 0 2px var(--ink), 0 0 0 4px var(--accent); }
   .cal-cell:focus-visible { outline: 2px solid var(--focus); z-index: 3; }
-  .n { font-size: 0.6rem; font-weight: 500; letter-spacing: -0.03em; position: relative; z-index: 1; }
+  .n { font-size: var(--fs-2xs); font-weight: 500; letter-spacing: -0.03em; position: relative; z-index: 1; }
   .mk { position: absolute; pointer-events: none; }
   .mk.terra { top: 3px; left: 3px; width: 4px; height: 4px; border-radius: 50%; background: currentColor; opacity: 0.8; }
   .mk.viirs { top: 0; right: 0; width: 7px; height: 7px; background: currentColor; opacity: 0.55; clip-path: polygon(0 0, 100% 0, 100% 100%); }
   .row.median { margin-top: 6px; animation: none; }
-  .row.median .yl { color: var(--ink-2); font-size: 0.7rem; }
+  .row.median .yl { color: var(--ink-2); font-size: var(--fs-xs); }
   .med { cursor: default; height: 14px; }
   .nums .med { height: 20px; }
   .ann { position: relative; display: flex; align-items: center; gap: 4px; padding-left: 6px; min-width: 0; overflow: hidden; }
   .ann .bar { display: block; height: 8px; min-width: 1px; background: var(--ink-3); border-radius: 0 2px 2px 0; flex: none; }
   .ann .bar.partial { background: repeating-linear-gradient(135deg, var(--ink-3) 0 2px, transparent 2px 4px); box-shadow: inset 0 0 0 1px var(--ink-3); }
-  .rk { font-size: 0.64rem; color: var(--ink-2); white-space: nowrap; }
+  .rk { font-size: var(--fs-xs); color: var(--ink-2); white-space: nowrap; }
   .rk.partial-l { color: var(--ink-3); }
-  .ann.bl { font-family: var(--font-num); font-size: 0.66rem; }
+  .ann.bl { font-family: var(--font-num); font-size: var(--fs-xs); }
 
   @container (max-width: 520px) {
     .mh .full { display: none; }
@@ -345,10 +345,10 @@
   .tip {
     position: absolute; z-index: 30; transform: translate(-50%, -100%); pointer-events: none;
     background: var(--surface); border: 1px solid var(--rule-strong); border-radius: var(--radius); box-shadow: var(--shadow);
-    padding: 8px 10px; min-width: 210px; font-size: 0.78rem;
+    padding: 8px 10px; min-width: 210px; font-size: var(--fs-sm);
   }
   .tip.below { transform: translate(-50%, 0); }
-  .tt { font-weight: 600; margin: 0 0 4px; font-size: 0.85rem; }
+  .tt { font-weight: 600; margin: 0 0 4px; font-size: var(--fs-md); }
   .tip dl { display: grid; grid-template-columns: auto 1fr; gap: 1px 12px; margin: 0; }
   .tip dt { color: var(--ink-3); }
   .tip dd { margin: 0; text-align: right; }
@@ -356,9 +356,9 @@
   .legend { display: flex; flex-wrap: wrap; gap: 14px 28px; align-items: flex-start; margin-top: 14px; }
   .ramp { width: min(300px, 100%); }
   .ramp .bar { height: 10px; border-radius: 2px; }
-  .ticks { display: flex; justify-content: space-between; font-size: 0.68rem; color: var(--ink-3); margin-top: 2px; }
-  .cap { font-size: 0.72rem; color: var(--ink-3); margin: 2px 0 0; }
-  .keys { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 4px 18px; flex: 1; font-size: 0.74rem; color: var(--ink-2); }
+  .ticks { display: flex; justify-content: space-between; font-size: var(--fs-xs); color: var(--ink-3); margin-top: 2px; }
+  .cap { font-size: var(--fs-xs); color: var(--ink-3); margin: 2px 0 0; }
+  .keys { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 4px 18px; flex: 1; font-size: var(--fs-sm); color: var(--ink-2); }
   .keys li { display: flex; align-items: center; gap: 8px; }
   .sw { position: relative; width: 18px; height: 12px; border-radius: 2px; background: var(--surface-3); color: var(--ink); flex: none; }
   .prov-sw { background: repeating-linear-gradient(135deg, var(--surface-3) 0 3px, var(--hatch) 3px 4.5px); }
@@ -367,7 +367,7 @@
   .note { margin: 10px 0 0; }
 
   .table-wrap { overflow-x: auto; max-height: 560px; overflow-y: auto; border-top: 1px solid var(--rule); }
-  .cal-table { width: 100%; font-size: 0.74rem; }
+  .cal-table { width: 100%; font-size: var(--fs-sm); }
   .cal-table caption { text-align: left; padding: 6px 0; caption-side: top; }
   .cal-table th, .cal-table td { padding: 3px 6px; text-align: right; border-bottom: 1px solid var(--rule); white-space: nowrap; }
   .cal-table thead th { position: sticky; top: 0; background: var(--bg); color: var(--ink-3); font-weight: 500; }

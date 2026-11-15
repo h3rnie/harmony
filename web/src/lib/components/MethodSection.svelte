@@ -125,7 +125,7 @@
 </section>
 
 <style>
-  .method { padding: 26px 0 22px; border-bottom: 1px solid var(--rule); scroll-margin-top: calc(var(--header-h) + 80px); }
+  .method { padding: var(--sec-pad); border-bottom: 1px solid var(--rule); scroll-margin-top: calc(var(--header-h) + 80px); }
   .disclosure { display: inline-flex; align-items: center; gap: 8px; background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--ink); cursor: pointer; }
   .disclosure svg { transition: transform 0.2s; }
   .disclosure svg.open { transform: rotate(90deg); }
@@ -133,13 +133,13 @@
   .unit { color: var(--ink-2); }
   .steps { padding-left: 1.3em; display: grid; gap: 8px; color: var(--ink-2); }
   .steps strong, .unit strong { color: var(--ink); }
-  h3 { margin: 18px 0 8px; font-size: 0.95rem; }
+  h3 { margin: 18px 0 8px; font-size: var(--fs-base); }
   .head-nums { display: flex; flex-wrap: wrap; gap: 10px 26px; margin: 0 0 10px; }
-  .head-nums dd { margin: 0; font-size: 1.3rem; font-weight: 600; }
+  .head-nums dd { margin: 0; font-size: var(--fs-stat); font-weight: 600; }
   .vt-wrap { max-height: 360px; overflow: auto; margin-top: 8px; }
-  .vt { width: 100%; font-size: 0.76rem; }
+  .vt { width: 100%; font-size: var(--fs-sm); }
   .vt th, .vt td { text-align: left; padding: 2px 6px; border-bottom: 1px solid var(--rule); font-weight: 400; }
   .vt th { color: var(--ink-3); }
-  summary { cursor: pointer; color: var(--ink-2); font-size: 0.86rem; }
+  summary { cursor: pointer; color: var(--ink-2); font-size: var(--fs-md); }
   .caveats { color: var(--ink-2); padding-left: 1.2em; display: grid; gap: 4px; }
 </style>

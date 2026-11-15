@@ -77,25 +77,25 @@
 </section>
 
 <style>
-  .outlook { padding: 26px 0 22px; border-bottom: 1px solid var(--rule); }
+  .outlook { padding: var(--sec-pad); border-bottom: 1px solid var(--rule); }
   .lede { color: var(--ink-2); max-width: 68ch; margin: 8px 0 12px; }
   .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0; margin-bottom: 12px; }
   .card { display: grid; gap: 1px; padding: 0 14px; border-left: 1px solid var(--rule); }
   .card:first-child { border-left: 0; padding-left: 0; }
-  .card strong { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.03em; }
+  .card strong { font-size: var(--fs-stat); font-weight: 600; letter-spacing: -0.03em; }
   svg { display: block; overflow: hidden; }
   .grid { stroke: var(--rule); }
-  .tk { font-family: var(--font-num); font-size: 10px; fill: var(--ink-3); }
+  .tk { font-family: var(--font-num); font-size: var(--fs-xs); fill: var(--ink-3); }
   .future { fill: var(--surface-2); opacity: 0.6; }
   .clim { fill: none; stroke: var(--ink-3); stroke-width: 1.5; }
   .past { fill: none; stroke: var(--ink); stroke-width: 2; }
   .pdot { fill: var(--ink); stroke: var(--bg); stroke-width: 2; }
-  .whisk, .cap { stroke: var(--accent); stroke-width: 2; stroke-linecap: round; }
-  .odot { fill: var(--bg); stroke: var(--accent); stroke-width: 2.5; }
-  .keys { list-style: none; display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 6px 0 0; padding: 0; font-size: 0.74rem; color: var(--ink-2); }
+  .whisk, .cap { stroke: var(--ink-2); stroke-width: 2; stroke-linecap: round; }
+  .odot { fill: var(--bg); stroke: var(--ink); stroke-width: 2.5; }
+  .keys { list-style: none; display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 6px 0 0; padding: 0; font-size: var(--fs-sm); color: var(--ink-2); }
   .keys li { display: flex; align-items: center; gap: 6px; }
   .sw { display: inline-block; width: 14px; height: 2px; }
   .past-sw { background: var(--ink); }
-  .o-sw { background: var(--accent); height: 8px; width: 8px; border-radius: 50%; box-shadow: inset 0 0 0 2px var(--accent); background: var(--bg); }
+  .o-sw { height: 8px; width: 8px; border-radius: 50%; box-shadow: inset 0 0 0 2px var(--ink); background: var(--bg); }
   .clim-sw { background: var(--ink-3); }
 </style>

@@ -38,14 +38,16 @@
 
 <style>
   .legend {
-    position: absolute; left: 12px; bottom: 40px; z-index: 2; width: 236px; max-width: calc(100% - 70px);
-    background: color-mix(in srgb, var(--surface) 92%, transparent); border: 1px solid var(--rule-strong);
-    border-radius: var(--radius); padding: 8px 10px; backdrop-filter: blur(6px); box-shadow: var(--shadow);
+    position: absolute; left: 12px; bottom: 34px; z-index: 2; width: 252px; max-width: calc(100% - 70px);
+    background: var(--overlay-bg); border: 1px solid var(--rule-strong);
+    border-radius: var(--radius); padding: 8px 10px; backdrop-filter: blur(6px); box-shadow: var(--shadow-sm);
   }
-  .row { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-bottom: 6px; }
-  .seg button { min-height: 24px; font-size: 0.74rem; padding: 0 6px; }
-  .bar { height: 10px; border-radius: 2px; }
-  .ticks { display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--ink-3); margin-top: 2px; }
-  .unit { font-size: 0.7rem; color: var(--ink-3); margin: 3px 0 0; }
-  .readout { margin: 4px 0 0; font-size: 0.78rem; color: var(--ink); }
+  .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 7px; }
+  .seg { flex: none; }
+  .seg button { min-height: 24px; font-size: var(--fs-sm); padding: 0 7px; white-space: nowrap; }
+  .bar { height: 8px; border-radius: 1px; }
+  .ticks { display: flex; justify-content: space-between; font-size: var(--fs-xs); color: var(--ink-3); margin-top: 3px; }
+  .unit { font-size: var(--fs-xs); color: var(--ink-3); margin: 3px 0 0; line-height: 1.4; }
+  @container map (max-width: 620px) { .legend { width: 212px; padding: 6px 8px; } .unit { display: none; } }
+  .readout { margin: 4px 0 0; font-size: var(--fs-sm); color: var(--ink); }
 </style>

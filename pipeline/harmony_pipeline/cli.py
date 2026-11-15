@@ -4,7 +4,8 @@
   uv run python -m harmony_pipeline.cli <stage> [--force]
 
 Stages run in order: normalize, availability, static_mask, afcd, strata, calibrate, tiles, points,
-overview, verify. `--countries` selects a regional run (normalize only; later stages follow the run
+overview, verify. `ml` (ML challenger, ml_challenger.py) is not part of `all`; run it by name.
+`--countries` selects a regional run (normalize only; later stages follow the run
 manifest data/work/run.json). Without it the run is global. Each stage skips work whose outputs are
 newer than its inputs unless --force. fetch-country / fetch-api download raw data (not part of all).
 """
@@ -18,7 +19,8 @@ import time
 STAGES = ["normalize", "availability", "static_mask", "afcd", "strata", "calibrate",
           "build_tiles", "build_points", "overview", "verify"]
 ALIASES = {"tiles": "build_tiles", "points": "build_points", "static-mask": "static_mask",
-           "mask": "static_mask", "cube": "afcd"}
+           "mask": "static_mask", "cube": "afcd",
+           "ml": "ml_challenger"}           # ml: not part of `all` (run explicitly)
 
 
 def run_stage(name: str, args) -> float:
@@ -51,7 +53,7 @@ def main(argv: list[str] | None = None) -> int:
     stage = ALIASES.get(args.stage, args.stage)
     if stage == "all":
         todo = STAGES[STAGES.index(ALIASES.get(args.start, args.start)):] if args.start else STAGES
-    elif stage in STAGES:
+    elif stage in STAGES or stage == "ml_challenger":
         todo = [stage]
     else:
         ap.error(f"unknown stage {args.stage}")

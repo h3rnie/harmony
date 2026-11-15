@@ -1,0 +1,906 @@
+<title>Harmony Brand Directions</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya:ital,wght@0,500;0,700;1,500&family=Alegreya+Sans:ital,wght@0,400;0,500;0,700;1,400&family=Archivo:wdth,wght@62..125,400..900&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Schibsted+Grotesk:wght@400;500;600&display=swap">
+<style>
+/* Layout: one comparison grid. Rows follow the brief (1 mark ... 8 trade-off); columns are directions A, B, C,
+   each drawn on its own fixed ground. Only the neutral page chrome follows the viewer's theme. */
+:root{
+  --pg:#eceef1; --pg-2:#e2e5e9; --ink:#14171c; --ink-2:#4b525d; --ink-3:#5b626d; --rule:#cdd2d9; --edge:rgba(20,23,28,.16);
+  --f-chrome:'Instrument Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --f-label:'IBM Plex Mono', ui-monospace, 'Cascadia Mono', 'SF Mono', Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){ --pg:#0e1013; --pg-2:#15181c; --ink:#e6e8eb; --ink-2:#a3aab4; --ink-3:#8a919c; --rule:#2a2f36; --edge:rgba(255,255,255,.12); color-scheme: dark; }
+}
+:root[data-theme="dark"]{ --pg:#0e1013; --pg-2:#15181c; --ink:#e6e8eb; --ink-2:#a3aab4; --ink-3:#8a919c; --rule:#2a2f36; --edge:rgba(255,255,255,.12); color-scheme: dark; }
+
+/* Direction tokens: fixed palettes, never theme-dependent. */
+.dA{ --g:#0a0d12; --s:#121720; --r:#232b37; --t:#eceef2; --m:#8b94a5; --x:#ff8a4c;
+  --gd:#0a0d12; --td:#eceef2; --md:#8b94a5; --gl:#f6f7f9; --tl:#0d1015; --ml:#586070; --xl:#c2410c;
+  --fd:'Barlow', 'D-DIN', 'Arial Narrow', ui-sans-serif, sans-serif;
+  --fu:'Schibsted Grotesk', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --fn:'JetBrains Mono', ui-monospace, 'Cascadia Mono', 'SF Mono', Consolas, monospace; }
+.dB{ --g:#0c1a2e; --s:#142640; --r:#27406a; --t:#f4ead6; --m:#a8b3c6; --x:#f0883e; --limb:#1f4b7c;
+  --gd:#0c1a2e; --td:#f4ead6; --md:#a8b3c6; --gl:#f5eedf; --tl:#13233b; --ml:#4f5d73; --xl:#b04a12;
+  --fd:'Alegreya', 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+  --fu:'Alegreya Sans', 'Gill Sans', 'Segoe UI', ui-sans-serif, system-ui, sans-serif;
+  --fn:'Alegreya Sans', 'Gill Sans', 'Segoe UI', ui-sans-serif, system-ui, sans-serif; }
+.dC{ --g:#ffffff; --s:#f1f0ec; --r:#1e1f22; --t:#1e1f22; --m:#5f6066; --x:#d4380f; --xk:#ff6a3d;
+  --gd:#1e1f22; --td:#ffffff; --md:#9aa1ab; --gl:#ffffff; --tl:#1e1f22; --ml:#5f6066; --xl:#d4380f;
+  --fd:'Archivo', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --fu:'Archivo', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --fn:'Archivo', 'Helvetica Neue', Helvetica, Arial, sans-serif; }
+
+*,*::before,*::after{ box-sizing:border-box; }
+body{ background:var(--pg); color:var(--ink); font-family:var(--f-chrome); font-size:15px; line-height:1.5; -webkit-font-smoothing:antialiased; }
+body::before{ content:""; position:fixed; inset:0 0 auto; height:env(safe-area-inset-top,0px); z-index:10; background:var(--pg); }
+svg{ max-width:100%; }
+h1,h2,h3,p,figure,ul,ol,dl,dd{ margin:0; }
+ul,ol{ padding:0; list-style:none; }
+.sprite{ position:absolute; width:0; height:0; overflow:hidden; }
+
+.wrap{ max-width:1480px; margin:0 auto; padding-block:44px 72px;
+  padding-left:max(16px, env(safe-area-inset-left,0px)); padding-right:max(16px, env(safe-area-inset-right,0px)); }
+@media (min-width:720px){ .wrap{ padding-left:max(32px, env(safe-area-inset-left,0px)); padding-right:max(32px, env(safe-area-inset-right,0px)); } }
+
+/* ---------- chrome ---------- */
+.eyebrow{ font:500 12px/1.4 var(--f-label); letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3); }
+.intro{ display:grid; gap:14px; max-width:880px; padding-bottom:28px; }
+.intro h1{ font:600 clamp(30px, 4.4vw, 48px)/1.08 var(--f-chrome); letter-spacing:-.02em; text-wrap:balance; }
+.intro .lead{ font-size:17px; color:var(--ink-2); max-width:66ch; }
+.intro .fixed{ font-size:14px; color:var(--ink-3); max-width:70ch; }
+
+.heads{ display:grid; gap:12px; padding-block:14px; border-top:1px solid var(--rule); border-bottom:1px solid var(--rule); background:var(--pg); }
+.head{ display:grid; grid-template-columns:auto 1fr; column-gap:12px; align-items:start; }
+.head .ltr{ font:600 13px/1 var(--f-label); width:28px; height:28px; display:grid; place-items:center; border:1px solid var(--ink); border-radius:50%; }
+.head b{ font-weight:600; font-size:15px; display:block; line-height:1.3; }
+.head span{ font-size:13px; color:var(--ink-2); line-height:1.4; }
+.head a{ color:inherit; text-decoration:none; }
+
+.row{ padding-top:44px; scroll-margin-top:96px; }
+.row-h{ display:flex; flex-wrap:wrap; align-items:baseline; column-gap:14px; row-gap:4px; padding-bottom:14px; }
+.row-h .n{ font:500 13px/1 var(--f-label); color:var(--ink-3); }
+.row-h h2{ font:600 22px/1.2 var(--f-chrome); letter-spacing:-.01em; }
+.row-h p{ color:var(--ink-2); font-size:14px; flex-basis:100%; max-width:80ch; }
+@media (min-width:900px){ .row-h p{ flex-basis:auto; } }
+.cells{ display:grid; gap:16px; grid-template-columns:minmax(0,1fr); }
+.cell{ background:var(--g); color:var(--t); font-family:var(--fu); border:1px solid var(--edge); padding:20px; display:grid; gap:16px; align-content:start; min-width:0; }
+.tag{ font:500 11px/1.3 var(--f-label); letter-spacing:.1em; text-transform:uppercase; color:var(--m); }
+.cap{ font:500 10.5px/1.3 var(--f-label); letter-spacing:.09em; text-transform:uppercase; color:var(--m); }
+@media (min-width:1100px){
+  .cells, .heads{ grid-template-columns:repeat(3, minmax(0,1fr)); gap:20px; }
+  .heads{ position:sticky; top:env(safe-area-inset-top,0px); z-index:6; }
+  .tag{ display:none; }
+}
+@media (max-width:480px){ .cell{ padding:16px; } }
+
+/* ---------- 1 mark ---------- */
+.stage{ display:grid; gap:14px; grid-template-columns:repeat(auto-fit, minmax(140px,1fr)); align-items:end; min-height:250px; }
+.stage figure{ display:grid; gap:12px; justify-items:center; }
+.stage figcaption{ text-align:center; }
+.mk-xl{ width:132px; height:132px; }
+.patch-xl{ width:220px; height:220px; }
+.emb-xl{ width:236px; height:236px; }
+.cmk-xl{ width:236px; height:174px; }
+.favs{ display:flex; flex-wrap:wrap; gap:8px 10px; align-items:end; }
+.tab{ display:inline-flex; align-items:center; gap:8px; height:36px; padding:0 14px 0 10px; border-radius:8px 8px 0 0; font:400 13px/1 'Segoe UI', system-ui, sans-serif; }
+.tab.t-d{ background:#2b2d31; color:#e8eaed; --x:var(--xa, #ff8a4c); }
+.tab.t-l{ background:#ffffff; color:#1f1f1f; box-shadow:inset 0 0 0 1px #d5d8dc; --x:var(--xb, #c2410c); }
+.tab svg{ flex:none; }
+.dB .tab{ --xa:#f0883e; --xb:#f0883e; }
+.dC .tab{ --xa:#d4380f; --xb:#d4380f; }
+.sizes{ display:flex; gap:12px; align-items:end; margin-left:auto; }
+.sizes span{ display:grid; justify-items:center; gap:4px; }
+.concept{ font-size:14px; line-height:1.5; color:var(--t); max-width:62ch; }
+.concept b{ font-weight:600; }
+
+/* ---------- 2 lockup ---------- */
+.lks{ display:grid; gap:10px; grid-auto-rows:1fr; }
+#lockup .cell{ align-content:stretch; }
+.lk{ padding:22px 20px; display:grid; gap:12px; grid-template-rows:auto 1fr; align-items:center; }
+.lk.on-d{ background:var(--gd); color:var(--td); box-shadow:inset 0 0 0 1px var(--r); }
+.lk.on-l{ background:var(--gl); color:var(--tl); --x:var(--xl); box-shadow:inset 0 0 0 1px rgba(0,0,0,.1); }
+.lk .cap{ color:inherit; opacity:.72; }
+.lk-a{ display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+.lk-a svg{ width:54px; height:54px; flex:none; }
+.wm-a{ font:500 29px/1 var(--fd); letter-spacing:.36em; margin-right:-.36em; }
+.tg-a{ font:500 11px/1.3 var(--fd); letter-spacing:.22em; text-transform:uppercase; margin-top:9px; opacity:.8; }
+.lk-b{ display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+.lk-b svg{ width:88px; height:88px; flex:none; }
+.wm-b{ font:700 42px/1 var(--fd); letter-spacing:-.01em; }
+.tg-b{ font:italic 400 16px/1.3 var(--fu); margin-top:6px; }
+.lk-c{ display:grid; gap:12px; justify-items:start; }
+.lk-c svg{ width:62px; height:46px; }
+.wm-c{ font:800 clamp(40px, 5.2vw, 54px)/.9 var(--fd); font-stretch:125%; letter-spacing:-.035em; }
+.rule-c{ width:56px; height:5px; background:var(--x); }
+.tg-c{ font:500 15px/1.3 var(--fu); }
+
+/* ---------- 3 palette ---------- */
+.sw{ display:grid; gap:6px; }
+.sw li{ display:grid; grid-template-columns:34px 1fr auto; column-gap:12px; align-items:center; min-height:34px; }
+.sw i{ width:34px; height:34px; box-shadow:inset 0 0 0 1px rgba(127,127,127,.4); }
+.sw .role{ font-size:13.5px; line-height:1.25; }
+.sw .role small{ display:block; font-size:12px; color:var(--m); }
+.sw code{ font:500 12px/1.25 var(--f-label); text-align:right; }
+.sw code small{ display:block; color:var(--m); font-size:11px; font-weight:400; }
+.sw .sub{ grid-column:1/-1; margin-top:8px; display:block; min-height:0; }
+.ramps{ display:grid; gap:8px; }
+.rp{ padding:12px; display:grid; gap:8px; }
+.rp.on-d{ background:var(--gd); color:var(--td); box-shadow:inset 0 0 0 1px var(--r); --mm:var(--md); --xx:var(--x); }
+.rp.on-l{ background:var(--gl); color:var(--tl); box-shadow:inset 0 0 0 1px rgba(0,0,0,.1); --mm:var(--ml); --xx:var(--xl); }
+.rp .cap{ color:var(--mm); }
+.strip{ display:grid; grid-template-columns:76px 1fr 14px; gap:10px; align-items:center; font:500 10.5px/1.2 var(--f-label); letter-spacing:.06em; text-transform:uppercase; color:var(--mm); }
+.strip b{ height:14px; display:block; }
+.strip i{ width:14px; height:14px; display:block; background:var(--xx); }
+.cr{ font-size:12.5px; line-height:1.5; color:var(--m); }
+
+/* ---------- 4 type ---------- */
+.ty{ display:grid; gap:14px; }
+.ty > div{ display:grid; gap:7px; padding-top:12px; border-top:1px solid var(--r); }
+.dC .ty > div{ border-top-width:2px; }
+.ty code{ font:400 11px/1.45 var(--f-label); color:var(--m); overflow-wrap:anywhere; }
+.ty-a1{ font:500 22px/1.2 var(--fd); letter-spacing:.3em; text-transform:uppercase; }
+.ty-a2{ font:400 16px/1.45 var(--fu); }
+.ty-a3{ font:400 13px/1.7 var(--fn); font-variant-numeric:tabular-nums; display:grid; grid-template-columns:repeat(4, auto); justify-content:start; column-gap:20px; }
+.ty-a3 span:nth-child(-n+4){ color:var(--m); font-size:10.5px; letter-spacing:.08em; }
+.ty-a3 .hot{ color:var(--x); }
+.ty-b1{ font:700 40px/1.05 var(--fd); }
+.ty-b1 em{ display:block; font-weight:500; font-size:22px; color:var(--m); margin-top:4px; }
+.ty-b2{ font:400 17px/1.5 var(--fu); }
+.ty-b3{ font:500 22px/1.3 var(--fn); font-variant-numeric:tabular-nums lining-nums; letter-spacing:.01em; }
+.ty-c1{ font:800 54px/.88 var(--fd); font-stretch:125%; letter-spacing:-.04em; }
+.ty-c2{ font:400 16px/1.45 var(--fu); }
+.ty-c3{ font:600 32px/1 var(--fn); font-stretch:75%; font-variant-numeric:tabular-nums; display:flex; gap:22px; flex-wrap:wrap; }
+.ty-c3 small{ display:block; font:500 11px/1.3 var(--fu); font-stretch:100%; letter-spacing:.04em; margin-top:6px; color:var(--m); }
+
+/* ---------- 5 app fragment ---------- */
+.app{ display:grid; overflow:hidden; }
+.ab{ display:flex; flex-wrap:wrap; align-items:center; gap:10px 16px; padding:10px 14px; }
+.ab-id{ display:inline-flex; align-items:center; gap:9px; }
+.ab-area{ font-size:13px; color:var(--m); display:inline-flex; gap:8px; align-items:baseline; }
+.ab-area b{ color:var(--t); font-weight:500; }
+.ab-nav{ display:flex; gap:2px; margin-left:auto; font-size:13px; }
+.ab-nav span{ padding:4px 8px; color:var(--m); }
+.ab-nav span[aria-current]{ color:var(--t); }
+.sts{ padding:14px; display:grid; gap:12px; }
+.line{ font-size:14.5px; line-height:1.5; }
+.line b{ font-weight:600; }
+.chip{ display:inline-flex; align-items:center; gap:8px; justify-self:start; font-size:12.5px; line-height:1; padding:6px 10px 6px 8px; }
+.chip i{ width:10px; height:10px; display:block; }
+.mc{ display:grid; grid-template-columns:auto repeat(12, minmax(0,1fr)); gap:2px; align-items:center; }
+.mc span{ font-size:10px; line-height:1; color:var(--m); text-align:center; font-variant-numeric:tabular-nums; }
+.mc span.y{ text-align:right; padding-right:6px; }
+.mc i{ display:block; aspect-ratio:1.5; }
+.mc i.now{ outline:2px solid var(--x); outline-offset:1px; position:relative; z-index:1; }
+.mc i.nd{ background:repeating-linear-gradient(135deg, transparent 0 3px, var(--hatch) 3px 4px); box-shadow:inset 0 0 0 1px var(--hatch); }
+.mc-wrap{ padding:0 14px 14px; display:grid; gap:8px; }
+.mc-legend{ display:flex; align-items:center; gap:8px; font-size:10.5px; color:var(--m); flex-wrap:wrap; }
+.mc-legend b{ height:6px; width:96px; display:block; }
+.mc-legend .now-k{ width:10px; height:7px; outline:2px solid var(--x); outline-offset:1px; display:inline-block; margin-left:8px; }
+
+/* A */
+.app-a{ background:var(--g); box-shadow:inset 0 0 0 1px var(--r); --hatch:rgba(236,238,242,.3); }
+.app-a .ab{ border-bottom:1px solid var(--r); }
+.app-a .ab-id svg{ width:20px; height:20px; }
+.app-a .ab-wm{ font:500 13px/1 var(--fd); letter-spacing:.34em; }
+.app-a .ab-area{ font-family:var(--fd); }
+.app-a .ab-area .k{ font-size:10.5px; letter-spacing:.16em; text-transform:uppercase; }
+.app-a .ab-nav span{ font:500 11px/1 var(--fd); letter-spacing:.16em; text-transform:uppercase; padding:6px 7px; }
+.app-a .ab-nav span[aria-current]{ box-shadow:inset 0 -2px 0 var(--x); }
+.app-a .line{ font-size:14px; }
+.app-a .line .num{ font-family:var(--fn); font-size:13.5px; font-variant-numeric:tabular-nums; letter-spacing:-.02em; }
+.app-a .line .sep{ color:var(--m); }
+.app-a .sts .k{ font:500 10.5px/1 var(--fd); letter-spacing:.18em; text-transform:uppercase; color:var(--m); }
+.app-a .chip{ border:1px solid var(--r); font-family:var(--fd); letter-spacing:.12em; text-transform:uppercase; font-size:11px; }
+.app-a .mc span{ font-family:var(--fn); }
+/* B */
+.app-b{ background:var(--s); border-radius:12px; box-shadow:inset 0 0 0 1px var(--r); --hatch:rgba(244,234,214,.3); }
+.app-b .ab{ border-radius:12px 12px 0 0; box-shadow:inset 0 0 0 1px var(--r); }
+.app-b .ab{ background:var(--g); }
+.app-b .ab-id svg{ width:28px; height:28px; }
+.app-b .ab-wm{ font:700 20px/1 var(--fd); }
+.app-b .ab-nav span{ border-radius:999px; font-size:14px; }
+.app-b .ab-nav span[aria-current]{ background:rgba(244,234,214,.12); }
+.app-b .line{ font-size:16.5px; line-height:1.45; }
+.app-b .line b{ font-weight:700; color:var(--t); font-variant-numeric:tabular-nums lining-nums; }
+.app-b .line .sep{ color:var(--x); }
+.app-b .sts .k{ font:italic 400 14px/1 var(--fu); color:var(--m); }
+.app-b .chip{ border-radius:999px; background:rgba(244,234,214,.1); font-size:14px; }
+.app-b .chip i{ border-radius:50%; }
+.app-b .mc{ gap:3px; }
+.app-b .mc i{ border-radius:2px; }
+.app-b .mc span{ font-size:11px; }
+/* C */
+.app-c{ background:var(--g); box-shadow:inset 0 0 0 2px var(--t); --hatch:rgba(30,31,34,.38); }
+.app-c .ab{ border-bottom:2px solid var(--t); padding:12px 14px; }
+.app-c .ab-id svg{ width:28px; height:21px; }
+.app-c .ab-wm{ font:800 18px/1 var(--fd); font-stretch:125%; letter-spacing:-.03em; }
+.app-c .ab-area b{ font-weight:600; }
+.app-c .ab-nav span{ font-weight:600; font-size:13px; padding:4px 0 4px 10px; }
+.app-c .ab-nav span[aria-current]{ color:var(--x); }
+.app-c .sts{ grid-template-columns:auto 1fr; align-items:end; column-gap:14px; padding:16px 14px 12px; }
+.app-c .big{ font:800 64px/.8 var(--fd); font-stretch:125%; letter-spacing:-.045em; font-variant-numeric:tabular-nums; }
+.app-c .big-r{ font-size:15px; font-weight:600; line-height:1.25; padding-bottom:2px; }
+.app-c .big-r .k{ display:block; font-weight:500; color:var(--m); font-size:13px; }
+.app-c .facts{ grid-column:1/-1; display:grid; grid-template-columns:1fr 1.4fr auto; column-gap:10px; border-top:2px solid var(--t); }
+.app-c .facts > *{ padding-top:8px; font-size:13px; line-height:1.3; }
+.app-c .facts b{ display:block; font:700 24px/1.05 var(--fn); font-stretch:75%; font-variant-numeric:tabular-nums; }
+.app-c .chip{ background:var(--t); color:var(--g); font-weight:600; align-self:start; margin-top:8px; padding-top:7px; }
+.app-c .mc{ gap:1px; }
+.app-c .mc span{ font-weight:600; }
+@media (max-width:440px){ .app-c .facts{ grid-template-columns:1fr 1fr; } .app-c .facts .chip{ grid-column:1/-1; } }
+
+/* ---------- 6 slide ---------- */
+.slide-scroll{ overflow-x:auto; }
+.slide{ aspect-ratio:16/9; width:100%; min-width:300px; container-type:inline-size; position:relative; overflow:hidden; }
+/* A */
+.sl-a{ background:#05070a; color:#eceef2; box-shadow:inset 0 0 0 1px #232b37; --g:#05070a; }
+.sl-a .patch{ position:absolute; left:6cqw; top:9cqw; width:32cqw; height:32cqw; }
+.sl-a .body{ position:absolute; left:44cqw; right:5cqw; top:9cqw; display:grid; gap:1.6cqw; }
+.sl-a .eb{ font:500 1.7cqw/1 var(--fd); letter-spacing:.3em; color:#8b94a5; }
+.sl-a h3{ font:500 6.2cqw/1 var(--fd); letter-spacing:.3em; margin-right:-.3em; }
+.sl-a .sub{ font:400 2.5cqw/1.25 var(--fu); max-width:44cqw; }
+.sl-a dl{ display:grid; gap:1.2cqw; margin-top:1cqw; border-top:1px solid #232b37; padding-top:1.8cqw; }
+.sl-a dl div{ display:grid; grid-template-columns:12.5cqw 1fr; }
+.sl-a dt{ font:500 1.45cqw/1.45 var(--fd); letter-spacing:.2em; text-transform:uppercase; color:#8b94a5; }
+.sl-a dd{ font:400 1.9cqw/1.35 var(--fu); }
+.sl-a .tl{ position:absolute; left:6cqw; right:6cqw; bottom:3.6cqw; height:6cqw; font:400 1.45cqw/1 var(--fn); color:#8b94a5; }
+.sl-a .tl .ov{ position:absolute; left:46.15%; right:0; top:0; height:3.4cqw; background:rgba(255,138,76,.09); border-left:1px solid #ff8a4c; }
+.sl-a .tl .ln{ position:absolute; height:1px; background:#eceef2; }
+.sl-a .tl .ln.m{ left:0; right:3%; top:1.1cqw; }
+.sl-a .tl .ln.m::after{ content:""; position:absolute; left:100%; width:3.3cqw; top:0; height:1px; background:repeating-linear-gradient(90deg,#eceef2 0 .4cqw, transparent .4cqw .8cqw); }
+.sl-a .tl .ln.v{ left:46.15%; right:0; top:2.3cqw; }
+.sl-a .tl .lb{ position:absolute; left:0; font-size:1.3cqw; letter-spacing:.1em; white-space:nowrap; }
+.sl-a .tl .lb.m{ top:-.4cqw; transform:translateY(-100%); }
+.sl-a .tl .lb.v{ left:calc(46.15% + 1cqw); top:2.9cqw; color:#ff8a4c; }
+.sl-a .tl .ax{ position:absolute; top:4.6cqw; }
+.sl-a .tl .ax.e{ right:0; }
+.sl-a .tl .ax.mid{ left:46.15%; transform:translateX(-50%); }
+/* B */
+.sl-b{ color:#f4ead6;
+  background:
+    radial-gradient(circle at 40% 4%, rgba(244,234,214,.85) 0 .14cqw, transparent .2cqw),
+    radial-gradient(circle at 4% 5%, rgba(244,234,214,.6) 0 .12cqw, transparent .17cqw),
+    radial-gradient(circle at 54% 3%, rgba(244,234,214,.7) 0 .1cqw, transparent .15cqw),
+    radial-gradient(circle at 2.5% 62%, rgba(244,234,214,.5) 0 .1cqw, transparent .15cqw),
+    radial-gradient(circle at 30% 2.5%, rgba(244,234,214,.5) 0 .1cqw, transparent .15cqw),
+    radial-gradient(120cqw 60cqw at 30% 120%, #1a3a63 0%, #0c1a2e 62%); }
+.sl-b .earth{ position:absolute; left:-25cqw; right:-25cqw; top:48.5cqw; height:150cqw; border-radius:50%;
+  background:linear-gradient(#1f4b7c, #0f2a4a 18%); box-shadow:0 -0.35cqw 0 0 rgba(127,176,224,.6), 0 -1.4cqw 3cqw rgba(127,176,224,.22); }
+.sl-b .emb{ position:absolute; right:-5cqw; top:2.5cqw; width:44cqw; height:44cqw; }
+.sl-b .body{ position:absolute; left:7cqw; top:7cqw; width:52cqw; display:grid; gap:1.3cqw; }
+.sl-b .eb{ font:500 1.9cqw/1.2 var(--fu); letter-spacing:.14em; text-transform:uppercase; color:#a8b3c6; }
+.sl-b h3{ font:700 10cqw/.95 var(--fd); }
+.sl-b .sub{ font:italic 500 3.1cqw/1.2 var(--fd); max-width:52cqw; }
+.sl-b .ch{ font:400 2.1cqw/1.4 var(--fu); color:#a8b3c6; margin-top:1cqw; }
+.sl-b .ch b{ color:#f4ead6; font-weight:500; }
+.sl-b .ded{ font:italic 400 2cqw/1.35 var(--fu); color:#f4ead6; margin-top:1.6cqw; padding-top:1.6cqw; border-top:1px solid rgba(244,234,214,.25); max-width:44cqw; }
+/* C */
+.sl-c{ background:#d4380f; color:#ffffff; display:grid; grid-template-rows:auto 1fr auto; }
+.sl-c .top{ display:grid; grid-template-columns:repeat(4,1fr); column-gap:2.4cqw; padding:4cqw 4.5cqw 0; font:500 1.9cqw/1.3 var(--fu); }
+.sl-c .top svg{ width:6.4cqw; height:4.75cqw; }
+.sl-c .top .k{ display:block; font-weight:700; }
+.sl-c .word{ align-self:end; padding:0 3.4cqw; font:800 17cqw/.8 var(--fd); font-stretch:125%; letter-spacing:-.05em; margin-bottom:3.6cqw; }
+.sl-c .bot{ background:#1e1f22; display:grid; grid-template-columns:3fr 1fr; column-gap:2.4cqw; padding:2.6cqw 4.5cqw 3cqw; }
+.sl-c .bot p:first-child{ font:700 3.3cqw/1.05 var(--fd); font-stretch:110%; letter-spacing:-.02em; }
+.sl-c .bot p:last-child{ font:500 1.9cqw/1.3 var(--fu); align-self:end; }
+.sl-c .bot .k{ display:block; color:#ff6a3d; font-weight:700; }
+
+/* ---------- 7 voice ---------- */
+.vo{ display:grid; gap:14px; }
+.vo > div{ display:grid; gap:6px; }
+.vo ol{ display:grid; gap:5px; }
+.vo-a .tg li{ font:500 13px/1.4 var(--fd); letter-spacing:.16em; text-transform:uppercase; }
+.vo-a p{ font-size:14.5px; line-height:1.55; }
+.vo-b .tg li{ font:italic 500 19px/1.3 var(--fd); }
+.vo-b p{ font-size:16px; line-height:1.5; }
+.vo-c .tg li{ font:800 20px/1.1 var(--fd); font-stretch:115%; letter-spacing:-.02em; }
+.vo-c p{ font-size:15px; line-height:1.5; }
+.ded{ font-style:italic; }
+.vo-a .ded{ font-style:normal; font-family:var(--fd); letter-spacing:.04em; font-size:15px; }
+.vo-c .ded{ font-style:normal; font-weight:700; }
+.motto{ color:var(--x); }
+
+/* ---------- 8 trade-off ---------- */
+.trade{ font-size:15px; line-height:1.5; padding-left:14px; border-left:3px solid var(--x); }
+.dC .trade{ border-left-width:6px; }
+
+/* ---------- comparison + recommendation ---------- */
+.compare{ padding-top:56px; display:grid; gap:16px; }
+.compare h2, .rec h2{ font:600 22px/1.2 var(--f-chrome); }
+.tbl{ overflow-x:auto; border-top:1px solid var(--ink); }
+.tbl table{ border-collapse:collapse; width:100%; min-width:760px; font-size:14px; }
+.tbl th, .tbl td{ text-align:left; vertical-align:top; padding:10px 16px 10px 0; border-bottom:1px solid var(--rule); }
+.tbl thead th{ font-weight:600; padding-top:14px; }
+.tbl thead th span{ display:flex; align-items:center; gap:10px; }
+.tbl tbody th{ font:500 11.5px/1.5 var(--f-label); letter-spacing:.06em; text-transform:uppercase; color:var(--ink-3); width:16%; }
+.tbl td{ color:var(--ink-2); width:28%; }
+.thmk{ width:24px; height:24px; flex:none; }
+.thmk.c{ width:30px; height:22px; }
+.rec{ padding-top:44px; display:grid; gap:14px; max-width:900px; }
+.rec p{ font-size:16.5px; line-height:1.6; max-width:72ch; }
+.rec .hy{ display:grid; gap:0; }
+.rec .hy li{ display:grid; grid-template-columns:64px 1fr; gap:12px; font-size:15px; padding-block:10px; border-top:1px solid var(--rule); }
+.rec .hy b{ font:600 13px/1.6 var(--f-label); }
+.foot{ margin-top:48px; padding-top:16px; border-top:1px solid var(--rule); font-size:13px; color:var(--ink-3); max-width:90ch; }
+
+/* B's humanist faces run small; give them a little more size. */
+.dB .concept{ font-size:15.5px; }
+.dB .cr{ font-size:14px; }
+.dB .sw .role{ font-size:15px; }
+.dB .trade{ font-size:17px; }
+
+.board{ display:block; }
+.toggle{ margin-left:auto; font:500 13px/1 var(--f-chrome); color:var(--ink); background:transparent; border:1px solid var(--ink-3); border-radius:999px; padding:8px 14px; cursor:pointer; }
+.toggle:hover{ background:var(--pg-2); }
+.toggle:focus-visible{ outline:2px solid var(--ink); outline-offset:2px; }
+@media (max-width:1099px){ .toggle{ display:none; } }
+#slide.big .cells{ grid-template-columns:minmax(0,1fr); }
+#slide.big .cell{ justify-items:center; }
+#slide.big .slide-scroll{ width:100%; max-width:1000px; }
+#slide.big .tag{ display:block; justify-self:start; width:100%; max-width:1000px; }
+.head span{ display:block; }
+.app-b{ font-variant-numeric:lining-nums tabular-nums; }
+</style>
+<svg class="sprite" aria-hidden="true" focusable="false" width="0" height="0">
+  <defs>
+    <path id="a-arc-top" d="M 19 120 A 101 101 0 0 1 221 120"/>
+    <path id="a-arc-bot" d="M 11 120 A 109 109 0 0 0 229 120"/>
+    <path id="b-arc-top" d="M 25 120 A 95 95 0 0 1 215 120"/>
+    <path id="b-arc-bot" d="M 14 120 A 106 106 0 0 0 226 120"/>
+    <clipPath id="b-clip"><circle cx="120" cy="120" r="86"/></clipPath>
+    <clipPath id="b-fclip"><circle cx="12" cy="12" r="10.4"/></clipPath>
+    <radialGradient id="b-sky" cx="50%" cy="78%" r="70%">
+      <stop offset="0" stop-color="#1d3d66"/><stop offset="1" stop-color="#0a1627"/>
+    </radialGradient>
+    <linearGradient id="b-earth" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#245487"/><stop offset=".25" stop-color="#11304f"/>
+    </linearGradient>
+
+    <!-- A: the stepped H. Left stem MODIS, right stem VIIRS, crossbar = overlap, ember tip = now. -->
+    <symbol id="a-mark" viewBox="0 0 48 48">
+      <rect x="9" y="13" width="7" height="28" fill="currentColor"/>
+      <rect x="32" y="13" width="7" height="22" fill="currentColor"/>
+      <rect x="16" y="21" width="16" height="6" fill="currentColor"/>
+      <rect x="32" y="7" width="7" height="6" style="fill:var(--x)"/>
+    </symbol>
+
+    <!-- A patch: a telemetry dial. 27 ticks = fire seasons 2000-2026, inner arc = calibration overlap. -->
+    <symbol id="a-patch" viewBox="0 0 240 240">
+      <circle cx="120" cy="120" r="118" style="fill:var(--g)" stroke="currentColor" stroke-width="1.4"/>
+      <circle cx="120" cy="120" r="94" fill="none" stroke="currentColor" stroke-width=".8"/>
+      <text style="font-family:var(--fd);font-weight:500;font-size:14px;letter-spacing:.5em" fill="currentColor"><textPath href="#a-arc-top" startOffset="51.1%" text-anchor="middle">HARMONY</textPath></text>
+      <text style="font-family:var(--fd);font-weight:500;font-size:10.5px;letter-spacing:.32em" fill="currentColor"><textPath href="#a-arc-bot" startOffset="50.6%" text-anchor="middle">AD ASTRA PER ASPERA</textPath></text>
+      <circle cx="14" cy="120" r="1.8" style="fill:var(--x)"/>
+      <circle cx="226" cy="120" r="1.8" style="fill:var(--x)"/>
+      <line x1="141.68" y1="28.53" x2="139.37" y2="38.26" stroke="currentColor" stroke-width="1.2"/>
+      <line x1="162.19" y1="36.00" x2="159.94" y2="40.47" stroke="currentColor" stroke-width="0.8"/>
+      <line x1="180.42" y1="47.99" x2="177.21" y2="51.82" stroke="currentColor" stroke-width="0.8"/>
+      <line x1="195.40" y1="63.87" x2="191.39" y2="66.85" stroke="currentColor" stroke-width="0.8"/>
+      <line x1="206.31" y1="82.77" x2="201.72" y2="84.75" stroke="currentColor" stroke-width="0.8"/>
+      <line x1="212.57" y1="103.68" x2="207.65" y2="104.55" stroke="currentColor" stroke-width="0.8"/>
+      <line x1="213.84" y1="125.47" x2="208.85" y2="125.17" stroke="currentColor" stroke-width="0.8"/>
+      <line x1="210.05" y1="146.96" x2="205.26" y2="145.53" stroke="currentColor" stroke-width="0.8"/>
+      <line x1="201.41" y1="167.00" x2="197.08" y2="164.50" stroke="currentColor" stroke-width="0.8"/>
+      <line x1="188.37" y1="184.51" x2="184.74" y2="181.08" stroke="currentColor" stroke-width="0.8"/>
+      <line x1="171.65" y1="198.54" x2="168.91" y2="194.36" stroke="currentColor" stroke-width="0.8"/>
+      <line x1="152.15" y1="208.33" x2="150.44" y2="203.63" stroke="currentColor" stroke-width="0.8"/>
+      <line x1="130.91" y1="213.36" x2="129.75" y2="203.43" stroke="currentColor" stroke-width="1.2"/>
+      <line x1="109.09" y1="213.36" x2="109.67" y2="208.40" stroke="currentColor" stroke-width="0.8"/>
+      <line x1="87.85" y1="208.33" x2="89.56" y2="203.63" stroke="currentColor" stroke-width="0.8"/>
+      <line x1="68.35" y1="198.54" x2="71.09" y2="194.36" stroke="currentColor" stroke-width="0.8"/>
+      <line x1="51.63" y1="184.51" x2="55.26" y2="181.08" stroke="currentColor" stroke-width="0.8"/>
+      <line x1="38.59" y1="167.00" x2="42.92" y2="164.50" stroke="currentColor" stroke-width="0.8"/>
+      <line x1="29.95" y1="146.96" x2="34.74" y2="145.53" stroke="currentColor" stroke-width="0.8"/>
+      <line x1="26.16" y1="125.47" x2="31.15" y2="125.17" stroke="currentColor" stroke-width="0.8"/>
+      <line x1="27.43" y1="103.68" x2="32.35" y2="104.55" stroke="currentColor" stroke-width="0.8"/>
+      <line x1="33.69" y1="82.77" x2="38.28" y2="84.75" stroke="currentColor" stroke-width="0.8"/>
+      <line x1="44.60" y1="63.87" x2="48.61" y2="66.85" stroke="currentColor" stroke-width="0.8"/>
+      <line x1="59.58" y1="47.99" x2="62.79" y2="51.82" stroke="currentColor" stroke-width="0.8"/>
+      <line x1="77.81" y1="36.00" x2="80.06" y2="40.47" stroke="currentColor" stroke-width="0.8"/>
+      <line x1="98.32" y1="28.53" x2="99.48" y2="33.40" stroke="currentColor" stroke-width="0.8"/>
+      <line x1="120.00" y1="26.00" x2="120.00" y2="38.00" style="stroke:var(--x)" stroke-width="2.2"/>
+      <path d="M 129.17 198.47 A 79 79 0 1 1 120.00 41.00" fill="none" stroke="currentColor" stroke-width=".8" stroke-dasharray="1.5 2.5" opacity=".8"/>
+      <g transform="translate(84 74) scale(1.5)">
+        <rect x="9" y="13" width="7" height="28" fill="currentColor"/>
+        <rect x="32" y="13" width="7" height="22" fill="currentColor"/>
+        <rect x="16" y="21" width="16" height="6" fill="currentColor"/>
+        <rect x="32" y="7" width="7" height="6" style="fill:var(--x)"/>
+      </g>
+      <text x="121" y="158" text-anchor="middle" style="font-family:var(--fn);font-size:7.5px;letter-spacing:.2em" fill="currentColor">MODIS + VIIRS</text>
+      <text x="121" y="170" text-anchor="middle" style="font-family:var(--fn);font-size:7.5px;letter-spacing:.2em" fill="currentColor" opacity=".7">2000 – 2026</text>
+    </symbol>
+
+    <!-- B: two tracks over Earth's limb merge and rise as one ember line toward a star. -->
+    <symbol id="b-emblem" viewBox="0 0 240 240">
+      <circle cx="120" cy="120" r="119.5" fill="#f4ead6"/>
+      <circle cx="120" cy="120" r="115.5" fill="#0c1a2e"/>
+      <circle cx="120" cy="120" r="86" fill="url(#b-sky)"/>
+      <g clip-path="url(#b-clip)">
+        <g fill="#f4ead6">
+          <circle cx="76" cy="72" r="1.3"/><circle cx="100" cy="50" r=".9"/><circle cx="142" cy="44" r="1.1"/>
+          <circle cx="192" cy="102" r=".9"/><circle cx="58" cy="108" r=".8"/><circle cx="184" cy="132" r=".7"/><circle cx="124" cy="80" r=".7"/>
+        </g>
+        <circle cx="120" cy="330" r="190" fill="none" stroke="#7fb0e0" stroke-width="6" opacity=".14"/>
+        <circle cx="120" cy="330" r="185" fill="url(#b-earth)"/>
+        <circle cx="120" cy="330" r="185" fill="none" stroke="#8cbbe6" stroke-width="1.3"/>
+        <path d="M 30 150 C 62 140 92 133 118 128" fill="none" stroke="#f4ead6" stroke-width="2" stroke-dasharray="5 3.5"/>
+        <path d="M 40 176 C 70 156 96 138 118 128" fill="none" stroke="#f4ead6" stroke-width="2"/>
+        <path d="M 118 128 C 140 121 157 98 164 72" fill="none" stroke="#f0883e" stroke-width="4" stroke-linecap="round"/>
+        <circle cx="118" cy="128" r="3.2" fill="#f0883e"/>
+      </g>
+      <path d="M167 47 L169.6 55.4 L178 58 L169.6 60.6 L167 69 L164.4 60.6 L156 58 L164.4 55.4 Z" fill="#f4ead6"/>
+      <circle cx="120" cy="120" r="86" fill="none" stroke="#f4ead6" stroke-width="1.6"/>
+      <text style="font-family:'Alegreya Sans','Gill Sans',sans-serif;font-weight:700;font-size:15px;letter-spacing:.42em" fill="#f4ead6"><textPath href="#b-arc-top" startOffset="51%" text-anchor="middle">HARMONY</textPath></text>
+      <text style="font-family:'Alegreya Sans','Gill Sans',sans-serif;font-weight:500;font-size:12px;letter-spacing:.26em" fill="#f4ead6"><textPath href="#b-arc-bot" startOffset="50.5%" text-anchor="middle">AD ASTRA PER ASPERA</textPath></text>
+      <path d="M17 115 L18.6 118.4 L22 120 L18.6 121.6 L17 125 L15.4 121.6 L12 120 L15.4 118.4 Z" fill="#f0883e"/>
+      <path d="M223 115 L224.6 118.4 L228 120 L224.6 121.6 L223 125 L221.4 121.6 L218 120 L221.4 118.4 Z" fill="#f0883e"/>
+    </symbol>
+
+    <symbol id="b-fav" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="12" fill="#f4ead6"/>
+      <circle cx="12" cy="12" r="10.4" fill="#0c1a2e"/>
+      <g clip-path="url(#b-fclip)">
+        <circle cx="12" cy="34" r="18" fill="#245487"/>
+        <path d="M 1.5 13.6 C 5 12.8 8 12.6 10.6 12.6" fill="none" stroke="#f4ead6" stroke-width="1.1"/>
+        <path d="M 2.5 18 C 5.5 15.6 8 13.6 10.6 12.6" fill="none" stroke="#f4ead6" stroke-width="1.1"/>
+        <path d="M 10.6 12.6 C 13.4 11.8 15.2 9.6 16 7.2" fill="none" stroke="#f0883e" stroke-width="2.2" stroke-linecap="round"/>
+      </g>
+      <circle cx="16.6" cy="5.4" r="1.5" fill="#f4ead6"/>
+    </symbol>
+
+    <!-- C: one year of the burning calendar; the fire season climbs the twelve month cells as a stair. -->
+    <symbol id="c-mark" viewBox="0 0 46 34">
+      <g fill="currentColor">
+        <rect x="0" y="0" width="10" height="10"/><rect x="12" y="0" width="10" height="10"/>
+        <rect x="0" y="12" width="10" height="10"/><rect x="36" y="12" width="10" height="10"/>
+        <rect x="24" y="24" width="10" height="10"/><rect x="36" y="24" width="10" height="10"/>
+      </g>
+      <g style="fill:var(--x)">
+        <rect x="24" y="0" width="10" height="10"/><rect x="36" y="0" width="10" height="10"/>
+        <rect x="12" y="12" width="10" height="10"/><rect x="24" y="12" width="10" height="10"/>
+        <rect x="0" y="24" width="10" height="10"/><rect x="12" y="24" width="10" height="10"/>
+      </g>
+    </symbol>
+    <symbol id="c-fav" viewBox="0 0 24 24">
+      <rect width="24" height="24" fill="#1e1f22"/>
+      <g fill="#ffffff">
+        <rect x="1.5" y="4.25" width="4.5" height="4.5"/><rect x="7" y="4.25" width="4.5" height="4.5"/>
+        <rect x="1.5" y="9.75" width="4.5" height="4.5"/><rect x="18" y="9.75" width="4.5" height="4.5"/>
+        <rect x="12.5" y="15.25" width="4.5" height="4.5"/><rect x="18" y="15.25" width="4.5" height="4.5"/>
+      </g>
+      <g fill="#ff5a26">
+        <rect x="12.5" y="4.25" width="4.5" height="4.5"/><rect x="18" y="4.25" width="4.5" height="4.5"/>
+        <rect x="7" y="9.75" width="4.5" height="4.5"/><rect x="12.5" y="9.75" width="4.5" height="4.5"/>
+        <rect x="1.5" y="15.25" width="4.5" height="4.5"/><rect x="7" y="15.25" width="4.5" height="4.5"/>
+      </g>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="wrap">
+  <header class="intro">
+    <p class="eyebrow">Harmony · brand review · NASA Space Apps 2026</p>
+    <h1>Three directions for Harmony</h1>
+    <p class="lead">Each column is a complete identity for the same product, shown in the same eight rows: mark, lockup, palette, type, an app fragment, a title slide, voice and the trade-off. Read across a row to compare. Pick one, or a hybrid from the notes at the end.</p>
+    <p class="fixed">The two data ramps are fixed and appear unchanged in every direction: inferno for burning activity, blue to orange for compared-with-normal. Every mark on this page is original.</p>
+  </header>
+
+  <div class="board">
+  <nav class="heads" aria-label="Directions">
+    <div class="head"><span class="ltr">A</span><div><b>Mission control + patch</b><span>Restraint in the instrument; a patch for the human moments.</span></div></div>
+    <div class="head"><span class="ltr">B</span><div><b>Mission patch throughout</b><span>Heritage warmth on every surface: navy, ember, starlight.</span></div></div>
+    <div class="head"><span class="ltr">C</span><div><b>Modernist poster</b><span>One grid, one red-orange, very large type.</span></div></div>
+  </nav>
+
+  <!-- 1 MARK -->
+  <section class="row" id="mark">
+    <div class="row-h"><span class="n">1</span><h2>Mark</h2><p>At display size, then at 24 px in a browser tab, then down to 16 px.</p></div>
+    <div class="cells">
+      <article class="cell dA">
+        <p class="tag">A · Mission control + patch</p>
+        <div class="stage">
+          <figure><svg class="mk-xl" viewBox="0 0 48 48" role="img" aria-label="Harmony A mark: stepped H"><use href="#a-mark"/></svg><figcaption class="cap">Interface mark</figcaption></figure>
+          <figure><svg class="patch-xl" viewBox="0 0 240 240" role="img" aria-label="Harmony A patch"><use href="#a-patch"/></svg><figcaption class="cap">Patch · intro, about, deck</figcaption></figure>
+        </div>
+        <div class="favs">
+          <span class="tab t-d"><svg width="24" height="24" viewBox="0 0 48 48" aria-hidden="true"><use href="#a-mark"/></svg>Harmony</span>
+          <span class="tab t-l"><svg width="24" height="24" viewBox="0 0 48 48" aria-hidden="true"><use href="#a-mark"/></svg>Harmony</span>
+          <span class="sizes"><span><svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true"><use href="#a-mark"/></svg><span class="cap">16</span></span><span><svg width="32" height="32" viewBox="0 0 48 48" aria-hidden="true"><use href="#a-mark"/></svg><span class="cap">32</span></span></span>
+        </div>
+        <p class="concept"><b>The stepped H.</b> The left stem is MODIS (from 2000, ending), the right stem is VIIRS (from 2012, running on); the crossbar is the overlap where the two are calibrated into one, and the ember tip is now.</p>
+      </article>
+
+      <article class="cell dB">
+        <p class="tag">B · Mission patch throughout</p>
+        <div class="stage">
+          <figure><svg class="emb-xl" viewBox="0 0 240 240" role="img" aria-label="Harmony B emblem"><use href="#b-emblem"/></svg><figcaption class="cap">Emblem</figcaption></figure>
+        </div>
+        <div class="favs">
+          <span class="tab t-d"><svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><use href="#b-fav"/></svg>Harmony</span>
+          <span class="tab t-l"><svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><use href="#b-fav"/></svg>Harmony</span>
+          <span class="sizes"><span><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><use href="#b-fav"/></svg><span class="cap">16</span></span><span><svg width="32" height="32" viewBox="0 0 24 24" aria-hidden="true"><use href="#b-fav"/></svg><span class="cap">32</span></span></span>
+        </div>
+        <p class="concept"><b>Two tracks, one ascent.</b> Two satellite tracks cross Earth's limb, meet, and rise as a single ember line toward one star. Small sizes drop the lettering and keep the limb, the line and the star.</p>
+      </article>
+
+      <article class="cell dC">
+        <p class="tag">C · Modernist poster</p>
+        <div class="stage">
+          <figure><svg class="cmk-xl" viewBox="0 0 46 34" role="img" aria-label="Harmony C mark: twelve month cells with a rising stair"><use href="#c-mark"/></svg><figcaption class="cap">Sign</figcaption></figure>
+        </div>
+        <div class="favs">
+          <span class="tab t-d"><svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><use href="#c-fav"/></svg>Harmony</span>
+          <span class="tab t-l"><svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><use href="#c-fav"/></svg>Harmony</span>
+          <span class="sizes"><span><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><use href="#c-fav"/></svg><span class="cap">16</span></span><span><svg width="32" height="32" viewBox="0 0 24 24" aria-hidden="true"><use href="#c-fav"/></svg><span class="cap">32</span></span></span>
+        </div>
+        <p class="concept"><b>The burning calendar as a sign.</b> Twelve cells, one year of months; the fire season climbs through them as a stair. It reads as a calendar, a flame and a climb.</p>
+      </article>
+    </div>
+  </section>
+
+  <!-- 2 LOCKUP -->
+  <section class="row" id="lockup">
+    <div class="row-h"><span class="n">2</span><h2>Wordmark lockup</h2><p>Mark, name and tagline, on dark and on light.</p></div>
+    <div class="cells">
+      <article class="cell dA">
+        <p class="tag">A · Mission control + patch</p>
+        <div class="lks">
+          <div class="lk on-d"><span class="cap">On dark</span>
+            <div class="lk-a"><svg viewBox="0 0 48 48" aria-hidden="true"><use href="#a-mark"/></svg><div><div class="wm-a">HARMONY</div><div class="tg-a">Two satellites. One fire record.</div></div></div></div>
+          <div class="lk on-l"><span class="cap">On light</span>
+            <div class="lk-a"><svg viewBox="0 0 48 48" aria-hidden="true"><use href="#a-mark"/></svg><div><div class="wm-a">HARMONY</div><div class="tg-a">Two satellites. One fire record.</div></div></div></div>
+        </div>
+      </article>
+      <article class="cell dB">
+        <p class="tag">B · Mission patch throughout</p>
+        <div class="lks">
+          <div class="lk on-d"><span class="cap">On dark</span>
+            <div class="lk-b"><svg viewBox="0 0 240 240" aria-hidden="true"><use href="#b-emblem"/></svg><div><div class="wm-b">Harmony</div><div class="tg-b">Watching fire for the people who face it.</div></div></div></div>
+          <div class="lk on-l"><span class="cap">On light</span>
+            <div class="lk-b"><svg viewBox="0 0 240 240" aria-hidden="true"><use href="#b-emblem"/></svg><div><div class="wm-b">Harmony</div><div class="tg-b">Watching fire for the people who face it.</div></div></div></div>
+        </div>
+      </article>
+      <article class="cell dC">
+        <p class="tag">C · Modernist poster</p>
+        <div class="lks">
+          <div class="lk on-d"><span class="cap">On dark</span>
+            <div class="lk-c"><svg viewBox="0 0 46 34" aria-hidden="true"><use href="#c-mark"/></svg><div class="wm-c">harmony</div><span class="rule-c"></span><div class="tg-c">One record. Every fire season since 2000.</div></div></div>
+          <div class="lk on-l"><span class="cap">On light</span>
+            <div class="lk-c"><svg viewBox="0 0 46 34" aria-hidden="true"><use href="#c-mark"/></svg><div class="wm-c">harmony</div><span class="rule-c"></span><div class="tg-c">One record. Every fire season since 2000.</div></div></div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- 3 PALETTE -->
+  <section class="row" id="palette">
+    <div class="row-h"><span class="n">3</span><h2>Palette</h2><p>Roles, hex values and WCAG contrast, then the fixed data ramps drawn on each ground with the accent beside them.</p></div>
+    <div class="cells">
+      <article class="cell dA">
+        <p class="tag">A · Mission control + patch</p>
+        <ul class="sw">
+          <li><i style="background:#0a0d12"></i><span class="role">Ground<small>App background, slides</small></span><code>#0A0D12</code></li>
+          <li><i style="background:#121720"></i><span class="role">Surface<small>Panels, cards</small></span><code>#121720</code></li>
+          <li><i style="background:#232b37"></i><span class="role">Hairline<small>Rules and borders, never text</small></span><code>#232B37</code></li>
+          <li><i style="background:#eceef2"></i><span class="role">Text</span><code>#ECEEF2<small>16.8 : 1 · 15.5 on surface</small></code></li>
+          <li><i style="background:#8b94a5"></i><span class="role">Muted</span><code>#8B94A5<small>6.4 : 1 · 5.9 on surface</small></code></li>
+          <li><i style="background:#ff8a4c"></i><span class="role">Ember<small>Now, and the one thing to look at</small></span><code>#FF8A4C<small>8.3 : 1 · 7.7 on surface</small></code></li>
+          <li class="sub"><span class="cap">Light mode</span></li>
+          <li><i style="background:#f6f7f9"></i><span class="role">Ground</span><code>#F6F7F9</code></li>
+          <li><i style="background:#0d1015"></i><span class="role">Text · Muted</span><code>#0D1015 · #586070<small>17.8 : 1 · 5.9 : 1</small></code></li>
+          <li><i style="background:#c2410c"></i><span class="role">Ember, light</span><code>#C2410C<small>4.8 : 1</small></code></li>
+        </ul>
+        <div class="ramps">
+          <div class="rp on-d"><span class="cap">Ramps on dark ground · accent at right</span>
+            <div class="strip"><span>Activity</span><b style="background:linear-gradient(90deg, #160b39 0.0%, #2d0b59 6.25%, #450a69 12.5%, #5c126e 18.75%, #721a6e 25.0%, #88226a 31.25%, #9f2a63 37.5%, #b43359 43.75%, #c73e4c 50.0%, #d94d3d 56.25%, #e8602d 62.5%, #f3761b 68.75%, #f98e09 75.0%, #fca80d 81.25%, #fac42a 87.5%, #f4df53 93.75%, #f3f68a 100.0%)"></b><i></i></div>
+            <div class="strip"><span>vs normal</span><b style="background:linear-gradient(90deg, #a9d6ff 0.0%, #4a8fd8 25.0%, #2a2f37 50.0%, #d4762a 75.0%, #ffc685 100.0%);background:linear-gradient(90deg in oklab, #a9d6ff 0.0%, #4a8fd8 25.0%, #2a2f37 50.0%, #d4762a 75.0%, #ffc685 100.0%)"></b><i></i></div></div>
+          <div class="rp on-l"><span class="cap">Ramps on light ground</span>
+            <div class="strip"><span>Activity</span><b style="background:linear-gradient(90deg, #f3f68a 0.0%, #f4df53 6.25%, #fac62d 12.5%, #fcaa0f 18.75%, #fa9008 25.0%, #f47918 31.25%, #ea632a 37.5%, #dd513a 43.75%, #cb4149 50.0%, #b73557 56.25%, #a32c61 62.5%, #8d2369 68.75%, #781c6d 75.0%, #62146e 81.25%, #4c0c6b 87.5%, #360961 93.75%, #1e0c45 100.0%)"></b><i></i></div>
+            <div class="strip"><span>vs normal</span><b style="background:linear-gradient(90deg, #0f3f78 0.0%, #4b8fd3 25.0%, #ebe9e4 50.0%, #de8a3e 75.0%, #7a3507 100.0%);background:linear-gradient(90deg in oklab, #0f3f78 0.0%, #4b8fd3 25.0%, #ebe9e4 50.0%, #de8a3e 75.0%, #7a3507 100.0%)"></b><i></i></div></div>
+        </div>
+        <p class="cr">Neutral near-black keeps both ramps honest: the diverging midpoint grey matches the ground, so “normal” disappears as it should. Ember sits beside the hot end of inferno, so it is kept out of chart areas and used only for the current period.</p>
+      </article>
+
+      <article class="cell dB">
+        <p class="tag">B · Mission patch throughout</p>
+        <ul class="sw">
+          <li><i style="background:#0c1a2e"></i><span class="role">Deep navy<small>Ground</small></span><code>#0C1A2E</code></li>
+          <li><i style="background:#142640"></i><span class="role">Night<small>Surface</small></span><code>#142640</code></li>
+          <li><i style="background:#1f4b7c"></i><span class="role">Limb blue<small>Emblem and illustration only</small></span><code>#1F4B7C</code></li>
+          <li><i style="background:#f4ead6"></i><span class="role">Starlight<small>Text</small></span><code>#F4EAD6<small>14.6 : 1 · 12.7 on night</small></code></li>
+          <li><i style="background:#a8b3c6"></i><span class="role">Haze<small>Muted</small></span><code>#A8B3C6<small>8.3 : 1 · 7.2 on night</small></code></li>
+          <li><i style="background:#f0883e"></i><span class="role">Ember<small>Accent, the rising line</small></span><code>#F0883E<small>6.9 : 1 · 6.0 on night</small></code></li>
+          <li class="sub"><span class="cap">Light mode</span></li>
+          <li><i style="background:#f5eedf"></i><span class="role">Cream<small>Ground</small></span><code>#F5EEDF</code></li>
+          <li><i style="background:#13233b"></i><span class="role">Navy ink · Slate</span><code>#13233B · #4F5D73<small>13.7 : 1 · 5.8 : 1</small></code></li>
+          <li><i style="background:#b04a12"></i><span class="role">Ember, light</span><code>#B04A12<small>4.7 : 1</small></code></li>
+        </ul>
+        <div class="ramps">
+          <div class="rp on-d"><span class="cap">Ramps on navy · accent at right</span>
+            <div class="strip"><span>Activity</span><b style="background:linear-gradient(90deg, #160b39 0.0%, #2d0b59 6.25%, #450a69 12.5%, #5c126e 18.75%, #721a6e 25.0%, #88226a 31.25%, #9f2a63 37.5%, #b43359 43.75%, #c73e4c 50.0%, #d94d3d 56.25%, #e8602d 62.5%, #f3761b 68.75%, #f98e09 75.0%, #fca80d 81.25%, #fac42a 87.5%, #f4df53 93.75%, #f3f68a 100.0%)"></b><i></i></div>
+            <div class="strip"><span>vs normal</span><b style="background:linear-gradient(90deg, #a9d6ff 0.0%, #4a8fd8 25.0%, #2a2f37 50.0%, #d4762a 75.0%, #ffc685 100.0%);background:linear-gradient(90deg in oklab, #a9d6ff 0.0%, #4a8fd8 25.0%, #2a2f37 50.0%, #d4762a 75.0%, #ffc685 100.0%)"></b><i></i></div></div>
+          <div class="rp on-l"><span class="cap">Ramps on cream</span>
+            <div class="strip"><span>Activity</span><b style="background:linear-gradient(90deg, #f3f68a 0.0%, #f4df53 6.25%, #fac62d 12.5%, #fcaa0f 18.75%, #fa9008 25.0%, #f47918 31.25%, #ea632a 37.5%, #dd513a 43.75%, #cb4149 50.0%, #b73557 56.25%, #a32c61 62.5%, #8d2369 68.75%, #781c6d 75.0%, #62146e 81.25%, #4c0c6b 87.5%, #360961 93.75%, #1e0c45 100.0%)"></b><i></i></div>
+            <div class="strip"><span>vs normal</span><b style="background:linear-gradient(90deg, #0f3f78 0.0%, #4b8fd3 25.0%, #ebe9e4 50.0%, #de8a3e 75.0%, #7a3507 100.0%);background:linear-gradient(90deg in oklab, #0f3f78 0.0%, #4b8fd3 25.0%, #ebe9e4 50.0%, #de8a3e 75.0%, #7a3507 100.0%)"></b><i></i></div></div>
+        </div>
+        <p class="cr">Starlight on navy is the warmest pairing here. The cost shows in the strips: the diverging midpoint is a cool grey that reads as a stain on navy, and the dark end of inferno shares navy's depth, so map panels want a near-black inset.</p>
+      </article>
+
+      <article class="cell dC">
+        <p class="tag">C · Modernist poster</p>
+        <ul class="sw">
+          <li><i style="background:#ffffff"></i><span class="role">Paper<small>Ground</small></span><code>#FFFFFF</code></li>
+          <li><i style="background:#f1f0ec"></i><span class="role">Tint<small>Surface</small></span><code>#F1F0EC</code></li>
+          <li><i style="background:#1e1f22"></i><span class="role">Charcoal<small>Text, rules, dark ground</small></span><code>#1E1F22<small>16.5 : 1 · 14.5 on tint</small></code></li>
+          <li><i style="background:#5f6066"></i><span class="role">Graphite<small>Muted</small></span><code>#5F6066<small>6.3 : 1 · 5.5 on tint</small></code></li>
+          <li><i style="background:#d4380f"></i><span class="role">Signal red-orange<small>Fields, large type, white on it</small></span><code>#D4380F<small>4.8 : 1 on paper and under white</small></code></li>
+          <li><i style="background:#ff6a3d"></i><span class="role">Signal on charcoal<small>Text accent on dark</small></span><code>#FF6A3D<small>5.8 : 1</small></code></li>
+          <li class="sub"><span class="cap">Dark mode</span></li>
+          <li><i style="background:#1e1f22"></i><span class="role">Charcoal<small>Ground</small></span><code>#1E1F22</code></li>
+          <li><i style="background:#ffffff"></i><span class="role">White · Muted</span><code>#FFFFFF · #9AA1AB<small>16.5 : 1 · 6.3 : 1</small></code></li>
+        </ul>
+        <div class="ramps">
+          <div class="rp on-l"><span class="cap">Ramps on paper · accent at right</span>
+            <div class="strip"><span>Activity</span><b style="background:linear-gradient(90deg, #f3f68a 0.0%, #f4df53 6.25%, #fac62d 12.5%, #fcaa0f 18.75%, #fa9008 25.0%, #f47918 31.25%, #ea632a 37.5%, #dd513a 43.75%, #cb4149 50.0%, #b73557 56.25%, #a32c61 62.5%, #8d2369 68.75%, #781c6d 75.0%, #62146e 81.25%, #4c0c6b 87.5%, #360961 93.75%, #1e0c45 100.0%)"></b><i></i></div>
+            <div class="strip"><span>vs normal</span><b style="background:linear-gradient(90deg, #0f3f78 0.0%, #4b8fd3 25.0%, #ebe9e4 50.0%, #de8a3e 75.0%, #7a3507 100.0%);background:linear-gradient(90deg in oklab, #0f3f78 0.0%, #4b8fd3 25.0%, #ebe9e4 50.0%, #de8a3e 75.0%, #7a3507 100.0%)"></b><i></i></div></div>
+          <div class="rp on-d"><span class="cap">Ramps on charcoal</span>
+            <div class="strip"><span>Activity</span><b style="background:linear-gradient(90deg, #160b39 0.0%, #2d0b59 6.25%, #450a69 12.5%, #5c126e 18.75%, #721a6e 25.0%, #88226a 31.25%, #9f2a63 37.5%, #b43359 43.75%, #c73e4c 50.0%, #d94d3d 56.25%, #e8602d 62.5%, #f3761b 68.75%, #f98e09 75.0%, #fca80d 81.25%, #fac42a 87.5%, #f4df53 93.75%, #f3f68a 100.0%)"></b><i></i></div>
+            <div class="strip"><span>vs normal</span><b style="background:linear-gradient(90deg, #a9d6ff 0.0%, #4a8fd8 25.0%, #2a2f37 50.0%, #d4762a 75.0%, #ffc685 100.0%);background:linear-gradient(90deg in oklab, #a9d6ff 0.0%, #4a8fd8 25.0%, #2a2f37 50.0%, #d4762a 75.0%, #ffc685 100.0%)"></b><i></i></div></div>
+        </div>
+        <p class="cr">Signal red-orange passes 4.5 : 1 only on pure white (4.2 on tint), so it is a field colour first and a text colour second. It shares a hue with the hot end of inferno; charts carry no red-orange chrome at all.</p>
+      </article>
+    </div>
+  </section>
+
+  <!-- 4 TYPE -->
+  <section class="row" id="type">
+    <div class="row-h"><span class="n">4</span><h2>Typography</h2><p>Display, interface and numerals, with fallback stacks. All faces from Google Fonts.</p></div>
+    <div class="cells">
+      <article class="cell dA">
+        <p class="tag">A · Mission control + patch</p>
+        <div class="ty">
+          <div><span class="cap">Display · Barlow 500, caps tracked 0.3 em</span><p class="ty-a1">Ad astra per aspera</p><code>'Barlow', 'D-DIN', 'Arial Narrow', ui-sans-serif, sans-serif</code></div>
+          <div><span class="cap">Interface · Schibsted Grotesk (in use today)</span><p class="ty-a2">Pick any area on Earth and see when it burns, which years were extreme, and how this month compares with normal.</p><code>'Schibsted Grotesk', ui-sans-serif, system-ui, 'Segoe UI', sans-serif</code></div>
+          <div><span class="cap">Numerals · JetBrains Mono, tabular (in use today)</span>
+            <p class="ty-a3"><span>Month</span><span>Index</span><span>vs normal</span><span>Pctl</span>
+              <span>NOV 2026</span><span>80.5</span><span class="hot">2.3×</span><span>94</span>
+              <span>NOV 2025</span><span>31.2</span><span>0.9×</span><span>41</span>
+              <span>NOV 2021</span><span>96.0</span><span>2.7×</span><span>97</span></p>
+            <code>'JetBrains Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace</code></div>
+        </div>
+      </article>
+      <article class="cell dB">
+        <p class="tag">B · Mission patch throughout</p>
+        <div class="ty">
+          <div><span class="cap">Display · Alegreya 700 and 500 italic</span><p class="ty-b1">Harmony<em>through hardship, to the stars</em></p><code>'Alegreya', 'Iowan Old Style', 'Palatino Linotype', Georgia, serif</code></div>
+          <div><span class="cap">Interface · Alegreya Sans</span><p class="ty-b2">Pick any place on Earth and see when it burns, which years were hardest, and how this month compares with a normal one.</p><code>'Alegreya Sans', 'Gill Sans', 'Segoe UI', system-ui, sans-serif</code></div>
+          <div><span class="cap">Numerals · Alegreya Sans, lining tabular</span><p class="ty-b3">2000 · 2012 · 2026 · 2.3× · 94th</p><code>font-variant-numeric: tabular-nums lining-nums</code></div>
+        </div>
+      </article>
+      <article class="cell dC">
+        <p class="tag">C · Modernist poster</p>
+        <div class="ty">
+          <div><span class="cap">Display · Archivo 800, width 125</span><p class="ty-c1">harmony</p><code>'Archivo', 'Helvetica Neue', Helvetica, Arial, sans-serif</code></div>
+          <div><span class="cap">Interface · Archivo 400, width 100</span><p class="ty-c2">Pick any area on Earth and see when it burns, which years were extreme, and how this month compares with normal.</p><code>One family in three widths: expanded, normal, condensed</code></div>
+          <div><span class="cap">Numerals · Archivo 600, width 75, tabular</span><p class="ty-c3"><span>2.3×<small>vs normal</small></span><span>94<small>percentile</small></span><span>26<small>years</small></span></p><code>font-stretch: 75%; font-variant-numeric: tabular-nums</code></div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- 5 APP -->
+  <section class="row" id="app">
+    <div class="row-h"><span class="n">5</span><h2>App header and status strip</h2><p>Same sample data in each: Northern California, November 2026. The heatmap uses the fixed sequential ramp; the outlined cell is the current month, the hatched cell has no data yet.</p></div>
+    <div class="cells">
+      <article class="cell dA">
+        <p class="tag">A · Mission control + patch</p>
+        <div class="app app-a">
+          <div class="ab">
+            <span class="ab-id"><svg viewBox="0 0 48 48" aria-hidden="true"><use href="#a-mark"/></svg><span class="ab-wm">HARMONY</span></span>
+            <span class="ab-area"><span class="k">Area</span><b>Northern California, USA</b></span>
+            <span class="ab-nav"><span>Calendar</span><span>Globe</span><span aria-current="page">Now</span><span>Brief</span></span>
+          </div>
+          <div class="sts">
+            <span class="k">Now vs normal</span>
+            <p class="line"><span class="num">November 2026</span> <span class="sep">·</span> <b class="num">2.3×</b> the normal for this month <span class="sep">·</span> <b class="num">94th</b> percentile <span class="sep">·</span> <b class="num">3rd</b> most active November since 2000</p>
+            <span class="chip"><i style="background:#b06835"></i>Well above normal</span>
+          </div>
+          <div class="mc-wrap">
+            <div class="mc" role="img" aria-label="Monthly burning activity, 2021 to 2026"><span></span><span>J</span><span>F</span><span>M</span><span>A</span><span>M</span><span>J</span><span>J</span><span>A</span><span>S</span><span>O</span><span>N</span><span>D</span><span class="y">2021</span><i style="background:#58116d"></i><i style="background:#330b5d"></i><i style="background:#6d186e"></i><i style="background:#83206b"></i><i style="background:#b83656"></i><i style="background:#ec6727"></i><i style="background:#fbba20"></i><i style="background:#f3f68a"></i><i style="background:#f4e664"></i><i style="background:#fb9e0b"></i><i style="background:#d34842"></i><i style="background:#7e1e6c"></i><span class="y">2022</span><i style="background:#3d0a64"></i><i style="background:#2c0b58"></i><i style="background:#450a69"></i><i style="background:#7d1e6c"></i><i style="background:#9e2a63"></i><i style="background:#cb4149"></i><i style="background:#f78410"></i><i style="background:#fca70d"></i><i style="background:#fbb71c"></i><i style="background:#f1721e"></i><i style="background:#bf3a51"></i><i style="background:#84216b"></i><span class="y">2023</span><i style="background:#330b5d"></i><i style="background:#2c0b58"></i><i style="background:#4e0d6b"></i><i style="background:#66166e"></i><i style="background:#83206b"></i><i style="background:#c33c4e"></i><i style="background:#f2751c"></i><i style="background:#fa940a"></i><i style="background:#f68212"></i><i style="background:#f47a18"></i><i style="background:#db503a"></i><i style="background:#8b2369"></i><span class="y">2024</span><i style="background:#520f6c"></i><i style="background:#450a69"></i><i style="background:#69176e"></i><i style="background:#922667"></i><i style="background:#b43359"></i><i style="background:#ea642a"></i><i style="background:#fcaa0f"></i><i style="background:#f9ca33"></i><i style="background:#fbb015"></i><i style="background:#f68112"></i><i style="background:#cd4347"></i><i style="background:#761c6d"></i><span class="y">2025</span><i style="background:#4c0c6b"></i><i style="background:#2c0b58"></i><i style="background:#63156e"></i><i style="background:#88226a"></i><i style="background:#a52d60"></i><i style="background:#db4f3b"></i><i style="background:#f99109"></i><i style="background:#fac42a"></i><i style="background:#fca80d"></i><i style="background:#f7880e"></i><i style="background:#d34842"></i><i style="background:#902568"></i><span class="y">2026</span><i style="background:#5d126e"></i><i style="background:#3a0a62"></i><i style="background:#721a6e"></i><i style="background:#8d2468"></i><i style="background:#bc3854"></i><i style="background:#df5437"></i><i style="background:#fa970a"></i><i style="background:#f8cf3b"></i><i style="background:#f8cd37"></i><i style="background:#fcab10"></i><i class="now" style="background:#f3781a"></i><i class="nd" title="December 2026: no data yet"></i></div>
+            <div class="mc-legend"><span>Low</span><b style="background:linear-gradient(90deg, #160b39 0.0%, #2d0b59 6.25%, #450a69 12.5%, #5c126e 18.75%, #721a6e 25.0%, #88226a 31.25%, #9f2a63 37.5%, #b43359 43.75%, #c73e4c 50.0%, #d94d3d 56.25%, #e8602d 62.5%, #f3761b 68.75%, #f98e09 75.0%, #fca80d 81.25%, #fac42a 87.5%, #f4df53 93.75%, #f3f68a 100.0%)"></b><span>High</span><span class="now-k"></span><span>Now</span></div>
+          </div>
+        </div>
+      </article>
+      <article class="cell dB">
+        <p class="tag">B · Mission patch throughout</p>
+        <div class="app app-b">
+          <div class="ab">
+            <span class="ab-id"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#b-fav"/></svg><span class="ab-wm">Harmony</span></span>
+            <span class="ab-area"><b>Northern California, USA</b></span>
+            <span class="ab-nav"><span>Calendar</span><span>Globe</span><span aria-current="page">Now</span><span>Brief</span></span>
+          </div>
+          <div class="sts">
+            <span class="k">How this month compares</span>
+            <p class="line">November 2026 <span class="sep">·</span> <b>2.3×</b> the normal for this month <span class="sep">·</span> <b>94th</b> percentile <span class="sep">·</span> <b>3rd</b> most active November since 2000</p>
+            <span class="chip"><i style="background:#b06835"></i>Well above normal</span>
+          </div>
+          <div class="mc-wrap">
+            <div class="mc" role="img" aria-label="Monthly burning activity, 2021 to 2026"><span></span><span>J</span><span>F</span><span>M</span><span>A</span><span>M</span><span>J</span><span>J</span><span>A</span><span>S</span><span>O</span><span>N</span><span>D</span><span class="y">2021</span><i style="background:#58116d"></i><i style="background:#330b5d"></i><i style="background:#6d186e"></i><i style="background:#83206b"></i><i style="background:#b83656"></i><i style="background:#ec6727"></i><i style="background:#fbba20"></i><i style="background:#f3f68a"></i><i style="background:#f4e664"></i><i style="background:#fb9e0b"></i><i style="background:#d34842"></i><i style="background:#7e1e6c"></i><span class="y">2022</span><i style="background:#3d0a64"></i><i style="background:#2c0b58"></i><i style="background:#450a69"></i><i style="background:#7d1e6c"></i><i style="background:#9e2a63"></i><i style="background:#cb4149"></i><i style="background:#f78410"></i><i style="background:#fca70d"></i><i style="background:#fbb71c"></i><i style="background:#f1721e"></i><i style="background:#bf3a51"></i><i style="background:#84216b"></i><span class="y">2023</span><i style="background:#330b5d"></i><i style="background:#2c0b58"></i><i style="background:#4e0d6b"></i><i style="background:#66166e"></i><i style="background:#83206b"></i><i style="background:#c33c4e"></i><i style="background:#f2751c"></i><i style="background:#fa940a"></i><i style="background:#f68212"></i><i style="background:#f47a18"></i><i style="background:#db503a"></i><i style="background:#8b2369"></i><span class="y">2024</span><i style="background:#520f6c"></i><i style="background:#450a69"></i><i style="background:#69176e"></i><i style="background:#922667"></i><i style="background:#b43359"></i><i style="background:#ea642a"></i><i style="background:#fcaa0f"></i><i style="background:#f9ca33"></i><i style="background:#fbb015"></i><i style="background:#f68112"></i><i style="background:#cd4347"></i><i style="background:#761c6d"></i><span class="y">2025</span><i style="background:#4c0c6b"></i><i style="background:#2c0b58"></i><i style="background:#63156e"></i><i style="background:#88226a"></i><i style="background:#a52d60"></i><i style="background:#db4f3b"></i><i style="background:#f99109"></i><i style="background:#fac42a"></i><i style="background:#fca80d"></i><i style="background:#f7880e"></i><i style="background:#d34842"></i><i style="background:#902568"></i><span class="y">2026</span><i style="background:#5d126e"></i><i style="background:#3a0a62"></i><i style="background:#721a6e"></i><i style="background:#8d2468"></i><i style="background:#bc3854"></i><i style="background:#df5437"></i><i style="background:#fa970a"></i><i style="background:#f8cf3b"></i><i style="background:#f8cd37"></i><i style="background:#fcab10"></i><i class="now" style="background:#f3781a"></i><i class="nd" title="December 2026: no data yet"></i></div>
+            <div class="mc-legend"><span>Low</span><b style="background:linear-gradient(90deg, #160b39 0.0%, #2d0b59 6.25%, #450a69 12.5%, #5c126e 18.75%, #721a6e 25.0%, #88226a 31.25%, #9f2a63 37.5%, #b43359 43.75%, #c73e4c 50.0%, #d94d3d 56.25%, #e8602d 62.5%, #f3761b 68.75%, #f98e09 75.0%, #fca80d 81.25%, #fac42a 87.5%, #f4df53 93.75%, #f3f68a 100.0%)"></b><span>High</span><span class="now-k"></span><span>This month</span></div>
+          </div>
+        </div>
+      </article>
+      <article class="cell dC">
+        <p class="tag">C · Modernist poster</p>
+        <div class="app app-c">
+          <div class="ab">
+            <span class="ab-id"><svg viewBox="0 0 46 34" aria-hidden="true"><use href="#c-mark"/></svg><span class="ab-wm">harmony</span></span>
+            <span class="ab-area"><b>Northern California, USA</b></span>
+            <span class="ab-nav"><span>Calendar</span><span>Globe</span><span aria-current="page">Now</span><span>Brief</span></span>
+          </div>
+          <div class="sts">
+            <span class="big">2.3×</span>
+            <span class="big-r"><span class="k">November 2026</span>the normal for this month</span>
+            <div class="facts">
+              <span><b>94th</b>percentile</span>
+              <span><b>3rd</b>most active November since 2000</span>
+              <span class="chip"><i style="background:#e29e64"></i>Well above normal</span>
+            </div>
+          </div>
+          <div class="mc-wrap">
+            <div class="mc" role="img" aria-label="Monthly burning activity, 2021 to 2026"><span></span><span>J</span><span>F</span><span>M</span><span>A</span><span>M</span><span>J</span><span>J</span><span>A</span><span>S</span><span>O</span><span>N</span><span>D</span><span class="y">2021</span><i style="background:#fcaf14"></i><i style="background:#f6d849"></i><i style="background:#fa9509"></i><i style="background:#f57e14"></i><i style="background:#d94d3d"></i><i style="background:#9c2964"></i><i style="background:#540f6c"></i><i style="background:#1e0c45"></i><i style="background:#2f0a58"></i><i style="background:#6a176e"></i><i style="background:#be3952"></i><i style="background:#f78411"></i><span class="y">2022</span><i style="background:#f8ce3a"></i><i style="background:#f4e055"></i><i style="background:#fac62d"></i><i style="background:#f78510"></i><i style="background:#ea632a"></i><i style="background:#c73f4c"></i><i style="background:#801f6b"></i><i style="background:#63146e"></i><i style="background:#56106c"></i><i style="background:#912568"></i><i style="background:#d24743"></i><i style="background:#f57d15"></i><span class="y">2023</span><i style="background:#f6d849"></i><i style="background:#f4e055"></i><i style="background:#fbbb21"></i><i style="background:#fb9e0c"></i><i style="background:#f57e14"></i><i style="background:#ce4446"></i><i style="background:#8e2369"></i><i style="background:#731a6d"></i><i style="background:#83206b"></i><i style="background:#89226a"></i><i style="background:#b43459"></i><i style="background:#f3771a"></i><span class="y">2024</span><i style="background:#fbb61c"></i><i style="background:#fac62d"></i><i style="background:#fb9b0b"></i><i style="background:#f06f20"></i><i style="background:#dd513a"></i><i style="background:#9f2a62"></i><i style="background:#60136e"></i><i style="background:#470b69"></i><i style="background:#5c126d"></i><i style="background:#83206b"></i><i style="background:#c43d4e"></i><i style="background:#f98c0b"></i><span class="y">2025</span><i style="background:#fbbd24"></i><i style="background:#f4e055"></i><i style="background:#fba20d"></i><i style="background:#f47918"></i><i style="background:#e65e2f"></i><i style="background:#b43458"></i><i style="background:#751b6d"></i><i style="background:#4c0c6b"></i><i style="background:#62146e"></i><i style="background:#7d1e6c"></i><i style="background:#be3952"></i><i style="background:#f0711e"></i><span class="y">2026</span><i style="background:#fca90f"></i><i style="background:#f7d23f"></i><i style="background:#fa9008"></i><i style="background:#f2741c"></i><i style="background:#d54a40"></i><i style="background:#b0325b"></i><i style="background:#71196d"></i><i style="background:#430b67"></i><i style="background:#450b68"></i><i style="background:#5f136e"></i><i class="now" style="background:#8c2369"></i><i class="nd" title="December 2026: no data yet"></i></div>
+            <div class="mc-legend"><span>Low</span><b style="background:linear-gradient(90deg, #f3f68a 0.0%, #f4df53 6.25%, #fac62d 12.5%, #fcaa0f 18.75%, #fa9008 25.0%, #f47918 31.25%, #ea632a 37.5%, #dd513a 43.75%, #cb4149 50.0%, #b73557 56.25%, #a32c61 62.5%, #8d2369 68.75%, #781c6d 75.0%, #62146e 81.25%, #4c0c6b 87.5%, #360961 93.75%, #1e0c45 100.0%)"></b><span>High</span><span class="now-k"></span><span>Now</span></div>
+          </div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- 6 SLIDE -->
+  <section class="row" id="slide">
+    <div class="row-h"><span class="n">6</span><h2>Title slide, 16 : 9</h2><p>The deck opener judges see first.</p><button type="button" class="toggle" id="slide-size" aria-pressed="false">Show slides large</button></div>
+    <div class="cells">
+      <article class="cell dA">
+        <p class="tag">A · Mission control + patch</p>
+        <div class="slide-scroll"><div class="slide sl-a">
+          <svg class="patch" viewBox="0 0 240 240" aria-hidden="true"><use href="#a-patch"/></svg>
+          <div class="body">
+            <p class="eb">NASA SPACE APPS 2026</p>
+            <h3>HARMONY</h3>
+            <p class="sub">One fire record, two generations of satellites</p>
+            <dl><div><dt>Challenge</dt><dd>Harmonization of MODIS and VIIRS Hot Spots</dd></div><div><dt>Presenter</dt><dd>[Presenter name] · Team Harmony</dd></div></dl>
+          </div>
+          <div class="tl" aria-hidden="true">
+            <span class="ov"></span><span class="ln m"></span><span class="ln v"></span>
+            <span class="lb m">MODIS · TERRA + AQUA</span><span class="lb v">VIIRS · SUOMI NPP, NOAA-20, NOAA-21</span>
+            <span class="ax">2000</span><span class="ax mid">2012</span><span class="ax e">2026</span>
+          </div>
+        </div></div>
+      </article>
+      <article class="cell dB">
+        <p class="tag">B · Mission patch throughout</p>
+        <div class="slide-scroll"><div class="slide sl-b">
+          <div class="earth"></div>
+          <svg class="emb" viewBox="0 0 240 240" aria-hidden="true"><use href="#b-emblem"/></svg>
+          <div class="body">
+            <p class="eb">NASA Space Apps 2026</p>
+            <h3>Harmony</h3>
+            <p class="sub">One fire record, two generations of satellites</p>
+            <p class="ch">Challenge · <b>Harmonization of MODIS and VIIRS Hot Spots</b><br>Presented by <b>[Presenter name]</b>, Team Harmony</p>
+            <p class="ded">For the crews on the line, and the people who decide where they go.</p>
+          </div>
+        </div></div>
+      </article>
+      <article class="cell dC">
+        <p class="tag">C · Modernist poster</p>
+        <div class="slide-scroll"><div class="slide sl-c">
+          <div class="top">
+            <svg viewBox="0 0 46 34" aria-hidden="true" style="color:#ffffff;--x:#1e1f22"><use href="#c-mark"/></svg>
+            <span><span class="k">NASA Space Apps</span>2026</span>
+            <span style="grid-column:span 2"><span class="k">Challenge</span>Harmonization of MODIS and VIIRS Hot Spots</span>
+          </div>
+          <div class="word">harmony</div>
+          <div class="bot">
+            <p>One fire record, two generations of satellites</p>
+            <p><span class="k">Presenter</span>[Presenter name]<br>Team Harmony</p>
+          </div>
+        </div></div>
+      </article>
+    </div>
+  </section>
+
+  <!-- 7 VOICE -->
+  <section class="row" id="voice">
+    <div class="row-h"><span class="n">7</span><h2>Voice</h2><p>Taglines, one sentence of mission, where the motto lives, and a dedication.</p></div>
+    <div class="cells">
+      <article class="cell dA">
+        <p class="tag">A · Mission control + patch</p>
+        <div class="vo vo-a">
+          <div><span class="cap">Taglines</span><ol class="tg"><li>Two satellites. One fire record.</li><li>Every fire season since 2000, on one scale.</li><li>Know when the land burns.</li></ol></div>
+          <div><span class="cap">Mission</span><p>Harmony joins two generations of fire-detecting satellites into one consistent record, so anyone responsible for a landscape can see when it burns, which years were extreme, and how this month compares with normal.</p></div>
+          <div><span class="cap">Motto and spirit</span><p><span class="motto">Ad astra per aspera</span> appears only on the patch: the intro screen, the about panel, the closing slide, the video end card. The interface never says anything heroic. Its precision is the tribute.</p></div>
+          <div><span class="cap">Dedication</span><p class="ded">For everyone who works the fire line, the dispatch desk and the long night after.</p></div>
+        </div>
+      </article>
+      <article class="cell dB">
+        <p class="tag">B · Mission patch throughout</p>
+        <div class="vo vo-b">
+          <div><span class="cap">Taglines</span><ol class="tg"><li>Watching fire for the people who face it.</li><li>Twenty-six years of fire, told as one story.</li><li>Two generations of satellites, one record for the ground.</li></ol></div>
+          <div><span class="cap">Mission</span><p>Satellites have watched Earth's fires for twenty-six years; Harmony turns that watch into one record that a crew lead, a planner or a scientist can read in a minute.</p></div>
+          <div><span class="cap">Motto and spirit</span><p><span class="motto">Ad astra per aspera</span> rides the emblem's ring and is translated once, where people first meet it: through hardship, to the stars. The human spirit shows up as people in the copy (crews, dispatchers, neighbours), never as heroic adjectives.</p></div>
+          <div><span class="cap">Dedication</span><p class="ded">Dedicated to the firefighters, dispatchers and land stewards who read the land so the rest of us can sleep.</p></div>
+        </div>
+      </article>
+      <article class="cell dC">
+        <p class="tag">C · Modernist poster</p>
+        <div class="vo vo-c">
+          <div><span class="cap">Taglines</span><ol class="tg"><li>One record. Every fire season since 2000.</li><li>26 years. 12 months. One scale.</li><li>Fire, on the record.</li></ol></div>
+          <div><span class="cap">Mission</span><p>Harmony is one fire record for the whole planet: two satellite generations, one scale, twenty-six years.</p></div>
+          <div><span class="cap">Motto and spirit</span><p>Set once, small, as the colophon under the giant wordmark: <span class="motto">Ad astra per aspera</span>. Scale and order carry the confidence, so the words never have to strain.</p></div>
+          <div><span class="cap">Dedication</span><p class="ded">This record is for the people on the fire line.</p></div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- 8 TRADE-OFF -->
+  <section class="row" id="trade">
+    <div class="row-h"><span class="n">8</span><h2>Trade-off</h2><p>What each direction costs.</p></div>
+    <div class="cells">
+      <article class="cell dA"><p class="tag">A · Mission control + patch</p><p class="trade">Lowest risk and nearly free to adopt, since it is today's interface sharpened. The warmth lives only in a few patch moments, so a judge who sees just the app may find it cool.</p></article>
+      <article class="cell dB"><p class="tag">B · Mission patch throughout</p><p class="trade">The warmest story and the strongest emblem, but navy fights the fixed ramps (grey midpoint, dark inferno end), and the illustration-led look can read as nostalgia rather than precision.</p></article>
+      <article class="cell dC"><p class="tag">C · Modernist poster</p><p class="trade">The most memorable on a projector, but a light-first, big-type system fights a dense globe and calendar, and its red-orange shares a hue with the hottest data.</p></article>
+    </div>
+  </section>
+
+  </div>
+
+  <!-- COMPARE -->
+  <section class="compare" id="compare">
+    <h2>Side by side</h2>
+    <div class="tbl">
+      <table>
+        <thead><tr><th scope="col"><span class="eyebrow">Criterion</span></th>
+          <th scope="col" class="dA" style="--x:#ff8a4c"><span><svg class="thmk" viewBox="0 0 48 48" aria-hidden="true" style="color:var(--ink)"><use href="#a-mark"/></svg>A · Mission control + patch</span></th>
+          <th scope="col"><span><svg class="thmk" viewBox="0 0 24 24" aria-hidden="true"><use href="#b-fav"/></svg>B · Mission patch throughout</span></th>
+          <th scope="col" style="--x:#d4380f"><span><svg class="thmk c" viewBox="0 0 46 34" aria-hidden="true" style="color:var(--ink)"><use href="#c-mark"/></svg>C · Modernist poster</span></th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Feels like</th><td>A flight operations console</td><td>A mission patch you would sew on a jacket</td><td>A 1970s graphics standards manual</td></tr>
+          <tr><th scope="row">In the app</th><td>Fits today's UI; tokens almost unchanged</td><td>Re-skin to navy, softer corners, warmer type</td><td>Light-first rebuild with a new grid and type scale</td></tr>
+          <tr><th scope="row">Next to the data ramps</th><td>Best. Neutral ground keeps inferno and the diverging midpoint honest</td><td>Weakest. Grey midpoint and dark inferno end sit badly on navy</td><td>Good on white. Accent shares a hue with the hot end</td></tr>
+          <tr><th scope="row">On stage</th><td>Calm and precise; the patch gives the human beat</td><td>Warm, narrative, the most memorable emblem</td><td>The loudest and most graphic</td></tr>
+          <tr><th scope="row">Carries the motto</th><td>Patch ring, intro and closing slide</td><td>Everywhere the emblem appears</td><td>One colophon line</td></tr>
+          <tr><th scope="row">Effort before judging</th><td>Low</td><td>Medium</td><td>High</td></tr>
+          <tr><th scope="row">Main risk</th><td>Reads cool</td><td>Nostalgia over precision</td><td>Fights the instrument</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="rec" id="recommendation">
+    <h2>Recommendation</h2>
+    <p>Choose A. Harmony's case to judges rests on Validity as much as Presentation, and A keeps the calm instrument the team has already built and tuned around colour-blind-safe data: the neutral ground lets both ramps read exactly as designed, and the stepped H explains the product's core idea, two records joined across their overlap, in four rectangles. The patch then carries everything the brief asks for on the human side (the motto, the 26 seasons, the dedication) in the moments where people should feel it: the intro, the about panel, the deck and the video end card. It is also the only direction the team can finish properly before judging.</p>
+    <ul class="hy">
+      <li><b>A + B</b><span>Keep A's interface and stepped H, and use B's illustrated emblem in place of A's line patch for the intro, deck and video. More warmth on stage, no cost to the data.</span></li>
+      <li><b>A + C</b><span>Keep A's interface, and build the slide deck on C's poster grid and very large type, recoloured to ember on near-black. The most presentation punch for the least app work.</span></li>
+    </ul>
+  </section>
+
+  <p class="foot">Prepared for the Harmony team, November 2026. All marks are original drawings made for this review. The sequential and diverging ramps are reproduced unchanged from the app's colour module. Contrast ratios are WCAG 2 relative-luminance ratios against the ground named.</p>
+</div>
+
+<script>
+(function(){
+  var btn=document.getElementById('slide-size'), row=document.getElementById('slide');
+  if(!btn||!row) return;
+  btn.addEventListener('click', function(){
+    var on=row.classList.toggle('big');
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    btn.textContent = on ? 'Show slides side by side' : 'Show slides large';
+  });
+})();
+</script>

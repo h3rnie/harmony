@@ -1,6 +1,7 @@
 // Rule-based situation brief: 4-6 plain sentences a duty officer can read aloud.
 import type { Analysis } from '../kernel/types'
 import { monthStats, trendWords } from '../analysisUtil'
+import { yearContext } from './yearContext'
 import { LEVEL_LABEL, MONTHS_LONG, fmtArea, fmtNum, fmtRatio, monthLong, ordinal, rankFromEnds, rankPhrase } from '../format'
 
 export interface BriefInput {
@@ -21,7 +22,7 @@ export function templateBrief(i: BriefInput): string[] {
   const levelWord = (LEVEL_LABEL[s.level] ?? s.level).toLowerCase()
 
   // 1. Headline
-  let head = `${i.area} (${fmtArea(i.areaKm2)}): burning activity in ${monthLong(i.focusM)} is ${fmtRatio(s.ratio)} the ${mName} normal — ${levelWord}`
+  let head = `${i.area} (${fmtArea(i.areaKm2)}): burning activity in ${monthLong(i.focusM)} ${s.isCurrent ? 'is' : 'was'} ${fmtRatio(s.ratio)} the ${mName} normal — ${levelWord}`
   if (s.rank != null) head += `, the ${rankFromEnds(s.rank, s.of)} ${mName} since ${i.firstYear}`
   if (s.percentile != null) head += ` (${ordinal(Math.round(s.percentile))} percentile)`
   out.push(head + '.')
@@ -33,16 +34,17 @@ export function templateBrief(i: BriefInput): string[] {
   if (s.provisional) n2 += ' These figures are provisional, from near-real-time detections, and may be revised.'
   out.push(n2)
 
-  // 3. Year context: year-to-date for the current year, the annual total for a past year
-  const y = a.ytd
-  if (s.year === y.year && y.ratio != null) {
-    out.push(`Year to date, ${y.year} is running at ${fmtRatio(y.ratio)} the median through ${MONTHS_LONG[y.throughMonth - 1]}, ${rankPhrase(y.rank, 'highest')} of ${y.of} years on record.`)
-  } else {
-    const ai = a.annual.years.indexOf(s.year)
-    const rank = ai >= 0 ? a.annual.rank[ai] : null
-    const nComplete = a.annual.complete.filter(Boolean).length
-    if (ai >= 0 && a.annual.total[ai] != null && rank != null) {
-      out.push(`${s.year} as a whole totalled ${fmtNum(a.annual.total[ai])}, the ${rankPhrase(rank, 'highest')} of ${nComplete} complete years.`)
+  // 3. Year context. Latest month: current year to date. A past month: THAT year (year to date through the viewed
+  //    month, computed from the calendar matrix, plus its annual rank when complete); never the current year.
+  const yc = yearContext(a, s)
+  if (yc) {
+    const y = yc.ytd
+    const verb = s.isCurrent ? 'is running at' : 'ran at'
+    if (y.ratio != null && y.rank != null) {
+      out.push(`Year to date, ${y.year} ${verb} ${fmtRatio(y.ratio)} the median through ${MONTHS_LONG[y.throughMonth - 1]}, ${rankPhrase(y.rank, 'highest')} of ${y.of} years on record.`)
+    }
+    if (yc.annual) {
+      out.push(`${yc.annual.year} as a whole totalled ${fmtNum(yc.annual.total)}, the ${rankPhrase(yc.annual.rank, 'highest')} of ${yc.annual.of} complete years.`)
     }
   }
 

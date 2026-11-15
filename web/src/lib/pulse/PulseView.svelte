@@ -10,6 +10,8 @@
   import { cellIndex, decodeValue, LAYER, loadClim, loadLand, loadMeta, moyOfM, W, YearCache, yearOfM, type OverviewMeta, type YearBytes } from './data'
   import { globeLayout, type Frame, type PulseMode, type PulseRenderer } from './shared'
   import Timeline from './Timeline.svelte'
+  import BrandMark from '../brand/BrandMark.svelte'
+  import Patch from '../brand/Patch.svelte'
 
   let { onclose }: { onclose: () => void } = $props()
 
@@ -355,6 +357,7 @@
 
   <header class="top">
     <div class="title">
+      <p class="lockup"><BrandMark size={18} /><span class="wm">Harmony</span></p>
       <p class="eyebrow" id="pulse-h">Global fire pulse · harmonized AFCD-M · 0.5° cells</p>
       {#if meta}
         <p class="when num" aria-live="off"><span class="mo">{MONTHS_LONG[moyOfM(cur)]}</span> <span class="yr">{yearOfM(cur)}</span></p>
@@ -385,6 +388,7 @@
   {/if}
 
   {#if status === 'ready' && meta}
+    <div class="patch" aria-hidden="true"><Patch size="100%" /></div>
     <aside class="legend" aria-label="Legend">
       {#if mode === 'activity'}
         <p class="eyebrow">Activity · AFCD-M per cell-month</p>
@@ -442,21 +446,22 @@
 
   .top { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: flex-start; padding: 22px 28px; pointer-events: none; }
   .title, .actions { pointer-events: auto; }
+  .lockup { display: flex; align-items: center; gap: 8px; margin: 0 0 14px; color: var(--ink); }
+  .wm { font-family: var(--font-display); font-weight: 500; font-size: var(--fs-sm); letter-spacing: var(--track-wordmark); text-transform: uppercase; }
+  .patch { position: absolute; left: 28px; bottom: 104px; width: 96px; aspect-ratio: 1; opacity: 0.9; pointer-events: none; }
   .when { margin: 6px 0 2px; font-size: clamp(2.2rem, 4.6vw, 3.6rem); line-height: 1; letter-spacing: -0.04em; }
   .when .mo { font-family: var(--font-ui); font-weight: 600; letter-spacing: -0.035em; }
   .when .yr { color: var(--accent-ink); }
   .sub { color: var(--ink-2); margin: 8px 0 0; }
   .scope { color: var(--ink-3); max-width: 46ch; margin-top: 4px; }
   .actions { display: flex; gap: 10px; align-items: center; }
-  .chip { font: 0.72rem var(--font-num); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2); border: 1px solid var(--rule-strong); border-radius: 999px; padding: 3px 10px; }
-  .chip.warn { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 50%, transparent); }
-  .actions .btn { background: color-mix(in srgb, var(--surface) 70%, transparent); }
+    .actions .btn { background: color-mix(in srgb, var(--surface) 70%, transparent); }
 
   .center { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; gap: 4px; }
 
   .legend { position: absolute; right: 28px; bottom: 104px; width: 260px; }
   .bar { height: 8px; border-radius: 2px; margin-top: 6px; }
-  .ticks { position: relative; height: 16px; font-size: 0.68rem; color: var(--ink-3); }
+  .ticks { position: relative; height: 16px; font-size: var(--fs-xs); color: var(--ink-3); }
   .ticks span { position: absolute; transform: translateX(-50%); top: 2px; }
   .ticks span:last-child { transform: translateX(-100%); }
   .ends { display: flex; justify-content: space-between; color: var(--ink-3); margin-top: 3px; }
@@ -477,6 +482,7 @@
   .play:hover { background: var(--accent-soft); }
   .controls .seg { flex: none; background: color-mix(in srgb, var(--surface) 70%, transparent); }
 
+  @media (max-width: 760px), (max-height: 640px) { .patch { display: none; } }
   @media (max-width: 760px) {
     .top { padding: 14px 16px; }
     .legend { left: 16px; right: 16px; width: auto; bottom: 150px; }

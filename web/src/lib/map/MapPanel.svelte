@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount, untrack } from 'svelte'
-  import { Map as MlMap, NavigationControl, ScaleControl, setWorkerUrl, type ImageSource, type GeoJSONSource, type StyleSpecification } from 'maplibre-gl'
+  import { Map as MlMap, NavigationControl, Popup, ScaleControl, setWorkerUrl, type ImageSource, type GeoJSONSource, type StyleSpecification } from 'maplibre-gl'
   import 'maplibre-gl/dist/maplibre-gl.css'
   // MapLibre resolves its worker relative to its own module URL, which breaks once bundled; point at it explicitly.
   import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
@@ -18,6 +18,9 @@
   import CoordinatesPopover from './CoordinatesPopover.svelte'
   import MapLegend from './MapLegend.svelte'
   import type { ClimOverlay } from '../pulse/climOverlay'
+  import { live, fmtAge, WINDOW_HOURS } from '../live/store.svelte'
+  import { liveGeoJson, livePaint, popupNode } from '../live/liveLayer'
+  import LiveControl from '../live/LiveControl.svelte'
 
   const STYLE_URL = { dark: 'https://tiles.openfreemap.org/styles/dark', light: 'https://tiles.openfreemap.org/styles/positron' }
   const OWN_PREFIXES = ['td', 'h-']
@@ -38,6 +41,8 @@
   let clim = $state.raw<ClimOverlay | null>(null)
   let fileInput: HTMLInputElement
   let fitNext = true
+  let liveShown = $state(0)
+  let livePopup: Popup | undefined
   let lastFittedKey = ''
 
   const HINTS: Record<DrawMode, string> = {
@@ -97,11 +102,26 @@
     if (!map.getLayer('h-aoi-fill')) map.addLayer({ id: 'h-aoi-fill', type: 'fill', source: 'h-aoi', paint: { 'fill-color': accent, 'fill-opacity': 0.05 } })
     if (!map.getLayer('h-aoi-casing')) map.addLayer({ id: 'h-aoi-casing', type: 'line', source: 'h-aoi', paint: { 'line-color': cssVar('--bg') || '#000', 'line-width': 4, 'line-opacity': 0.6 } })
     if (!map.getLayer('h-aoi-line')) map.addLayer({ id: 'h-aoi-line', type: 'line', source: 'h-aoi', paint: { 'line-color': accent, 'line-width': 1.8 } })
+    // Live FIRMS detections sit above the historical overlay and the AOI outline.
+    if (!map.getSource('h-live')) map.addSource('h-live', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+    if (!map.getLayer('h-live-pts')) map.addLayer({ id: 'h-live-pts', type: 'circle', source: 'h-live', paint: livePaint(themeState.theme) })
     // terra-draw layers must stay above ours
     for (const l of map.getStyle().layers) if (l.id.startsWith('td')) map.moveLayer(l.id)
     pushAoi()
     pushOverlay()
     pushClim()
+    pushLive()
+  }
+
+  function pushLive() {
+    if (!map || !map.getLayer('h-live-pts')) return
+    const src = map.getSource('h-live') as GeoJSONSource | undefined
+    const d = live.data, inside = live.inside, w = live.window
+    const fc = d && inside && w !== 'off' && session.aoi ? liveGeoJson(d, inside, live.now / 1000, WINDOW_HOURS[w]) : { type: 'FeatureCollection' as const, features: [] }
+    src?.setData(fc)
+    liveShown = fc.features.length
+    for (const [k, v] of Object.entries(livePaint(themeState.theme) ?? {})) map.setPaintProperty('h-live-pts', k as 'circle-color', v as never)
+    if (!fc.features.length) livePopup?.remove()
   }
 
   function pushClim() {
@@ -284,6 +304,20 @@
       readout = hit ? (overlay.mode === 'ratio' ? `${fmtRatio(hit.value)} the normal` : `${fmtNum(hit.value)} AFCD-M`) : null
     })
     map.on('mouseout', () => (readout = null))
+    map.on('click', 'h-live-pts', (e) => {
+      const f = e.features?.[0]
+      const d = live.data
+      if (!f || !d || !map) return
+      const i = Number(f.properties?.i)
+      if (!Number.isInteger(i) || i < 0 || i >= d.n) return
+      livePopup?.remove()
+      livePopup = new Popup({ closeButton: true, maxWidth: '300px', className: 'h-live-popup' })
+        .setLngLat([d.lon[i], d.lat[i]])
+        .setDOMContent(popupNode(d, i, live.now / 1000, f.properties?.in === 1, fmtAge))
+        .addTo(map)
+    })
+    map.on('mouseenter', 'h-live-pts', () => { if (map && drawMode === 'none') map.getCanvas().style.cursor = 'pointer' })
+    map.on('mouseleave', 'h-live-pts', () => { if (map) map.getCanvas().style.cursor = '' })
     addEventListener('keydown', onKey)
   })
 
@@ -323,6 +357,13 @@
       overlay = renderCellLayer(layer, level, mode, theme)
       pushOverlay()
     })
+  })
+
+  // Live data / window / clock / theme -> live detections layer
+  $effect(() => {
+    void live.data; void live.inside; void live.window; void live.now; void themeState.theme; void session.aoi
+    if (!mapReady) return
+    untrack(() => pushLive())
   })
 
   // Theme -> landing climatology for the current calendar month (shown only while no area is selected)
@@ -451,6 +492,8 @@
     />
   {/if}
 
+  <LiveControl shown={liveShown} />
+
   {#if clim && !session.aoi}
     <p class="clim-legend small"><span class="swatch" aria-hidden="true"></span>{clim.label}</p>
   {/if}
@@ -465,25 +508,27 @@
 </div>
 
 <style>
-  .map-panel { position: relative; width: 100%; height: 100%; background: var(--bg-2); }
+  .map-panel { position: relative; width: 100%; height: 100%; background: var(--bg-2); container: map / inline-size; }
   .map { position: absolute; inset: 0; }
   .toolbar {
     position: absolute; top: 12px; left: 12px; right: 12px; z-index: 3;
     display: flex; flex-wrap: wrap; gap: 8px; pointer-events: none;
   }
   .group {
-    display: inline-flex; pointer-events: auto; background: color-mix(in srgb, var(--surface) 92%, transparent);
-    border: 1px solid var(--rule-strong); border-radius: var(--radius); backdrop-filter: blur(6px); box-shadow: var(--shadow);
+    display: inline-flex; pointer-events: auto; background: var(--overlay-bg);
+    border: 1px solid var(--rule-strong); border-radius: var(--radius); backdrop-filter: blur(6px); box-shadow: var(--shadow-sm);
   }
   .tool {
     display: inline-flex; align-items: center; gap: 6px; min-height: 34px; min-width: 34px; padding: 0 10px;
-    background: transparent; border: 0; border-right: 1px solid var(--rule); color: var(--ink-2); cursor: pointer; font-size: 0.82rem;
+    background: transparent; border: 0; border-right: 1px solid var(--rule); color: var(--ink-2); cursor: pointer; font-size: var(--fs-md);
+    transition: background 0.15s, color 0.15s;
   }
   .tool:last-of-type { border-right: 0; }
   .tool:hover:not(:disabled) { color: var(--ink); background: var(--surface-2); }
-  .tool[aria-pressed='true'], .tool.on { color: var(--accent-ink); background: var(--accent-soft); }
+  .tool[aria-pressed='true'], .tool.on { color: var(--ink); background: var(--surface-3); box-shadow: inset 0 -2px 0 var(--ink-2); }
+  .tool:focus-visible { outline-offset: -2px; }
   .tool:disabled { opacity: 0.4; cursor: not-allowed; }
-  @media (max-width: 1280px) { .lbl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } }
+  @container map (max-width: 900px) { .lbl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } }
 
   .popover {
     position: absolute; top: 58px; left: 12px; z-index: 4; width: min(360px, calc(100% - 24px));
@@ -497,26 +542,27 @@
   }
   .preset:hover { background: var(--surface-2); }
   .preset[aria-current='true'] { box-shadow: inset 2px 0 0 var(--accent); }
-  .pt { font-weight: 600; font-size: 0.92rem; }
-  .ps { color: var(--ink-3); font-size: 0.8rem; }
+  .pt { font-weight: 600; font-size: var(--fs-base); }
+  .ps { color: var(--ink-3); font-size: var(--fs-sm); }
 
   .hint, .notice {
     position: absolute; left: 50%; transform: translateX(-50%); bottom: 64px; z-index: 3; max-width: calc(100% - 24px);
     background: var(--surface); border: 1px solid var(--rule-strong); border-radius: var(--radius); padding: 8px 12px;
-    font-size: 0.82rem; color: var(--ink-2); box-shadow: var(--shadow);
+    font-size: var(--fs-md); color: var(--ink-2); box-shadow: var(--shadow-sm);
   }
   .notice { bottom: auto; top: 60px; display: flex; gap: 10px; align-items: center; color: var(--ink); border-color: var(--warning); }
   .x { background: none; border: 0; color: var(--ink-2); font-size: 1.2rem; cursor: pointer; line-height: 1; }
 
   .aoi-chip {
     position: absolute; left: 12px; top: 60px; z-index: 2; display: grid; gap: 1px; max-width: 60%;
-    background: color-mix(in srgb, var(--surface) 88%, transparent); border-left: 2px solid var(--accent);
-    padding: 6px 10px; border-radius: 0 var(--radius) var(--radius) 0; font-size: 0.82rem; backdrop-filter: blur(6px);
+    background: var(--overlay-bg); border-left: 2px solid var(--accent);
+    padding: 6px 10px; border-radius: 0 var(--radius) var(--radius) 0; font-size: var(--fs-sm); backdrop-filter: blur(6px);
   }
-  .aoi-chip strong { font-size: 0.92rem; }
+  .aoi-chip strong { font-size: var(--fs-base); font-weight: 600; }
+  .aoi-chip .eyebrow { line-height: 1.1; }
   .clim-legend {
     position: absolute; left: 12px; bottom: 40px; z-index: 2; margin: 0; display: flex; align-items: center; gap: 8px;
-    color: var(--ink-2); background: color-mix(in srgb, var(--surface) 80%, transparent); padding: 4px 10px;
+    color: var(--ink-2); background: var(--overlay-bg); padding: 4px 10px; font-size: var(--fs-sm);
     border-radius: var(--radius); backdrop-filter: blur(6px);
   }
   .swatch { width: 44px; height: 6px; border-radius: 2px; background: linear-gradient(90deg, #420a68, #932667, #dd513a, #fca50a, #fcffa4); }
@@ -524,12 +570,25 @@
   .basemap-note { position: absolute; top: 60px; right: 12px; z-index: 2; margin: 0; }
   .drop {
     position: absolute; inset: 0; z-index: 5; display: grid; place-items: center; background: color-mix(in srgb, var(--bg) 70%, transparent);
-    border: 2px dashed var(--accent); font-size: 1rem; color: var(--ink);
+    border: 2px dashed var(--ink-2); font-size: var(--fs-base); color: var(--ink);
   }
   :global(.maplibregl-ctrl-group) { background: var(--surface) !important; border: 1px solid var(--rule-strong); box-shadow: none !important; }
   :global(.maplibregl-ctrl-group button) { filter: var(--ctrl-filter, none); }
   :global([data-theme='dark'] .maplibregl-ctrl-group button .maplibregl-ctrl-icon) { filter: invert(0.9); }
   :global(.maplibregl-ctrl-scale) { background: color-mix(in srgb, var(--surface) 80%, transparent); color: var(--ink-2); border-color: var(--ink-3); }
-  :global(.maplibregl-ctrl-attrib) { background: color-mix(in srgb, var(--surface) 80%, transparent) !important; color: var(--ink-3); font-size: 10px; }
+  :global(.maplibregl-ctrl-attrib) { background: color-mix(in srgb, var(--surface) 80%, transparent) !important; color: var(--ink-3); font-size: var(--fs-xs); }
   :global(.maplibregl-ctrl-attrib a) { color: var(--ink-2); }
+  :global(.h-live-popup) { z-index: 3; }
+  :global(.h-live-popup .maplibregl-popup-content) {
+    background: var(--surface); color: var(--ink); border: 1px solid var(--rule-strong); border-radius: var(--radius);
+    box-shadow: var(--shadow-sm); padding: 10px 12px; font-size: var(--fs-sm);
+  }
+  :global(.h-live-popup.maplibregl-popup-anchor-bottom .maplibregl-popup-tip) { border-top-color: var(--rule-strong); }
+  :global(.h-live-popup.maplibregl-popup-anchor-top .maplibregl-popup-tip) { border-bottom-color: var(--rule-strong); }
+  :global(.h-live-popup .maplibregl-popup-close-button) { color: var(--ink-2); font-size: var(--fs-base); padding: 0 6px; }
+  :global(.live-pop .lp-h) { margin: 0 0 6px; font-weight: 600; }
+  :global(.live-pop dl) { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0; }
+  :global(.live-pop dt) { color: var(--ink-3); }
+  :global(.live-pop dd) { margin: 0; font-family: var(--font-num); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  :global(.live-pop .lp-note) { margin: 6px 0 0; color: var(--ink-3); font-size: var(--fs-xs); }
 </style>

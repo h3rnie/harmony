@@ -68,4 +68,5 @@
   .bar { height: 100%; background: var(--accent); transition: width 0.2s; }
   .bar.indeterminate { animation: slide 1.1s ease-in-out infinite; }
   @keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+  @media (max-width: 900px) { .controls { position: relative; top: 0; backdrop-filter: none; } }
 </style>

@@ -2,14 +2,17 @@
   import { onMount } from 'svelte'
   import { session } from './lib/session.svelte'
   import { themeState } from './lib/theme.svelte'
-  import { FIRMS_ACK } from './lib/config'
+  import Footer from './lib/brand/Footer.svelte'
   import Header from './lib/components/Header.svelte'
   import MapPanel from './lib/map/MapPanel.svelte'
   import ControlsBar from './lib/components/ControlsBar.svelte'
   import Intro from './lib/components/Intro.svelte'
   import StatusStrip from './lib/components/StatusStrip.svelte'
+  import NowCard from './lib/components/NowCard.svelte'
+  import { live } from './lib/live/store.svelte'
   import CalendarView from './lib/components/CalendarView.svelte'
   import SeamView from './lib/components/SeamView.svelte'
+  import MethodLab from './lib/components/MethodLab.svelte'
   import SeasonView from './lib/components/SeasonView.svelte'
   import TrendView from './lib/components/TrendView.svelte'
   import OutlookView from './lib/components/OutlookView.svelte'
@@ -49,6 +52,7 @@
   onMount(() => {
     themeState.apply()
     session.boot()
+    live.init()
     if (hashView() === 'pulse') openPulse()
     const onOpen = () => openPulse()
     const onHash = () => { if (hashView() === 'pulse') openPulse() }
@@ -97,8 +101,10 @@
     {:else if a}
       <div class="results" class:stale={busy}>
         <StatusStrip {a} />
+        <NowCard {a} />
         <CalendarView {a} />
         <SeamView {a} />
+        <MethodLab {a} />
         <SeasonView {a} />
         <TrendView {a} />
         <OutlookView {a} />
@@ -122,10 +128,7 @@
 
     <MethodSection />
 
-    <footer class="foot small">
-      <p>{FIRMS_ACK}</p>
-      <p class="muted">Harmony · NASA Space Apps 2026 · MODIS C6.1 and VIIRS 375 m active fires harmonized to MODIS-equivalent active-fire cell-days (AFCD-M). Basemap © OpenFreeMap, © OpenStreetMap contributors.</p>
-    </footer>
+    <Footer />
   </div>
 </main>
 
@@ -162,7 +165,6 @@
   .skel.big { height: 84px; width: 60%; }
   .skel.grid { height: 360px; }
   @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
-  .foot { padding: 26px 0 0; color: var(--ink-2); max-width: 78ch; }
 
   @media (max-width: 900px) {
     .layout { grid-template-columns: 1fr; }

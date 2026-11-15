@@ -145,18 +145,18 @@
 </section>
 
 <style>
-  .season { padding: 26px 0 22px; border-bottom: 1px solid var(--rule); }
+  .season { padding: var(--sec-pad); border-bottom: 1px solid var(--rule); }
   h2 { margin-bottom: 12px; }
   .pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 22px 28px; }
   figure { margin: 0; min-width: 0; }
-  figcaption { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 0.82rem; color: var(--ink-2); margin-bottom: 6px; min-height: 32px; }
-  .cmp { display: inline-flex; gap: 6px; align-items: center; font-size: 0.78rem; color: var(--ink-3); }
-  .cmp select { min-height: 26px; font-family: var(--font-num); font-size: 0.78rem; }
-  .ytd-k { color: var(--ink); font-size: 0.8rem; }
+  figcaption { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: var(--fs-md); color: var(--ink-2); margin-bottom: 6px; min-height: 32px; }
+  .cmp { display: inline-flex; gap: 6px; align-items: center; font-size: var(--fs-sm); color: var(--ink-3); }
+  .cmp select { min-height: 26px; font-family: var(--font-num); font-size: var(--fs-sm); }
+  .ytd-k { color: var(--ink); font-size: var(--fs-sm); }
   .chart { position: relative; }
   svg { display: block; overflow: visible; }
   .grid { stroke: var(--rule); }
-  .tk { font-family: var(--font-num); font-size: 10px; fill: var(--ink-3); }
+  .tk { font-family: var(--font-num); font-size: var(--fs-xs); fill: var(--ink-3); }
   .env-o { fill: var(--env-outer); }
   .env-i { fill: var(--env-inner); }
   .ln { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
@@ -165,7 +165,7 @@
   .ln.cur { stroke: var(--accent); }
   .dot.cur { fill: var(--accent); stroke: var(--bg); stroke-width: 2; }
   .cross { stroke: var(--ink-3); }
-  .keys { list-style: none; display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 6px 0 0; padding: 0; font-size: 0.74rem; color: var(--ink-2); }
+  .keys { list-style: none; display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 6px 0 0; padding: 0; font-size: var(--fs-sm); color: var(--ink-2); }
   .keys li { display: flex; align-items: center; gap: 6px; }
   .sw { display: inline-block; width: 14px; height: 2px; flex: none; }
   .sw.cur { background: var(--accent); }
@@ -175,7 +175,7 @@
   .tip {
     position: absolute; top: 4px; pointer-events: none; z-index: 5; min-width: 160px;
     background: var(--surface); border: 1px solid var(--rule-strong); border-radius: var(--radius); box-shadow: var(--shadow);
-    padding: 6px 9px; font-size: 0.76rem;
+    padding: 6px 9px; font-size: var(--fs-sm);
   }
   .tip p { margin: 0; display: flex; align-items: center; gap: 6px; }
   .tip .num { margin-left: auto; padding-left: 10px; }

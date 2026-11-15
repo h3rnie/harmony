@@ -59,13 +59,13 @@
   .tl { flex: 1; min-width: 0; }
   svg { display: block; overflow: visible; cursor: pointer; touch-action: none; }
   svg:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
-  .area { fill: color-mix(in srgb, var(--accent) 34%, transparent); stroke: color-mix(in srgb, var(--accent) 70%, transparent); stroke-width: 0.8; }
+  .area { fill: color-mix(in srgb, var(--ink-3) 30%, transparent); stroke: var(--ink-3); stroke-width: 0.8; }
   .base { stroke: var(--rule-strong); }
   .tick { stroke: var(--rule-strong); }
   .tick.major { stroke: var(--ink-3); }
-  .yr { fill: var(--ink-3); font: 10px var(--font-num); text-anchor: middle; }
+  .yr { fill: var(--ink-3); font: var(--fs-xs) var(--font-num); text-anchor: middle; }
   .switch { stroke: var(--ink-3); stroke-dasharray: 2 3; }
-  .sw { fill: var(--ink-3); font: 9.5px var(--font-num); letter-spacing: 0.06em; text-transform: uppercase; }
-  .head { stroke: var(--ink); stroke-width: 1.2; }
-  .knob { fill: var(--ink); stroke: var(--bg); stroke-width: 2; }
+  .sw { fill: var(--ink-3); font: 500 var(--fs-xs) var(--font-display); letter-spacing: var(--track-label); text-transform: uppercase; }
+  .head { stroke: var(--accent); stroke-width: 1.4; }
+  .knob { fill: var(--accent); stroke: var(--bg); stroke-width: 2; }
 </style>

@@ -9,6 +9,7 @@
     type HotspotPlan, type HotspotProgress,
   } from '../export/hotspots'
   import { onDestroy } from 'svelte'
+  import { monthShort, yearOf } from '../format'
 
   let { a }: { a: Analysis } = $props()
   let status = $state<string | null>(null)
@@ -65,6 +66,24 @@
   let exportBtn = $state<HTMLButtonElement | null>(null)
   const nf = new Intl.NumberFormat('en-US')
 
+  // Which months the hotspot export covers. Default: the selected month's year, clipped to the displayed range.
+  type HotRange = 'month' | 'year' | 'range'
+  let hotRange = $state<HotRange>('year')
+  const selM = $derived(session.focus ?? a.current.m)
+  const hotSpan = $derived.by<[number, number]>(() => {
+    const [r0, r1] = session.options.range
+    if (hotRange === 'month') return [selM, selM]
+    if (hotRange === 'year') {
+      const y0 = (yearOf(selM) - 2000) * 12
+      return [Math.max(r0, y0), Math.min(r1, y0 + 11)]
+    }
+    return [r0, r1]
+  })
+  const hotRangeText = $derived(
+    hotRange === 'month' ? monthShort(selM) : hotRange === 'year' ? String(yearOf(selM)) : `${yearOf(hotSpan[0])}–${yearOf(hotSpan[1])}`,
+  )
+  const HOT_RANGES: [HotRange, string][] = [['month', 'Selected month'], ['year', 'Selected year'], ['range', 'Full displayed range']]
+
   $effect(() => {
     const ctl = new AbortController()
     loadPointsIndex(ctl.signal).then(
@@ -84,8 +103,8 @@
   // A different area or date range invalidates any estimate or running export.
   $effect(() => {
     session.aoi
-    session.options.range[0]
-    session.options.range[1]
+    hotSpan[0]
+    hotSpan[1]
     return () => { if (hot.phase !== 'idle' && hot.phase !== 'done') hotReset() }
   })
   onDestroy(() => hotCtl?.abort())
@@ -97,7 +116,7 @@
     hot = { phase: 'planning', p: null }
     live = 'Checking which hotspot files cover this area.'
     try {
-      const [mFrom, mTo] = session.options.range
+      const [mFrom, mTo] = hotSpan
       const plan = await planHotspots({
         rings: session.aoi.rings, mFrom, mTo, label: session.aoi.label, signal: ctl.signal,
         onProgress: (p) => { if (hot.phase === 'planning') hot = { phase: 'planning', p } },
@@ -134,7 +153,7 @@
           if (pct !== lastPct) { lastPct = pct; live = `Exporting hotspots, ${pct} percent. ${nf.format(p.rows)} rows written.` }
         },
       })
-      const name = `${base}-hotspots.csv`
+      const name = `${base}-hotspots-${hotRange === 'month' ? monthShort(hotSpan[0]).replace(' ', '-').toLowerCase() : hotRange === 'year' ? yearOf(hotSpan[0]) : `${yearOf(hotSpan[0])}-${yearOf(hotSpan[1])}`}.csv`
       download(name, res.blob, 'text/csv')
       const summary = `${nf.format(res.rows)} hotspots · ${fmtBytes(res.csvBytes)} · ${res.files} ${res.files === 1 ? 'file' : 'files'}`
       hot = {
@@ -184,9 +203,18 @@
       <button class="btn" onclick={async () => { try { await navigator.clipboard.writeText(location.href); status = 'Link to this view copied.' } catch { status = 'Copy the address bar to share this view.' } }}>Copy share link</button>
     </div>
   </div>
+  <div class="hot-range">
+    <span class="eyebrow" id="hot-range-l">Hotspots for</span>
+    <div class="seg" role="radiogroup" aria-labelledby="hot-range-l">
+      {#each HOT_RANGES as [v, l] (v)}
+        <button role="radio" aria-checked={hotRange === v} onclick={() => (hotRange = v)}>{l}</button>
+      {/each}
+    </div>
+    <span class="small muted num">{hotRangeText}</span>
+  </div>
   {#if hot.phase !== 'idle'}
     <div class="hot" role="group" aria-labelledby="hot-h">
-      <h3 id="hot-h">Hotspots CSV</h3>
+      <h3 id="hot-h">Hotspots CSV · <span class="num">{hotRangeText}</span></h3>
       {#if hot.phase === 'planning'}
         <p class="small">Checking which files cover this area{hot.p ? ` (${hot.p.filesDone} of ${hot.p.filesTotal})` : ''}…</p>
         <progress class="bar" max="1" value={hotProgress} aria-label="Reading file indexes"></progress>
@@ -252,10 +280,12 @@
 </section>
 
 <style>
-  .exports { padding: 26px 0 22px; border-bottom: 1px solid var(--rule); }
+  .exports { padding: var(--sec-pad); border-bottom: 1px solid var(--rule); }
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px 24px; margin-top: 12px; }
   .grid > div { display: flex; flex-wrap: wrap; gap: 6px; align-content: flex-start; }
-  h3 { width: 100%; font-size: 0.78rem; font-weight: 500; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 2px; }
+  h3 { width: 100%; font-family: var(--font-display); font-size: var(--fs-xs); font-weight: 500; color: var(--ink-3); text-transform: uppercase; letter-spacing: var(--track-label); margin-bottom: 2px; }
+  .hot-range { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--rule); }
+  .hot-range .seg button { min-height: 26px; font-size: var(--fs-sm); }
   .status { min-height: 1.4em; margin: 10px 0 0; color: var(--ink-2); }
   .warn { color: var(--warning); }
   .hot { margin-top: 14px; padding: 12px 14px; max-width: 64ch; background: var(--surface); border: 1px solid var(--rule-strong); border-radius: var(--radius); }

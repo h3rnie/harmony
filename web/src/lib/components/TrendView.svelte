@@ -84,26 +84,26 @@
 </section>
 
 <style>
-  .trend { padding: 26px 0 22px; border-bottom: 1px solid var(--rule); }
+  .trend { padding: var(--sec-pad); border-bottom: 1px solid var(--rule); }
   .lede { color: var(--ink-2); max-width: 68ch; margin: 8px 0 12px; }
   .chart { position: relative; }
   svg { display: block; overflow: visible; }
   .grid { stroke: var(--rule); }
-  .tk { font-family: var(--font-num); font-size: 10px; fill: var(--ink-3); }
+  .tk { font-family: var(--font-num); font-size: var(--fs-xs); fill: var(--ink-3); }
   .bar { fill: var(--ink-3); }
   .bar.top { fill: var(--ink-2); }
   .bar.partial { stroke: var(--ink-3); stroke-width: 1; }
-  .tl { stroke: var(--accent); stroke-width: 2; stroke-linecap: round; }
-  .keys { list-style: none; display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 6px 0 0; padding: 0; font-size: 0.74rem; color: var(--ink-2); }
+  .tl { stroke: var(--ink); stroke-width: 2; stroke-linecap: round; stroke-dasharray: 6 4; }
+  .keys { list-style: none; display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 6px 0 0; padding: 0; font-size: var(--fs-sm); color: var(--ink-2); }
   .keys li { display: flex; align-items: center; gap: 6px; }
   .sw { display: inline-block; width: 12px; height: 10px; }
   .bar-sw { background: var(--ink-3); border-radius: 2px 2px 0 0; }
   .partial-sw { background: repeating-linear-gradient(135deg, var(--ink-3) 0 1.5px, transparent 1.5px 4px); box-shadow: inset 0 0 0 1px var(--ink-3); }
-  .tl-sw { height: 2px; width: 14px; background: var(--accent); }
+  .tl-sw { height: 2px; width: 14px; background: repeating-linear-gradient(90deg, var(--ink) 0 5px, transparent 5px 8px); }
   .tip {
     position: absolute; top: 4px; pointer-events: none; z-index: 5; min-width: 140px;
     background: var(--surface); border: 1px solid var(--rule-strong); border-radius: var(--radius); box-shadow: var(--shadow);
-    padding: 6px 9px; font-size: 0.76rem;
+    padding: 6px 9px; font-size: var(--fs-sm);
   }
   .tip p { margin: 0; display: flex; gap: 6px; }
   .tip .num { margin-left: auto; padding-left: 10px; }

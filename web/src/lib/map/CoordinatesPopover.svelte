@@ -75,8 +75,8 @@
   .grid3, .grid4 { display: grid; gap: 8px; grid-template-columns: repeat(3, 1fr); }
   .grid4 { grid-template-columns: repeat(4, 1fr); }
   @media (max-width: 480px) { .grid3, .grid4 { grid-template-columns: 1fr 1fr; } }
-  label { display: grid; gap: 3px; font-size: 0.76rem; color: var(--ink-3); }
+  label { display: grid; gap: 3px; font-size: var(--fs-sm); color: var(--ink-3); }
   input { width: 100%; font-family: var(--font-num); }
-  .err { color: var(--critical); font-size: 0.82rem; margin: 8px 0 0; }
+  .err { color: var(--critical); font-size: var(--fs-md); margin: 8px 0 0; }
   .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 </style>

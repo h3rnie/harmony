@@ -3,7 +3,8 @@ import { defineConfig, type Connect, type Plugin } from 'vite'
 import sirv from 'sirv'
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { briefPlugin } from './server/briefPlugin.ts'
+import { aiPlugin } from './server/ai/plugin.ts'
+import { livePlugin } from './server/livePlugin.ts'
 
 // Pipeline output, served at /data/ during `vite` and `vite preview` (HTTP Range supported by sirv).
 // Production builds are a static SPA that reads VITE_DATA_BASE (default "/data").
@@ -62,8 +63,10 @@ function harmonyData(): Plugin {
 
 // https://vite.dev/config/
 export default defineConfig({
-  // /api/brief reads ANTHROPIC_API_KEY server-side from <repo root>/.env.local | .env | process env.
-  plugins: [harmonyData(), briefPlugin({ envDir: fileURLToPath(new URL('..', import.meta.url)) }), svelte()],
+  // /api/brief + /api/ask (AI situation brief, Ask Harmony) read ANTHROPIC_API_KEY / OPENROUTER_API_KEY and AI_* server-side
+  // from <repo root>/.env.local | .env | process env.
+  // /api/live proxies FIRMS NRT with FIRMS_MAP_KEY read the same way (never sent to the browser).
+  plugins: [harmonyData(), aiPlugin({ envDir: fileURLToPath(new URL('..', import.meta.url)) }), livePlugin({ envDir: fileURLToPath(new URL('..', import.meta.url)) }), svelte()],
   build: {
     target: 'es2022',
     chunkSizeWarningLimit: 1600,

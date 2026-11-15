@@ -25,11 +25,12 @@
 
 {#if s}
   <section class="strip" aria-labelledby="status-h">
+    <p class="eyebrow">01 · This month vs normal</p>
     <div class="top">
       <h2 id="status-h" class="when">
         {monthLong(m)}
-        {#if s.isCurrent}<span class="tag now">Latest month</span>{/if}
-        {#if s.provisional}<span class="tag prov" title="Near-real-time data; values may still change">Provisional</span>{/if}
+        {#if s.isCurrent}<span class="chip now">Latest month</span>{/if}
+        {#if s.provisional}<span class="chip prov" title="Near-real-time data; values may still change">Provisional</span>{/if}
       </h2>
       {#if !s.isCurrent}
         <button class="btn" onclick={() => session.setFocus(null)}>Back to {MONTHS_SHORT[a.current.month - 1]} {a.current.year}</button>
@@ -95,37 +96,25 @@
 {/if}
 
 <style>
-  .strip { padding: 22px 0 18px; border-bottom: 1px solid var(--rule); }
-  .top { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
-  .when { font-size: 1.05rem; font-weight: 600; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .tag { font-size: 0.68rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em; padding: 2px 7px; border-radius: 3px; }
-  .tag.now { color: var(--accent-ink); box-shadow: inset 0 0 0 1px var(--accent); }
-  .tag.prov {
-    color: var(--ink-2); box-shadow: inset 0 0 0 1px var(--rule-strong);
-    background: repeating-linear-gradient(135deg, transparent 0 4px, var(--surface-3) 4px 6px);
-  }
-  .answer { display: grid; grid-template-columns: auto 1fr; gap: 6px 28px; align-items: end; margin-top: 10px; }
-  .hero { display: grid; }
-  .big { font-size: clamp(3.4rem, 7vw, 5.2rem); line-height: 0.92; font-weight: 600; letter-spacing: -0.05em; color: var(--ink); }
+  .strip { padding: var(--sec-pad); border-bottom: 1px solid var(--rule); }
+  .top { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
+  .when { font-size: var(--fs-xl); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .answer { display: grid; grid-template-columns: auto 1fr; gap: 8px 32px; align-items: end; margin-top: 14px; }
+  .hero { display: grid; gap: 4px; }
+  .big { font-size: var(--fs-hero); line-height: 0.88; font-weight: 600; letter-spacing: -0.05em; color: var(--ink); }
   .x { font-size: 0.55em; color: var(--accent); margin-left: 2px; }
-  .cap { color: var(--ink-2); font-size: 0.95rem; }
-  .facts { display: grid; gap: 8px; justify-items: start; padding-bottom: 4px; }
-  .sentence { font-size: 1.12rem; margin: 0; }
+  .cap { color: var(--ink-2); font-size: var(--fs-base); }
+  .facts { display: grid; gap: 10px; justify-items: start; padding-bottom: 4px; }
+  .sentence { font-size: var(--fs-lg); line-height: 1.4; margin: 0; }
   .sentence strong { font-weight: 600; }
   .detail { margin: 0; }
-  .level { display: inline-flex; align-items: center; gap: 6px; font-size: 0.86rem; font-weight: 600; padding: 3px 10px 3px 8px; border-radius: 4px; border: 1px solid currentColor; }
-  .level.critical { color: var(--critical); }
-  .level.serious { color: var(--serious); }
-  .level.warning { color: var(--warning); }
-  .level.info { color: var(--info); }
-  .level.neutral { color: var(--ink-2); }
-  .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; margin: 20px 0 0; }
+  .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; margin: 24px 0 0; padding-top: 14px; border-top: 1px solid var(--rule); }
   .kpis > div { padding: 0 14px; border-left: 1px solid var(--rule); }
   .kpis > div:first-child { padding-left: 0; border-left: 0; }
-  dt { margin-bottom: 3px; }
-  dd { margin: 0; font-size: 0.95rem; }
-  dd.sub { font-size: 0.78rem; color: var(--ink-3); margin-top: 2px; }
-  .arrow { font-size: 1.05rem; }
+  dt { margin-bottom: 4px; }
+  dd { margin: 0; font-size: var(--fs-base); }
+  dd.sub { font-size: var(--fs-sm); color: var(--ink-3); margin-top: 2px; }
+  .arrow { font-size: var(--fs-lg); }
   .arrow.up { color: var(--serious); }
   .arrow.down { color: var(--info); }
   @media (max-width: 720px) {

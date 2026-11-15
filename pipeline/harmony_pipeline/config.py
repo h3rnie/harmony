@@ -21,7 +21,7 @@ L0_NX, L0_NY = 7200, 3600
 LEVELS = {                    # level -> (cell size deg, tile size deg)
     0: (0.05, 2.5),
     1: (0.25, 10.0),
-    2: (1.0, 360.0),
+    2: (1.0, 30.0),
 }
 MONTH0_YEAR = 2000            # month index m = (year - 2000) * 12 + (month - 1)
 
