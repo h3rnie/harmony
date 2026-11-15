@@ -2,34 +2,64 @@
 
 **Two satellites. One fire record.**
 
-Harmony joins two generations of fire-detecting satellites, MODIS (2000, ending) and VIIRS (2012, running on), into one consistent monthly record of burning activity for any area on Earth. It exists because the two instruments report very different numbers of hotspots for the same fires, so a raw count series from 2000 to today has a break in it. It is for anyone who needs to say when an area burns, which years were extreme and how this month compares with normal: duty officers, land managers, journalists and fire scientists.
+Harmony joins two generations of fire-detecting satellites, MODIS (2000, ending) and VIIRS (2012, running on), into one consistent monthly record of burning activity for any area on Earth. It exists because the two instruments report very different numbers of hotspots for the same fires, so a raw count series from 2000 to today has a break in it, and because MODIS Terra and Aqua have drifted away from their original overpass times since about 2021. It is for anyone who needs to say when an area burns, which years were extreme and how this month compares with normal: duty officers, land managers, journalists and fire scientists.
 
 Built by [Toh Yu Heng](https://hello.hernie.me), Singapore, for NASA Space Apps 2026, challenge **Harmonization of MODIS and VIIRS Hot Spots**. Data: NASA FIRMS only.
 
-Documents: [method](docs/METHOD.md) · [architecture](docs/ARCHITECTURE.md) · [operations](docs/OPERATIONS.md) · [data contract](schema/data-contract.md) · [validation schema](schema/validation.md) · [ML schema](schema/ml.md)
+Documents: [method](docs/METHOD.md) · [architecture](docs/ARCHITECTURE.md) · [operations](docs/OPERATIONS.md) · [data contract](schema/data-contract.md) · [validation schema](schema/validation.md) · [ML schema](schema/ml.md) · [watchlist schema](schema/watch.md)
+
+## Results that matter
+
+All figures are from the 2026-11-15 global build and are read from `data/dist/validation.json` (tables and caveats in [docs/METHOD.md](docs/METHOD.md), Tables M1 to M11). The record uses 656,491,914 FIRMS detections (2000-11 to 2026-11-15); 534,469,843 of them pass the filters.
+
+| Question | Result |
+| --- | --- |
+| Is the seam gone? | The VIIRS-to-MODIS ratio of raw detection counts is 3.8 to 4.1 in 2012-2017, 7.1 in 2018 (NOAA-20 joins), 8.1 to 8.3 in 2019-2022 and 11.7 to 12.9 in 2023-2025 (NOAA-21 joins). After calibration the same ratio is 0.98 to 1.03 in 2013-2024. A Pettitt change-point test at the 2023-01 switch finds a step of +2.53 in log units (a factor of 12.6, p < 0.0001) in raw counts and none in the harmonized series (p = 0.17; the detected change month is 2025-02, step -0.12). At the start of VIIRS (2012-02): raw +1.37 (p < 0.0001), harmonized p = 0.14. On the fused record the same tests give p = 0.12 at the start of VIIRS and p = 0.061 in the window around the 2023-01 switch (Table M4b). |
+| How far have Terra and Aqua drifted? | Measured against VIIRS, which keeps its overpass. By 2025 Terra detects 58 % of the expected number by day (95 % interval 54 to 63 %) and 135 % at night; Aqua at night detects 83 %; Terra and Aqua combined detect 90 % by day and 120 % at night. The mean local overpass time of Terra detections had moved 1.1 hours earlier and Aqua's 1.1 hours later. In the placebo years 2012-2019 the combined ratio varies by 1.4 % (day) and 2.5 % (night), RMS. This is the change in MODIS relative to VIIRS; it cannot tell a moving overpass from a real change in when fires burn. |
+| How accurate is the VIIRS-to-MODIS calibration on years it has not seen? | Leave-one-year-out, 2012-2021, against observed MODIS: at stratum-month scale r = 0.988 and log-RMSE 0.458 (one global ratio: r = 0.981, log-RMSE 0.607); at 1-degree cell-month scale r = 0.944 and log-RMSE 0.601 (one global ratio: 0.928 and 0.680). NOAA-21, which enters no fit, is within +0.5 % (2023) and +0.4 % (2024) of observed MODIS and within 0.6 % of drift-corrected MODIS in 2023-2025. |
+| Do the uncertainty bands cover? | Intervals are split-conformal, calibrated per biome group and activity size. Held out in time (frozen calibration, 2022-2024, against observed MODIS) and pooled over the three supports (1-degree cells, 5-degree blocks, strata), the nominal 80 % and 95 % intervals cover 0.76 and 0.93 of unit-months with 5 or more cell-days, and 0.79 and 0.95 of all unit-months. They fall a few points short of nominal out of sample; by size class the 80 % coverage is 0.71 to 0.81. |
+
+Two results that do not favour the method. Precision-weighted fusion of MODIS and VIIRS is the default record, but against an independent reference (Terra) a plain equal-weight mean does about as well (1-degree log-RMSE 0.888 for equal weights, 0.898 for the fusion; Aqua alone 0.949, VIIRS alone 0.933): the gain of fusion over a plain average is not demonstrated. And one global ratio agrees slightly better than the stratified model on the sign of anomalies at stratum scale (0.899 against 0.892).
+
+## Run it
+
+The app needs the pipeline output in `data/dist/`; `data/` is not in git. Without it the app starts in a labelled demo mode on synthetic numbers.
+
+```bash
+cp .env.example .env.local        # optional keys: FIRMS_MAP_KEY, ANTHROPIC_API_KEY; .env.local is git-ignored
+bash scripts/build-wasm.sh        # Rust kernel -> web/src/lib/kernel/pkg/ (git-ignored)
+pnpm --dir web install
+pnpm --dir web dev                # http://localhost:5173, serves data/dist at /data and the /api routes
+```
+
+Prerequisites and how to build the data are in [Setup](#setup) and [Rebuilding the data](#rebuilding-the-data).
 
 ## What you can do
 
-The first six items are what the challenge asks for. The rest go beyond it.
+The first six items are what the challenge asks for. The rest go beyond it. The analysis is one guided scroll whose sections are questions (When does it burn? Is this year unusual? Is it getting worse? What is next? What is burning right now? In plain words; How we know; Take it with you), with a sticky section index and in-place explanations of technical terms (a glossary of 27 entries).
 
 | Challenge ask | In Harmony |
 | --- | --- |
 | Select an area interactively, by drawing or by latitude and longitude | Draw a polygon, rectangle or circle on the map (terra-draw); type a centre and radius, or a bounding box; load or drop a GeoJSON polygon; or pick one of six story presets. The view is stored in the URL hash, so a link reproduces it. |
-| Burning calendar with accessible colour ramps | A year-by-month grid for the area. Three modes: activity, anomaly (ratio to the median of the same month) and percentile. Inferno for activity and a blue-to-orange diverging ramp for anomalies, both colour-blind safe, with the value printed in each cell, keyboard navigation, and light and dark themes. |
-| Anomalies against the multi-year median | Baseline years are adjustable (default 2003-2022). Median, percentile, rank and a robust z-score per calendar month. |
+| Burning calendar with accessible colour ramps | A year-by-month grid for the area in four modes: activity, compared with normal (ratio to the median of the same month), rank among years, and activity with confidence (a dot pattern that gets denser as the interval widens, so confidence is never carried by colour alone). Inferno for activity and a blue-to-orange diverging ramp for anomalies, both colour-blind safe, with the value printed in each cell, keyboard navigation, a table view, and light and dark themes. |
+| Anomalies against the multi-year median | Baseline years are adjustable (default 2003-2022). Median, percentile, rank and a robust z-score per calendar month. Statistics use only months with at least half their days covered; a partial latest month is drawn but never enters a statistic. |
 | Number of fires detected | Raw detection counts for MODIS and VIIRS next to the harmonized series, for the same area. |
-| Downloadable hotspot CSV | Polygon-exact export of the individual detections for the area and a date range, read in the browser from a Parquet archive. Columns include sensor, confidence, FRP and a flag for whether the detection entered the harmonized record. Calendar CSV, full series CSV, calendar PNG and SVG, and AOI GeoJSON are also offered. |
-| Current month against the historical median | The status strip and the "current" card give the ratio, percentile and rank for the latest month, and year-to-date against the envelope of past years. |
+| Downloadable hotspot CSV | Polygon-exact export of the individual detections for the area, read in the browser from a Parquet archive, for the selected month, the selected year or the full displayed range. Columns include sensor, confidence, FRP and a flag for whether the detection entered the harmonized record. Calendar CSV, full series CSV, calendar PNG and SVG, and AOI GeoJSON are also offered. |
+| Current month against the historical median | The status strip gives the ratio, percentile and rank for the latest complete month; "Is this year unusual?" gives year to date against the envelope of past years. |
 
 | Beyond the ask | What it is |
 | --- | --- |
-| The seam | A chart of the raw VIIRS-to-MODIS ratio against the harmonized ratio, and a switch that moves the year where the series changes from MODIS to calibrated VIIRS (default 2023). The 2012 and 2018 jumps are visible in the raw series and absent in the harmonized one. |
-| Uncertainty | 80 % and 95 % bands on every month served from VIIRS or the Terra bridge. |
-| Live now-versus-normal | Near-real-time detections for the area over the last 24 hours, 48 hours or 7 days, and a daily pace in the record's own unit against the normal pace for the month. Needs a FIRMS key on the server. |
-| Global pulse | A WebGPU globe (canvas fallback) that animates the harmonized global record month by month, with an anomaly mode against the climatology. |
+| The seam and the record choice | A chart of the raw VIIRS-to-MODIS ratio against the harmonized ratio. The default record is a per-stratum, per-overpass fusion of drift-corrected MODIS and calibrated VIIRS, with weights from an estimated error model; the earlier rule (MODIS before a chosen year, calibrated VIIRS from it, default 2023) remains a selectable option. A units lens shows the whole record in VIIRS-equivalent cell-days (AFCD-V). |
+| Fusion, drift and interval evidence | Panels in "How we know": MODIS weight by era, the drift fingerprint with its placebo years, and conformal interval coverage out of time, drawn from `validation.json`. |
+| Uncertainty | 80 % and 95 % bands on every covered month (shifted-log conformal intervals, so a month with no fire can lie inside one). |
+| Analog years | The three earlier years whose year to date looks most like this one, with a hindcast skill and an explicit warning when they are not informative. |
+| Listen | The record as sound: the monthly series, the seam (raw counts jump in pitch in 2012, the harmonized record does not) or one year against its normal, each with a text transcript. |
+| Right now | Near-real-time detections for the area over the last 24 hours, 48 hours or 7 days from a server proxy, and a daily pace in the record's own unit against the normal pace for the month. Needs a FIRMS key on the server. |
+| Global pulse | A WebGPU globe (canvas fallback) with four modes: Activity and Anomaly play the harmonized record month by month; Fire clock (the month when each place normally burns most, with second seasons) and Trend (2001-2025 across the hand-over, with significance) are fixed pictures. A watch overlay marks the current unusual clusters. |
+| Watchlist | "Where is fire unusual this month?": the most unusual clusters of 0.5-degree cells for the latest month and the last three months, each opening as an area in the app. |
 | Outlook | One to three months ahead from the seasonal cycle and decaying persistence of the anomaly, with a leave-one-year-out skill measure. When it does not beat climatology the app shows climatology. |
-| Brief and Ask Harmony | A plain-language reading of the statistics for the area, written by Claude from the computed numbers only (a rule-based brief is used without a key), and follow-up questions on the same numbers. Figures in the text are checked against the statistics. |
-| Method lab | A small neural network trained as an independent calibration, run on WebGPU in the browser for the selected area and compared with the production ratio method and with observed MODIS. |
+| Brief and Ask Harmony | A plain-language reading of the statistics for the area, written by Claude from the computed numbers only (a rule-based brief is used without a key), and follow-up questions on the same numbers. Figures in the text are checked against the statistics. Anthropic is the primary provider; an OpenRouter adapter is the second. |
+| Method lab | A small neural network trained as an independent calibration, run in the browser (WebGPU where available, WASM otherwise) for the selected area and compared with the production ratio method and with observed MODIS. |
 
 ## How the harmonization works
 
@@ -37,41 +67,29 @@ The first six items are what the challenge asks for. The rest go beyond it.
 2. **Common unit.** The unit is the *MODIS-equivalent active-fire cell-day* (AFCD-M): one distinct 0.0125° sub-cell, local-solar date and day or night with at least one accepted detection. Counting cell-days instead of detections collapses VIIRS's many 375 m pixels per fire towards what MODIS's 1 km pixel reports. Monthly sums are served on a 0.05° grid.
 3. **Coverage.** Satellite outages and partial months are detected from the daily counts and corrected, and VIIRS is the per-day mean over the satellites operating, never the sum.
 4. **Strata.** RESOLVE Ecoregions 2017 biome by realm (64 strata incl. "unclassified").
-5. **Calibration.** A multiplicative ratio per stratum, day or night and month of the year, fitted on 2012-02 to 2021-12 (both sensors, before MODIS orbit drift), with a per-cell shrinkage multiplier. A Terra-only bridge extends MODIS back to 2000-11. Coefficients are applied unchanged to later months.
-6. **Final series.** Scaled Terra, then native MODIS (to 2022-12), then calibrated VIIRS (from 2023-01 by default; adjustable in the interface). Each month carries its source, a provisional flag and an uncertainty band.
+5. **Calibration.** A multiplicative ratio per stratum, day or night and month of the year, fitted on 2012-02 to 2021-12, with a per-cell shrinkage multiplier. A Terra-only bridge extends MODIS back to 2000-11. Coefficients are applied unchanged to later months.
+6. **Error model.** Each stream (MODIS, calibrated VIIRS, the Terra bridge) gets a variance law with a cell-level and a stratum-wide part, estimated by triple collocation (Terra, Aqua, VIIRS) and cross-checked by a Poisson split of the VIIRS-MODIS difference.
+7. **MODIS orbit drift.** The ratio of observed MODIS to what calibrated VIIRS predicts, by biome, day or night and year, with a delete-a-group jackknife and the 2012-2019 placebo years as the noise floor; the mean overpass time of detections is the cross-check.
+8. **Record.** Per stratum, day or night and month, the kernel combines the drift-corrected MODIS and the calibrated VIIRS by inverse-variance weights with a common-mode correlation (the default), or applies the switch rule. Each month carries its source, a provisional flag and an uncertainty band whose width is calibrated by split-conformal multipliers on held-out years.
 
 Full details, equations and limits: [docs/METHOD.md](docs/METHOD.md).
 
-### Headline validation (as of the 2026-11-15 build)
+## Prior work and what is new
 
-Source: `data/dist/validation.json`. All figures are from the full global build. A refresh with complete 2026 data will change them; update this table from the same file.
-
-| Check | Naive (raw counts or one global ratio) | Harmonized |
-| --- | --- | --- |
-| VIIRS-to-MODIS ratio by year, 2013-2025 | Raw detection count ratio 3.9-4.1 (2013-2017), 7.1 (2018), 8.0-8.8 (2019-2025) | Calibrated VIIRS to MODIS-equivalent: 0.98 to 1.07 |
-| Leave-one-year-out 2012-2021, stratum-month, correlation of log(1+x) | 0.981 | 0.988 |
-| Same, log-RMSE | 0.611 | 0.459 |
-| Leave-one-year-out, 1-degree cell-month, correlation | 0.928 | 0.944 |
-| Same, log-RMSE | 0.681 | 0.601 |
-| Out-of-time bias against still-observed MODIS, 2022 / 2023 / 2024 / 2025 | not computed | +1.2 % / +1.5 % / 0.0 % / +7.3 % |
-| Change-point test at the 2023-01 switch (Pettitt, 2020-2025 window) | p < 0.0001, step 2.19 in log units (a factor of 8.9) | p = 0.18, step 0.065 (a factor of 1.07) |
-| Change-point test at VIIRS start (2012-02) | p < 0.0001, step 1.37 | p = 0.14, step -0.069 |
-| Interval coverage, leave-one-year-out, 1-degree cell-months with H of 5 or more | n/a | 80 % interval: 0.80 (tuned); 95 % interval: 0.91 |
-
-Two results that do not favour the method are in [docs/METHOD.md](docs/METHOD.md): the naive ratio agrees slightly better on the sign of anomalies at stratum scale (0.899 against 0.893), and 2025 is 7 % high against MODIS.
+Cell-days as a unit, a stratified ratio calibration with shrinkage, leave-one-year-out validation and change-point tests are common practice for fire data and are common among entries made for this challenge. The design parallels the near-real-time extension of GFED5 (Chen et al. 2026, doi:10.5194/essd-18-7535-2026); Harmony does not claim to improve on it. Triple collocation, error-variance-weighted merging and split conformal prediction are established in other fields. What we did not find published for active-fire counts, nor in other entries, in a search that is not a proof: a per-biome, day and night estimate of MODIS orbit drift against a fixed-overpass VIIRS reference; fusion weights for MODIS and VIIRS counts estimated by collocation; and conformal-calibrated intervals checked out of time. Section 21 of [docs/METHOD.md](docs/METHOD.md) gives the references and the caveats.
 
 ## NASA data used
 
 All fire data are official NASA FIRMS products. Nothing is taken from another fire source.
 
-| Product | Satellite | Years | Access path | Rows in the 2026-11-15 build |
+| Product | Satellite | Years | Access path | Normalized rows in the 2026-11-15 build |
 | --- | --- | --- | --- | --- |
-| MODIS Collection 6.1 active fire (MCD14ML), standard quality | Terra, Aqua | 2000-2025 bulk; 2026 via API (standard to 2026-08-31, near-real-time after) | FIRMS country-year files, then FIRMS area API | 114,530,845 |
-| VIIRS 375 m active fire (VNP14IMGTDL), standard quality | Suomi NPP | 2012-2025 bulk; 2026 via API until delivery stopped on 2026-11-02 | same | 281,144,355 (bulk years only) |
-| VIIRS 375 m active fire (VJ114IMGTDL), standard quality | NOAA-20 | 2018-2025 bulk; 2026 via API | same | 155,932,197 (bulk years only) |
-| VIIRS 375 m active fire, standard quality | NOAA-21 | from 2023-03 via API (no bulk files) | FIRMS area API | 3,161,650 (2023-03 to 2023-05 only) |
+| MODIS Collection 6.1 active fire (MCD14ML) | Terra, Aqua | 2000-2025 bulk (standard quality); 2026 via API (standard to 2026-08-31, near-real-time after) | FIRMS country-year files, then FIRMS area API | 114,530,845 |
+| VIIRS 375 m active fire (VNP14IMGTDL) | Suomi NPP | 2012-2025 bulk; 2026 via API (standard to 2026-07-31, near-real-time to 2026-11-02, when delivery stopped) | same | 296,606,261 |
+| VIIRS 375 m active fire (VJ114IMGTDL) | NOAA-20 | 2018-2025 bulk; 2026 via API (standard to 2026-07-31, near-real-time after) | same | 172,221,067 |
+| VIIRS 375 m active fire | NOAA-21 | 2023-03 to 2026-11-15, API only (standard to 2026-07-31, near-real-time after; no bulk files) | FIRMS area API | 73,133,741 |
 
-Row counts are normalized rows after removing exact duplicates and near-real-time rows superseded by standard ones, summed from `data/work/normalize_stats/`. In this build the 2026 VIIRS months and NOAA-21 after 2023-05 are not yet ingested; the refresh will add them. Of the 554,769,047 normalized rows, 103,788,286 MODIS and 351,192,421 VIIRS detections were accepted by the filters (`data/dist/tiles/L2`, column sums).
+Row counts are summed from `data/work/normalize_stats/` after removing exact duplicates and near-real-time rows superseded by standard ones: 656,491,914 rows, equal to the rows of the hotspot archive (`data/dist/points/index.json`). Of them 103,745,946 MODIS and 430,723,897 VIIRS detections were accepted by the filters (`data/work/verify.json`). Months from 2026-07 are provisional. In this build the near-real-time rows of NOAA-20 and NOAA-21 for 2026-11 (769,150 and 748,160 rows, all of November except the newest day's `URT` rows) were discarded by a classification fault in `normalize.py` (see Limitations), so 2026-11 is nearly empty for VIIRS.
 
 Reference data that is not fire data: RESOLVE Ecoregions 2017 (strata and land mask). The strata step downloads it from its public host.
 
@@ -84,34 +102,34 @@ The app repeats this text in its footer and About panel and in every export. Har
 ```mermaid
 flowchart LR
   F[NASA FIRMS<br/>country files + area API] --> P[Python pipeline<br/>DuckDB]
-  P --> D[(data/dist<br/>Parquet tiles, points,<br/>PNG overview, meta, ML model)]
+  P --> D[(data/dist<br/>Parquet tiles, points,<br/>PNG overview, meta, validation,<br/>watch, ML model)]
   subgraph B[Browser]
     UI[Svelte UI + MapLibre] --> W[Web Worker<br/>Rust to WebAssembly kernel]
-    UI --> G[WebGPU globe and ONNX lab]
+    UI --> G[WebGPU globe, ONNX lab, sound]
   end
   D -->|HTTP range requests| UI
-  UI -->|/api/live| S[Server routes<br/>hold the keys]
+  UI -->|/api/live| S[Server routes<br/>hold the keys, same-origin only]
   UI -->|/api/brief, /api/ask| S
   S --> F2[FIRMS NRT]
   S --> A[Anthropic or OpenRouter]
 ```
 
-An offline Python pipeline turns the FIRMS files into a static pyramid of Parquet tiles at 0.05°, 0.25° and 1°. The browser reads only the tiles that touch the drawn area, picks the finest level that fits a 16 MiB budget, and a Rust kernel compiled to WebAssembly does all the analysis in a Web Worker. Three small server routes exist only because they need secrets: the FIRMS near-real-time proxy and the two AI routes. Everything else is static files, so it can be hosted on any server that supports HTTP range requests. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+An offline Python pipeline turns the FIRMS files into a static pyramid of Parquet tiles at 0.05° (2.5° tiles), 0.25° (10° tiles) and 1° (30° tiles). The browser reads only the tiles that touch the drawn area, picks the finest level that fits a 16 MiB budget, and a Rust kernel compiled to WebAssembly does all the analysis in a Web Worker. Three small server routes exist only because they need secrets: the FIRMS near-real-time proxy and the two AI routes. Everything else is static files, so it can be hosted on any server that supports HTTP range requests. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Repository layout
 
 | Path | Content |
 | --- | --- |
 | `pipeline/` | Python 3.13 pipeline (uv, DuckDB): one module per stage, parameters in `config.py` |
-| `crates/harmony-core/`, `crates/harmony-wasm/` | Rust analysis kernel and its WebAssembly wrapper |
+| `crates/harmony-core/`, `crates/harmony-wasm/` | Rust analysis kernel (fusion, drift correction, conformal bounds, statistics, analogs, outlook) and its WebAssembly wrapper |
 | `web/` | Vite, Svelte 5 and TypeScript app; `web/server/` holds the three server routes |
-| `schema/` | The interfaces between the parts: data contract, validation and ML schemas |
+| `schema/` | The interfaces between the parts: data contract, validation, ML and watchlist schemas |
 | `scripts/` | WASM build script and the smoke tests |
-| `docs/` | Method, architecture, operations, brand notes, original design |
+| `docs/` | Method, architecture, operations, brand notes, UX audit, original design |
 
-## Quick start
+## Setup
 
-`data/` is not in git. The app needs the pipeline output at `data/dist/`; without it the app starts in a labelled demo mode on synthetic numbers. Build the data (next section) or copy a finished `data/dist/` into place. The tile pyramid is about 0.5 GB; the hotspot archive for CSV export is about 10 GB and is optional (the export reports itself unavailable without it).
+`data/` is not in git. Build the data (next section) or copy a finished `data/dist/` into place. In the 2026-11-15 build the tile pyramid is 0.58 GB and the hotspot archive for CSV export is 11.3 GB; the archive is optional (the export reports itself unavailable without it).
 
 Prerequisites:
 
@@ -119,16 +137,9 @@ Prerequisites:
 - Rust (stable) with the `wasm32-unknown-unknown` target, and `wasm-bindgen-cli` 0.2.130 (the version is pinned in `crates/harmony-wasm/Cargo.toml`).
 - [uv](https://docs.astral.sh/uv/) (it installs Python 3.13 for the pipeline).
 - A free FIRMS map key from https://firms.modaps.eosdis.nasa.gov/api/map_key/ (needed for the API top-up and the live view).
-- Optional: an Anthropic API key for the brief and Ask Harmony. Without one the app uses the rule-based brief and hides Ask.
+- Optional: an Anthropic API key for the brief and Ask Harmony (an OpenRouter key works as the alternative provider). Without a key the app uses the rule-based brief and hides Ask.
 
-```bash
-cp .env.example .env.local        # fill FIRMS_MAP_KEY, optionally ANTHROPIC_API_KEY; .env.local is git-ignored
-bash scripts/build-wasm.sh        # builds the Rust kernel to web/src/lib/kernel/pkg/ (git-ignored)
-pnpm --dir web install
-pnpm --dir web dev                # http://localhost:5173, serves data/dist at /data and the /api routes
-```
-
-Without the WASM build the app falls back to the demo mode as well. For a production build, `pnpm --dir web build` then `pnpm --dir web preview` (the preview server also serves `/data` and the `/api` routes).
+Environment variables are listed in `.env.example`. Without the WASM build the app falls back to the demo mode as well. For a production build, `pnpm --dir web build` then `pnpm --dir web preview` (the preview server also serves `/data` and the `/api` routes).
 
 ## Rebuilding the data
 
@@ -136,43 +147,66 @@ From `pipeline/`. Stage details and the top-up routine are in [docs/OPERATIONS.m
 
 ```bash
 cd pipeline
-uv run python -m harmony_pipeline.cli fetch-country   # FIRMS country-year zips (about 9 GB)
+uv run python -m harmony_pipeline.cli fetch-country   # FIRMS country-year zips (9.8 GB)
 uv run python -m harmony_pipeline.cli fetch-api       # 2026 and NOAA-21 from the area API (needs FIRMS_MAP_KEY)
-uv run python -m harmony_pipeline.cli all             # normalize, availability, static_mask, afcd, strata, calibrate, tiles, points, overview, verify
+uv run python -m harmony_pipeline.cli all             # normalize, availability, static_mask, afcd, strata, calibrate, harmonize, tiles, points, overview, watch, verify
 uv run python -m harmony_pipeline.cli ml              # optional: ML challenger (not part of `all`)
 ```
 
-Measured on the 2026-11-15 global build (12-thread machine, DuckDB limited to 12 GB): normalize about 82 min, static mask 2 min, cube 13 min, strata 4 min, calibration 2 min, tiles 7 min, points archive 45 min or more, ML 3.5 min; about 2.5 to 3 hours in total after the downloads. Disk used: about 16 GB of raw downloads, 12 GB of normalized points, and 8 to 10 GB of output. Plan for 50 GB free.
+Measured on the 2026-11-15 global build (12-thread machine, DuckDB limited to 12 GB), in seconds, from the stage logs:
+
+| Stage | First full run, all years | Refresh run (2026 and NOAA-21 added; only changed sensor-years re-read) |
+| --- | --- | --- |
+| normalize | 4,933 | 295 |
+| availability | 8 | 3 |
+| static_mask | 111 | 24 |
+| afcd (cell-day cube) | 764 | 217 |
+| strata | 268 | 45 |
+| calibrate | 104 | 87 |
+| harmonize | not in that run | 29 |
+| tiles | 422 | 69 |
+| points archive | 3,286 | 1,701 |
+| overview / watch | 0 / not in that run | 10 / 2 |
+| verify | 137 | 10 |
+| ml (separate stage) | 207 | not re-run |
+
+A full build from the downloads takes about 2.8 hours on this machine; a top-up about 40 minutes, most of it the points archive. Disk used: 19.4 GB of raw downloads (9.8 GB country zips, 8.9 GB API files, 0.4 GB RESOLVE, 0.4 GB country CSVs), 14.7 GB of normalized points and 11.9 GB of output. Plan for 60 GB free.
 
 ## Tests and checks
 
-| Command | What it checks | Needs |
-| --- | --- | --- |
-| `cargo test --workspace` | 28 kernel tests: polygon coverage against brute force, zonal sums, the interval formula against a hand computation, statistics, outlook, and timing guards | Rust |
-| `bash scripts/build-wasm.sh && node scripts/kernel-smoke.mjs` | The built WASM kernel on a synthetic tile: output shapes and values, and timings | built kernel |
-| `node scripts/live-smoke.mjs --unit` | Live proxy: validation, snapping, cache, in-flight de-duplication, usage guard, key redaction; and the pace computation | Node 24 |
-| `node scripts/brief-smoke.mjs --offline` | AI routes against mock Anthropic and OpenRouter servers: request shapes, retry, fallback, output validation, rate limits | Node 24 |
-| `node scripts/hotspots-export-test.mjs` | The CSV export code against real point files over local HTTP, cross-checked against DuckDB | `data/dist/points`, uv env |
-| `uv run python -m harmony_pipeline.cli verify` (inside `all`) | Raw-to-normalized row reconciliation, no SP/NRT overlap, tile totals equal accepted detections, additive levels, points archive rows, official country CSV row counts, top anomaly months per realm | pipeline data |
-| `pnpm --dir web check` | Svelte and TypeScript type check | `pnpm install` |
+Each command in the first six rows was run on 2026-11-15 and passed.
 
-The `live-smoke --url` and `brief-smoke --url` modes make real FIRMS and model calls against a running dev server (a few small requests; fractions of a cent).
+| Command | What it checks | Result | Needs |
+| --- | --- | --- | --- |
+| `cargo test -p harmony-core` (or `cargo test --workspace`) | Kernel unit tests: polygon coverage against brute force, zonal sums, fusion limits and hand-computed fusion, conformal bounds, drift correction only when fused, the units lens, partial months, analogs, statistics, outlook, and timing guards | 44 passed | Rust |
+| `node scripts/kernel-smoke.mjs` (after `bash scripts/build-wasm.sh`) | The built WASM kernel on a synthetic tile: output shapes and values, fused bands, analogs, lens, and timings | passed | built kernel |
+| `node scripts/sound-test.mjs` | Sonification mapping and transcripts, run directly in Node | 37 checks passed | Node |
+| `node scripts/live-smoke.mjs --unit` | Live proxy: validation, snapping, cache, in-flight de-duplication, usage guard, key redaction, same-origin checks; and the pace computation | 63 checks passed | Node 24 |
+| `node scripts/brief-smoke.mjs --offline` | AI routes against mock Anthropic and OpenRouter servers: request shapes, retry, fallback, output validation, numeric grounding, truncated streams, rate limits, origin checks | 118 checks passed | Node 24 |
+| `pnpm --dir web exec svelte-check --tsconfig ./tsconfig.app.json` (`pnpm --dir web check` also type-checks the Node config) | Svelte and TypeScript type check | 334 files, 0 errors, 0 warnings | `pnpm install` |
+| `node scripts/hotspots-export-test.mjs` | The CSV export code against real point files over local HTTP, cross-checked against DuckDB | not re-run in this documentation pass | `data/dist/points`, uv env |
+| `uv run python -m harmony_pipeline.cli verify` (inside `all`) | Raw-to-normalized row reconciliation, no SP/NRT overlap, tile totals equal accepted detections, additive levels, points archive rows, official country CSV row counts, top anomaly months per realm | `data/work/verify.json` of the global build: all checks ok | pipeline data |
 
-The `verify` report on disk (`data/work/verify.json`) was written for an earlier five-country regional run and passed; it has not yet been written for the global build. Run the stage on the refreshed data before quoting it.
+The `live-smoke --url` and `brief-smoke --url` modes make real FIRMS and model calls against a running dev server (a few small requests; fractions of a cent) and were not run.
 
 ## Limitations
 
 - **Detections are not burned area.** AFCD-M measures how often a place is seen burning, not how much burned, how intense it was or what was lost.
-- **Sampling.** Cloud, smoke, dense canopy and overpass times hide fires, and the unit does not correct for them. Terra and Aqua have drifted from their original equator-crossing times since about 2021, which changes the time of day they sample; part of the out-of-time bias in 2025 is probably this.
-- **Provisional months.** Months built from near-real-time data are flagged. In the live view, near-real-time rows are not screened for gas flares and industrial sources, because the static mask is applied in the pipeline, not to the live rows.
+- **Sampling.** Cloud, smoke, dense canopy and overpass times hide fires, and the unit does not correct for them.
+- **MODIS drift is measured, not explained.** The correction removes any change of MODIS relative to VIIRS, so a real change in when fires burn (a shift in crop-residue burning, say) is removed with the overpass effect. The overpass-time regression attributes part of the change to the moving overpass and leaves the rest unattributed; half of the correction is treated as uncertain. After 2021 MODIS adds little that is independent of VIIRS at biome-year scale.
+- **Fusion has no demonstrated gain over a plain average** (see Results). Its weights rest on an error model whose assumptions (independent errors within a triplet; equal Terra and Aqua error for the common-mode term) are only partly testable, and the three-satellite VIIRS row is estimated in the drift era.
+- **Intervals fall a few points short out of sample.** Held-out coverage is 0.76 and 0.93 against 0.80 and 0.95 nominal for units of 5 or more cell-days, lower for large values. The calibration assumes exchangeable scores, and monthly fire data are autocorrelated. An interval describes where observed Terra and Aqua would be, noise included.
+- **Provisional months.** Months built from near-real-time data (2026-07 to 2026-11 in this build) are flagged. In the live view, near-real-time rows are not screened for gas flares and industrial sources, because the static mask is applied in the pipeline, not to the live rows.
 - **Live pace is approximate.** It uses NOAA-20 and NOAA-21 only, treats a satellite with no rows on a day as not reporting when the other has at least 20, scales with the area's own calendar-month ratio between calibrated and raw VIIRS, and compares with the median of the same month spread evenly over its days.
+- **The overview atlases (Global pulse, trend map) and the watchlist use the switch rule**, not the fusion the kernel uses by default for an area. They are built from the 0.25° tiles in Python with MODIS before 2023-01 and calibrated VIIRS after, and they carry no drift correction. A place's month on the globe can therefore differ from the same month in the area analysis, most from 2020 on, when the drift correction starts.
+- **The AI brief names the wrong unit under the VIIRS lens.** The dossier sent to the model carries no unit field and the prompt calls every value MODIS-equivalent; the rule-based brief reads the lens correctly. The brief's numbers are still checked against the dossier.
 - **Continental areas.** If even the 1° level exceeds the 16 MiB budget the app still loads the 1° level and does not refuse; very large areas are slow to load and are shown at 1° resolution.
 - **Areas crossing the antimeridian** are not supported in the interface or in the live route.
-- **Uncertainty.** The interval is tuned to cover leave-one-year-out 1° cell-months; the raw model interval covered only 48 % of them (a scale factor of 2.24 is applied). Coverage for large areas, and for cells with 100 or more cell-days a month (0.73 at 80 %), is lower. The 95 % interval covers 91 %.
-- **Weakest strata.** Tundra and boreal strata have the largest stratum-month errors; cells outside any ecoregion are poorly calibrated.
+- **Weakest strata.** Tundra and boreal strata have the largest stratum-month errors (log-RMSE 1.36 and 1.20); cells outside any ecoregion are poorly calibrated.
 - **No cropland stratum** yet (planned, not built).
-- **Build gaps.** The build of 2026-11-15 does not yet contain 2026 VIIRS data or NOAA-21 after 2023-05, so 2026 months are served from MODIS, and the Global pulse shows no activity after 2026-01.
+- **A known fault in this build's near-real-time handling.** FIRMS labels its newest day `URT` (ultra-real-time) rather than `NRT`; `normalize.py` treats only `NRT` rows as near-real-time, so the 1,612 NOAA-20 and 249 NOAA-21 rows of 2026-11-15 count as standard and supersede the rest of 2026-11 for those satellites. 2026-11 therefore has little VIIRS (coverage 0.10), is excluded from statistics as partial, and the availability table lists NOAA-20 and NOAA-21 as unavailable from 2026-11-01. Re-normalizing after the classification is fixed repairs it.
 - **Ending sensors.** S-NPP delivered its last data on 2026-11-02 and MODIS is expected to end around 2027. The record then rests on NOAA-20 and NOAA-21.
+- **The ML challenger is not current.** It was trained on a snapshot of the data taken before the 2026 and NOAA-21 refresh, and Table M6 of the method was not recomputed.
 
 ## AI in the application
 
@@ -195,11 +229,16 @@ Harmony is by [Toh Yu Heng](https://hello.hernie.me), Singapore, made for NASA S
 | Svelte 5, Vite 8, sirv | Application framework and build | MIT |
 | @anthropic-ai/sdk | AI routes | Apache-2.0 |
 | Barlow, JetBrains Mono, Schibsted Grotesk (via Fontsource) | Typefaces | OFL-1.1 |
+| Scientific colour maps (Crameri), romaO | Fire clock colour map | MIT |
 | DuckDB (with its spatial extension), NumPy, pandas, shapely, onnx, onnxruntime | Pipeline | MIT / BSD / Apache-2.0 |
 | serde, wasm-bindgen | Rust kernel | MIT or Apache-2.0 |
 
 Licences were read from the installed packages for the web dependencies; check the upstream licence for any redistribution.
 
-© 2026 Harmony, by Toh Yu Heng. All rights reserved.
+## Licence
 
-The licence for this repository is the author's decision and has not been set here.
+The source code in this repository is licensed under the GNU Affero General Public License, version 3 only (AGPL-3.0-only). See [LICENSE](LICENSE).
+
+The hosted site at <https://harmony.hernie.me>, the Harmony name, the stepped-H mark and the mission patch, and the slide deck are not covered by that licence: © 2026 Harmony, by [Toh Yu Heng](https://hello.hernie.me). All rights reserved.
+
+Third-party data and libraries keep their own licences (see the table above).

@@ -1,27 +1,21 @@
 <section id="proof" data-transition="fade">
 <div class="head">
 <p class="eyebrow">The evidence</p>
-<h2>The seam disappears, and it holds on years the model never saw</h2>
-</div>
-<div class="grid4">
-<div class="stat" style="--i:0"><p class="big">0.944</p><p class="cap">correlation with MODIS per 1° cell and month, each year of 2012–2021 held out in turn</p></div>
-<div class="stat" style="--i:1"><p class="big">0.06 %</p><p class="cap">overall bias in that test</p></div>
-<div class="stat" style="--i:2"><p class="big hot">1.07×</p><p class="cap">step at the hand-over, down from 8.9× in the naive record</p></div>
-<div class="stat" style="--i:3"><p class="big">±1.5 %</p><p class="cap">bias against still-flying MODIS in 2022–2024; +7.3 % in 2025 as its orbit drifts</p></div>
+<h2>The record holds. MODIS itself has drifted.</h2>
 </div>
 <div class="cols" style="gap:64px">
-<div class="tblwrap" style="width:860px">
-<table class="tbl">
-<tr><th style="width:56%">Held-out error, 2019–2021</th><th style="width:22%;text-align:right">1° cells</th><th style="width:22%;text-align:right">Biomes</th></tr>
-<tr><td>Naive single ratio</td><td style="text-align:right">0.667</td><td style="text-align:right">0.625</td></tr>
-<tr><td>Harmony ratio method</td><td style="text-align:right">0.593</td><td style="text-align:right">0.492</td></tr>
-<tr><td>Neural cross-check, in the browser</td><td style="text-align:right">0.550</td><td style="text-align:right">0.429</td></tr>
-</table>
-<p class="caption">Log error, lower is better; all fitted on 2012–2018. The transparent method stays in production.</p>
+<div class="grid2" style="width:720px">
+<div class="stat" style="--i:0"><p class="big">0.944</p><p class="cap">correlation with MODIS per 1° cell and month, each year of 2012–2021 held out in turn</p></div>
+<div class="stat" style="--i:1"><p class="big">12.6×</p><p class="cap">step in the naive record at the hand-over; none detectable once harmonized (p = 0.17)</p></div>
+<div class="stat" style="--i:2"><p class="big hot">−42 %</p><p class="cap">Terra daytime detections by 2025, against VIIRS’s fixed overpass time (95 % range −46 to −37)</p></div>
+<div class="stat" style="--i:3"><p class="big">71–81 %</p><p class="cap">of unseen months, 2022–2024, fall inside the stated 80 % range</p></div>
 </div>
-<img class="shot" src="/_blob/8697d0d50885b41b0ca3f46eafb171a2" alt="Harmonized monthly record for the Amazon arc of deforestation from 2000 to 2026: one continuous line with no jump when VIIRS starts in 2012 or at the switch in 2023" style="width:740px;height:275px">
+<div class="col" style="width:880px;gap:20px">
+<img class="shot" src="/_blob/db4dbb66d6a369d6c49e8c1ef8b13217" alt="Two charts of observed over expected detections by year. Terra: flat at 1 until 2020, then daytime falls to 0.58 and night rises to 1.35 by 2025. Aqua: day stays near 1.01, night falls to 0.83. Below, overpass time: Terra moves 1.1 hours earlier, Aqua later, VIIRS stays fixed" style="width:880px;height:503px">
+<p class="caption">Terra and Aqua against calibrated VIIRS. In 2012–2019, before the drift, the ratio sits at 1. Terra’s pass is now 1.1 hours earlier, which explains the change.</p>
+</div>
 </div>
 <p class="foot">Harmony · NASA Space Apps 2026</p>
 <p class="pg">5 / 7</p>
-<aside>Does it work? I hold out each year from 2012 to 2021 in turn, calibrate on the rest, and compare with what MODIS actually saw. At the scale of a one-degree cell the correlation is 0.944 and the overall bias is 0.06 percent. A change-point test finds an 8.9-fold step in the naive record at the hand-over; in the harmonized record it is 7 percent and not statistically significant. Because MODIS is still flying, 2022 to 2025 are a free test on years the model never saw: within 1.5 percent for three years, then 7 percent in 2025 as the MODIS orbits drift. I also trained a small neural network as a challenger. It is slightly more accurate, it runs in the browser on WebGPU, and it agrees with the simple method, which is why the simple, explainable method stays in production. Limits are published in the app: detections are not burned area, and cloud and overpass gaps are not corrected.</aside>
+<aside>Two kinds of evidence. First, accuracy: holding out each year from 2012 to 2021 in turn, the harmonized record correlates 0.944 with what MODIS saw at one-degree scale. A change-point test finds a 12.6-fold step in the naive record at the hand-over, and no significant step after harmonization. On unseen years, 71 to 81 percent of months fall inside the stated 80 percent range, so the ranges are a few points optimistic and we say so. Second, a finding. Because VIIRS keeps a fixed overpass time, it can be used as a reference to measure MODIS itself. Since 2020 Terra’s orbit has drifted 1.1 hours earlier, and its daytime fire detections now run 42 percent low; at night they run 35 percent high. Aqua’s daytime detections are unchanged. In the years before the drift the same ratios sit at one. NASA lists the effect of this drift on fire products as under investigation; to our knowledge this is a global, per-biome estimate of it. The limit: it cannot be separated from real changes in the hour fires burn. Fusion beat either single sensor at one-degree scale, though not a plain average, and a small neural model run in the browser agrees with the simple method.</aside>
 </section>

@@ -45,7 +45,7 @@ the contract's index `m = (year-2000)*12 + month-1`. Floats are rounded to 4 dec
 80 % / 95 % interval `H·exp(∓z·ci_scale·σ_log)`, and the 80 % share before `ci_scale`.
 
 **YearRatio** = `{ year, nmod, nvii, count_ratio = nvii/nmod, afcd_ratio_raw = Σv/Σmeq, harmonized_ratio = Σkv/Σmeq }`
-(from the tiles' own values; `count_ratio` rises from about 4 to about 7-8 in 2018-2019 as NOAA-20 joins S-NPP, `harmonized_ratio` should stay ≈ 1). The first year (2012, VIIRS starts in February) and the last year (incomplete, and in the 2026-11-15 build without VIIRS) are not comparable with the full years.
+(from the tiles' own values; `count_ratio` rises from about 4 to about 7-8 in 2018-2019 as NOAA-20 joins S-NPP, `harmonized_ratio` should stay ≈ 1). The first year (2012, VIIRS starts in February) and the last year (incomplete: 2026 runs to mid-November, and in the 2026-11-15 build its November VIIRS rows are largely missing, see docs/METHOD.md Known issues) are not comparable with the full years. From 2025 `harmonized_ratio` rises above 1 because MODIS drifts, not because the calibration moves (docs/METHOD.md section 10).
 
 **OOT** = `{ year, pred, obs, bias_pct, r_log1p_stratum_month, months }`.
 
@@ -101,6 +101,7 @@ model_cov80_vs_terra_H5, model_cov95_vs_terra_H5, n }`: candidates scored agains
 `fusion.modis_weight_by_era` = {era: { cell1deg_median, cell1deg_activity_weighted, cell1deg_median_H20, n_cell_months },
 `global_by_year`: {year: weight}}. `fusion.pettitt_fused` = {viirs_start \| drift_start \| legacy_switch:
 { window_m, event_m, fused, switch, naive: Test }, `fused_to_modis_by_year`}.
+Here `naive` is raw VIIRS counts from the VIIRS start (MODIS counts before), unlike `pettitt.naive`, which switches from MODIS to VIIRS counts at `switch_m`; `switch` is the MODIS-then-calibrated-VIIRS series at `default_switch_m`.
 
 More chart hints: drift fingerprint from `drift.table` (scope `global`, then `group_*`); diurnal sensitivity as
 `beta_per_hour` per group with ±2 `se`; conformal coverage `conformal.out_of_time.vs_modis_raw.all.*.cov80` next to

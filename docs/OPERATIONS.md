@@ -4,24 +4,54 @@ How to keep the record fresh, manage keys, switch the AI provider, rebuild the M
 
 All pipeline commands run from `pipeline/` and use `uv run python -m harmony_pipeline.cli ...`. Output goes to `data/` (git-ignored): `raw/` downloads, `work/` intermediate files, `dist/` what the app serves.
 
+## Stages
+
+`all` runs these in order (`cli.py`, `STAGES`); a stage skips its work when its outputs are newer than its inputs unless `--force`.
+
+| Stage | Name on the command line | Writes |
+| --- | --- | --- |
+| 1 | `normalize` | `work/points/{sensor}/{year}.parquet`, `work/normalize_stats/` |
+| 2 | `availability` | `work/availability.parquet`, `availability_monthly.parquet` |
+| 3 | `static_mask` (aliases `static-mask`, `mask`) | `work/static_mask.parquet` |
+| 4 | `afcd` (alias `cube`) | `work/cube/`, `work/cube.parquet` |
+| 5 | `strata` | `work/strata*.parquet` |
+| 6 | `calibrate` | `work/coefficients/`, `dist/validation.json` |
+| 7 | `harmonize` | `work/coefficients/harmonize.json`, adds the error-model, drift, conformal and fusion tables to `dist/validation.json` |
+| 8 | `build_tiles` (alias `tiles`) | `dist/tiles/`, `dist/meta.json` |
+| 9 | `build_points` (alias `points`) | `dist/points/` |
+| 10 | `overview` | `dist/overview/` |
+| 11 | `watch` | `dist/watch.json` |
+| 12 | `verify` | `work/verify.json` |
+
+Not part of `all`: `fetch-country`, `fetch-api` (downloads) and `ml` (the ML challenger). `watch --month YYYY-MM` analyses a past month and writes `work/watch/watch-YYYY-MM.json` instead of `dist/watch.json`.
+
 ## Table O1. Measured figures (as of the 2026-11-15 build)
 
-Update from `data/work/global_run.log` and `du` after a refresh.
+Update from `data/work/refresh_run.log`, `data/work/global_run.log`, the logs in `data/work/logs/` and file sizes after a refresh. Seconds are summed over years.
+
+| Item | First full run (all years) | Refresh run (2026 and NOAA-21 added) |
+| --- | --- | --- |
+| normalize | 4,933 s | 295 s (only changed sensor-years re-read) |
+| availability / static_mask / afcd | 8 s / 111 s / 764 s | 3 s / 24 s / 217 s |
+| strata / calibrate | 268 s / 104 s | 45 s / 87 s |
+| harmonize | not in that run | 29 s |
+| tiles | 422 s | 69 s |
+| points archive | 3,286 s | 1,701 s |
+| overview / watch | 0 s / not in that run | 10 s / 2 s |
+| verify | 137 s | 10 s |
+| ML stage | 207 s | not re-run |
 
 | Item | Value |
 | --- | --- |
-| Time per stage, summed over years: normalize / availability / static_mask / afcd / strata / calibrate / tiles | 82 min / 0.1 min / 1.9 min / 12.7 min / 4.4 min / 1.7 min / 6.9 min |
-| Points archive stage | 44.5 min for the years done when measured (2000-2023); the run was still going |
-| ML stage | 207 s |
-| Raw downloads: country zips (48 files) / API CSVs / RESOLVE | 9.1 GB / 6.3 GB / 0.4 GB |
-| Normalized points (`work/points`) | 12 GB |
-| Cube | 0.6 GB (`work/cube` and `work/cube.parquet`) |
-| Output: tiles / points archive / overview | 0.52 GB / 7.5 GB or more (measured mid-run) / 0.8 MB |
-| FIRMS standard (SP) data available through, on 2026-11-15 | MODIS 2026-08-31; VIIRS NOAA-20, NOAA-21, S-NPP 2026-07-31 |
-| FIRMS near-real-time data available through | MODIS and NOAA-20 and NOAA-21 2026-11-15; S-NPP 2026-11-02 (its last) |
+| Raw downloads | 19.4 GB: country zips 9.8 GB (48 files), API CSVs 8.9 GB (498 files), RESOLVE 0.4 GB, per-country CSVs 0.4 GB |
+| Normalized points (`work/points`) | 14.7 GB |
+| Cube | 0.7 GB (`work/cube` and `work/cube.parquet`) |
+| Output | tiles 0.58 GB, points archive 11.34 GB, overview 7 MB |
+| FIRMS standard (SP) data available through, on 2026-11-15 | MODIS 2026-08-31; VIIRS S-NPP, NOAA-20, NOAA-21 2026-07-31 |
+| FIRMS near-real-time data available through | MODIS, NOAA-20 and NOAA-21 2026-11-15; S-NPP 2026-11-02 (its last) |
 | NOAA-21 near-real-time starts / standard starts | 2024-01-17 / 2023-03-01 |
 
-The DuckDB connection is set to 12 threads and a 12 GB memory limit (`common.connect`); lower them on a smaller machine.
+The DuckDB connection is set to 12 threads and a 12 GB memory limit (`common.connect`); lower them on a smaller machine. Plan for 60 GB free in `data/`.
 
 ## Keeping the record fresh
 
@@ -34,6 +64,7 @@ cd pipeline
 uv run python -m harmony_pipeline.cli fetch-api --dry-run   # print the windows that would be fetched
 uv run python -m harmony_pipeline.cli fetch-api             # download them
 uv run python -m harmony_pipeline.cli all                   # rebuild everything downstream
+uv run python -m harmony_pipeline.cli ml --force            # optional, after deleting data/work/ml/snap
 ```
 
 `fetch-api` options: `--sensors` (any of `modis viirs-snpp viirs-noaa20 viirs-noaa21`), `--from` and `--to` (dates), `--limit N` (testing), `--bbox w,s,e,n` (writes to `data/raw/api_bbox/`, which the pipeline does not read), `--dry-run`.
@@ -44,7 +75,7 @@ What `fetch-api` does:
 - It fetches in windows of at most 5 days, world coverage, into `data/raw/api/{SOURCE}/{start}_{days}.csv`. Existing valid files are skipped, except windows touching the last 3 days of a source's availability (NRT is still filling), which are fetched again. Interrupt and re-run at any time.
 - A response is accepted only if its header starts with `latitude,`; an HTTP 200 can carry an error text.
 
-What `all` does after a top-up: `normalize` re-reads only the sensor-years whose API files changed, then every later stage runs again, because each stage skips work only when its outputs are newer than its inputs and the new points make them all older. Expect about an hour to an hour and a half, most of it the points archive. To skip that stage and refresh only the tiles and the overview, run the stages by name in order, but note that the hotspot CSV export then lacks the new detections:
+What `all` does after a top-up: `normalize` re-reads only the sensor-years whose API files changed, then every later stage runs again, because each stage skips work only when its outputs are newer than its inputs and the new points make them all older. Expect about 40 minutes (Table O1, refresh run), most of it the points archive. To skip that stage and refresh only the tiles, overview and watchlist, run the stages by name in order, but note that the hotspot CSV export then lacks the new detections:
 
 ```bash
 uv run python -m harmony_pipeline.cli normalize
@@ -53,31 +84,35 @@ uv run python -m harmony_pipeline.cli static_mask
 uv run python -m harmony_pipeline.cli afcd
 uv run python -m harmony_pipeline.cli strata
 uv run python -m harmony_pipeline.cli calibrate
+uv run python -m harmony_pipeline.cli harmonize
 uv run python -m harmony_pipeline.cli tiles
 uv run python -m harmony_pipeline.cli overview
+uv run python -m harmony_pipeline.cli watch
 uv run python -m harmony_pipeline.cli verify
 ```
 
-`all --from <stage>` starts at a later stage; `--force` recomputes a stage even when it looks up to date; `normalize` accepts `--sensors` and `--years` to restrict what it re-reads.
+`all --from <stage>` starts at a later stage; `--force` recomputes a stage even when it looks up to date; `normalize` accepts `--sensors` and `--years` to restrict what it re-reads. `calibrate` rewrites `validation.json`, so always run `harmonize` after it (it is in `all`), otherwise the file lacks the harmonization tables and `meta.json` lacks the error model.
 
-After the run, check `data/work/verify.json` (every check `ok`) and `data/dist/meta.json` (`data_through`, `generated`, the `provisional` array). The web app reads the new files directly; `Cache-Control: no-cache` is set for `/data` in the dev server, and a static host should do the same for `meta.json` and the indexes.
+After the run, check `data/work/verify.json` (`ok` true for every check), `data/dist/meta.json` (`data_through`, `generated`, the `provisional` array and the last values of `cov_modis` and `cov_viirs`) and `data/dist/watch.json` (`month`). Two checks are worth doing by hand after a top-up that adds near-real-time data: that the newest months have VIIRS coverage (a month with `cov_viirs` near 0 means rows were dropped; see Troubleshooting) and that `normalize_stats/*.json` `nrt_superseded` is plausible for the sensor-years touched. The web app reads the new files directly; `Cache-Control: no-cache` is set for `/data` in the dev server, and a static host should do the same for `meta.json`, `watch.json` and the indexes.
 
-The calibration is refitted at every rebuild on the fixed 2012-02 to 2021-12 window. New data does not enter the fit, but the static mask and the availability table are recomputed over all data, so coefficients can move slightly between builds. Compare `data/dist/validation.json` before and after a refresh.
+The calibration is refitted at every rebuild on the fixed 2012-02 to 2021-12 window, and `harmonize` re-estimates the error model, the drift ratios and the conformal multipliers. New data does not enter the calibration fit, but the static mask and the availability table are recomputed over all data, so coefficients can move slightly between builds. Compare `data/dist/validation.json` before and after a refresh.
 
 ### What "provisional" means, and when a month becomes final
 
-A month is flagged provisional (`meta.months.provisional`, and a marker in the app) if any NRT row remains in it after standard rows have replaced NRT rows. The replacement rule is per satellite and UTC month: once FIRMS publishes standard data for a satellite-month, `fetch-api` fetches that month from the SP source on its next run and `normalize` drops the NRT rows for that satellite-month. A month is final when all its satellites are standard.
+A month is flagged provisional (`meta.months.provisional`, and a marker in the app) if any NRT row remains in it after standard rows have replaced NRT rows. The month is the local-solar month, so a UTC date at the start of a month can flag the month before it for western longitudes (in the 2026-11-15 build July 2026 is flagged although its VIIRS rows are all standard; inferred from the month definition, not separately tested). The replacement rule is per satellite and UTC month: once FIRMS publishes standard data for a satellite-month, `fetch-api` fetches that month from the SP source on its next run and `normalize` drops the NRT rows for that satellite-month. A month is final when all its satellites are standard.
+
+A row counts as NRT only if its FIRMS `version` contains `NRT`. FIRMS labels the newest day `URT` (for example `2.1URT`); such rows are treated as standard today, which makes them supersede every other NRT row of their month. See Troubleshooting for how to spot and repair it.
 
 Standard data lag the present by months (Table O1: on 2026-11-15, about 2.5 months for MODIS and 3.5 for VIIRS), so the latest three to four months stay provisional. Standard processing also adds the `type` field that NRT lacks; the static mask is the only static-source screen NRT rows get.
 
 ### At the turn of a year, and when a sensor ends
 
 - When FIRMS publishes the bulk country files for a new year, run `fetch-country` (it downloads every file in the FIRMS index with the configured prefixes), then raise the last bulk year of each sensor in `config.SENSORS` (the fourth field; 2025 today). `normalize` reads bulk years from those ranges, and `fetch-api` starts at the year after. This is a code edit.
-- S-NPP stopped on 2026-11-02 (`config.OPERATING`, and an end date in `fetch_api.END`). MODIS is expected to end around 2027: nothing needs to change at the end, because availability is detected from the daily counts (days with no data are marked unavailable), but then set the end date of Terra and Aqua in `config.OPERATING` and check that the app's default switch and the live view still make sense. NOAA-20 and NOAA-21 then carry the record.
+- S-NPP stopped on 2026-11-02 (`config.OPERATING`, and an end date in `fetch_api.END`). MODIS is expected to end around 2027: nothing needs to change at the end, because availability is detected from the daily counts (days with no data are marked unavailable), but then set the end date of Terra and Aqua in `config.OPERATING`. The kernel's fusion falls back to VIIRS when MODIS has no coverage, so after MODIS ends the record is VIIRS alone with the two-satellite error row; check the MODIS weight chart and the drift table in the app. NOAA-20 and NOAA-21 then carry the record.
 
 ### Regional runs
 
-For tests and for fast iteration: `all --countries Argentina Bolivia Paraguay` runs only the named FIRMS countries (names as in FIRMS file names) and writes the run manifest `data/work/run.json`. Changing the country set rebuilds the points. Regional runs use the nominal operating period minus a list of known outages for availability, and write `validation.json` with `scope: regional`. Run without `--countries` for the global record.
+For tests and for fast iteration: `all --countries Argentina Bolivia Paraguay` runs only the named FIRMS countries (names as in FIRMS file names) and writes the run manifest `data/work/run.json`. Changing the country set rebuilds the points. Regional runs use the nominal operating period minus a list of known outages for availability, and write `validation.json` with `scope: regional`; the error-model, drift and conformal estimates are fitted on the cube of the run, so on a regional run they rest on the regional cells only. Run without `--countries` for the global record.
 
 ## Key management
 
@@ -90,7 +125,7 @@ For tests and for fast iteration: `all --countries Argentina Bolivia Paraguay` r
 - Put them in `.env.local` at the repository root (copy `.env.example`). `.gitignore` excludes `.env` and `.env.*` except `.env.example`, so keys are never committed. Do not paste keys into issues, logs or chat.
 - The pipeline reads `FIRMS_MAP_KEY` from `.env.local`, then `.env`, then the environment. The Vite routes read keys from the same places on each request, so a replaced key should take effect without a restart (not tested).
 - To rotate a key, make a new one at the provider, replace the line, and check the route status (below). The key is redacted from every log line and error the code produces; if a key leaks anyway, revoke it at the provider.
-- Each key is used only server-side. The browser never receives one.
+- Each key is used only server-side. The browser never receives one. The three routes refuse requests that the browser marks as cross-site (403), so a key cannot be spent from another website.
 
 ### FIRMS rate limits
 
@@ -105,13 +140,13 @@ Set in `.env.local`; defaults apply when empty. Source: `web/server/ai/config.ts
 | `AI_PROVIDER` | `anthropic` (default), `openrouter` | Primary provider. Needs its key. |
 | `AI_PROFILE` | `sonnet-high` (default), `opus-medium` | `sonnet-high` is `claude-sonnet-5-5` at high effort; `opus-medium` is `claude-opus-5-5` at medium effort. On OpenRouter these map to `anthropic/claude-sonnet-5.5` and `anthropic/claude-opus-5.5`. |
 | `AI_MODEL` (alias `BRIEF_MODEL`) | a model id | Overrides the model for the primary provider; must match `[A-Za-z0-9][A-Za-z0-9._:/-]{0,79}`. |
-| `AI_FALLBACK`, `AI_FALLBACK_MODEL` | `openrouter` or `anthropic`; a model id | Used only after an outage, a 5xx or a 429 and one retry on the primary; must be a different, configured provider. |
+| `AI_FALLBACK`, `AI_FALLBACK_MODEL` | `openrouter` or `anthropic`; a model id | Used only after an outage, a 5xx or a 429 and one retry on the primary (a stream cut before its stop reason counts as transient); must be a different, configured provider. |
 | `AI_CACHE_TTL` | `5m` (default), `1h` | Lifetime of the prompt-cache breakpoints. |
 | `OPENROUTER_REFERER`, `OPENROUTER_BASE_URL` | URL | Optional; the second is a test hook for a mock server. |
 
-Check what the server resolved: `curl http://localhost:5173/api/brief` returns provider, model, profile, effort, fallback, `available`, `ask`, a problem code if any, and token and cache counters. With no key the answer is `available: false`; the app then shows the rule-based brief and hides Ask Harmony. Restart is not needed for an environment change, but the status call is the way to confirm it.
+Check what the server resolved: `curl http://localhost:5173/api/brief` returns provider, model, profile, effort, fallback, `available`, `ask`, a problem code if any, and token and cache counters (a `curl` call has no `Origin` header, so it passes the same-origin check; a call from a browser page on another site gets 403). With no key the answer is `available: false`; the app then shows the rule-based brief and hides Ask Harmony. Restart is not needed for an environment change, but the status call is the way to confirm it.
 
-Tests: `node scripts/brief-smoke.mjs --offline` (no network, no spend) checks request shapes, retry, fallback, output validation and rate limits against mock providers. `node scripts/brief-smoke.mjs --url http://localhost:5196` (dev server started with `pnpm --dir web dev --port 5196 --strictPort`) makes real calls, a fraction of a cent each; `--real-openrouter` makes one real OpenRouter call if the key is set.
+Tests: `node scripts/brief-smoke.mjs --offline` (no network, no spend; 118 checks on 2026-11-15) covers request shapes, retry, fallback, output validation and numeric grounding, truncated streams, rate limits and origin checks against mock providers. `node scripts/brief-smoke.mjs --url http://localhost:5196` (dev server started with `pnpm --dir web dev --port 5196 --strictPort`) makes real calls, a fraction of a cent each; `--real-openrouter` makes one real OpenRouter call if the key is set. Known limitation: the dossier sent to the model has no unit field, so under the VIIRS lens the prompt still calls values MODIS-equivalent (METHOD.md section 20).
 
 ## Rebuilding the ML model
 
@@ -121,19 +156,31 @@ uv run python -m harmony_pipeline.cli ml            # trains only if data/dist/m
 uv run python -m harmony_pipeline.cli ml --force    # retrain (reuses the snapshot in data/work/ml/snap if present)
 ```
 
-The stage is not part of `all`. It takes a one-off snapshot of the fit window and 2022-2025 from `data/work` into `data/work/ml/snap/` (because `data/work` is rewritten by later runs), trains on it, and writes `data/dist/ml/model.onnx`, `data/dist/ml/model.json` and `data/work/ml/{train_log.txt,metrics.json,run.log}`. It took 207 seconds on the current build. After a recalibration, delete `data/work/ml/snap` first so that the snapshot picks up the new coefficients. The snapshot end month is fixed in `ml_challenger.py` (2025-12). The feature list must match `web/src/lib/ml/features.ts`; the app refuses a model whose list differs. See [schema/ml.md](../schema/ml.md).
+The stage is not part of `all`. It takes a one-off snapshot of the fit window and 2022-2025 from `data/work` into `data/work/ml/snap/` (because `data/work` is rewritten by later runs), trains on it, and writes `data/dist/ml/model.onnx`, `data/dist/ml/model.json` and `data/work/ml/{train_log.txt,metrics.json,run.log}`. It took 207 seconds. After a recalibration or a data refresh, delete `data/work/ml/snap` first so that the snapshot picks up the new coefficients and data. The snapshot end month is fixed in `ml_challenger.py` (2025-12). The feature list must match `web/src/lib/ml/features.ts`; the app refuses a model whose list differs. See [schema/ml.md](../schema/ml.md).
 
-## Web app
+In the 2026-11-15 build the model was trained on a snapshot taken before the 2026 and NOAA-21 refresh and has not been retrained, so Table M6 of the method and the Method lab model reflect the earlier data.
+
+## Web app and tests
 
 ```bash
 bash scripts/build-wasm.sh          # after any change in crates/
 pnpm --dir web dev                  # development, http://localhost:5173
 pnpm --dir web build                # production bundle in web/dist
 pnpm --dir web preview              # serves web/dist plus /data and the /api routes
-pnpm --dir web check                # type check
+pnpm --dir web check                # svelte-check and the Node type check
 ```
 
 `/data` is served from `data/dist` (with range requests); `?mock=1` in the URL forces the demo mode.
+
+| Command | Checks | Result on 2026-11-15 |
+| --- | --- | --- |
+| `cargo test -p harmony-core` (with `export PATH="$HOME/.cargo/bin:$PATH"`) | Kernel unit tests | 44 passed |
+| `node scripts/kernel-smoke.mjs` | Built WASM kernel on synthetic tiles | passed |
+| `node scripts/sound-test.mjs` | Sonification mapping and transcripts | 37 checks passed |
+| `node scripts/live-smoke.mjs --unit` | Live proxy units, pace computation, origin checks | 63 checks passed |
+| `node scripts/brief-smoke.mjs --offline` | AI routes against mock providers | 118 checks passed |
+| `pnpm --dir web exec svelte-check --tsconfig ./tsconfig.app.json` | Type check | 334 files, 0 errors |
+| `node scripts/hotspots-export-test.mjs` | CSV export against DuckDB (needs `data/dist/points`) | not run in this pass |
 
 ## Troubleshooting
 
@@ -147,7 +194,10 @@ pnpm --dir web check                # type check
 | `fetch-api` prints `unexpected response: ...` and retries | FIRMS answered 200 with an error text, usually an invalid key or an exhausted budget; the run backs off and retries. "availability endpoint returned no rows (invalid key?)" means the key is wrong. |
 | `fetch-country` prints `SIZE MISMATCH` | A download is incomplete; run it again, it resumes. |
 | `normalize` stops with "zip is missing or incomplete; run fetch_country first" | The zip for that year is not complete; run `fetch-country`. |
+| The newest month has little or no VIIRS (`cov_viirs` near 0 in `meta.json`), the availability table lists NOAA-20 or NOAA-21 as unavailable for the last days, and `nrt_superseded` in `normalize_stats/viirs-noaa20_2026.json` is about the size of the missing days | The FIRMS `URT` classification fault: rows labelled `URT` on the newest day are counted as standard and supersede the other NRT rows of that month. Check: `select version, count(*) from read_parquet('data/work/points/viirs-noaa20/2026.parquet') where quality = 'sp' and utc_date >= '2026-08-01' group by 1` shows a `URT` version. Repair needs a code change in `normalize.py` (treat `URT` as near-real-time), then `normalize --force --sensors viirs-noaa20 viirs-noaa21 --years 2026` and `all --from availability`. The 2026-11-15 build still has it. |
 | Months in 2026 look empty or fall back to MODIS | VIIRS API files for the year were not normalized yet; run `fetch-api` and then `all`. |
-| A step is slow or runs out of memory | Lower the thread and memory limits in `common.connect`; keep 50 GB free in `data/`. `data/work/tmp` is DuckDB's spill directory. |
+| `verify.json` reports `sort_violations_in_largest_file` greater than zero | The check compares consecutive rows by 0.05-degree cell, but the archive is sorted by 1-degree block, UTC month, cell and time, so it counts the order changes at block and month boundaries (1,055 in the 2026-11-15 build). It does not affect `ok`; ignore it until the check is updated. |
+| A step is slow or runs out of memory | Lower the thread and memory limits in `common.connect`; keep 60 GB free in `data/`. `data/work/tmp` is DuckDB's spill directory. |
 | `live-smoke` or `brief-smoke` cannot connect | Start the dev server with `--strictPort` on the port you pass, and run the script from the repository root. |
 | The live view says it is unavailable | No `FIRMS_MAP_KEY` on the server, or a static host without the route. `GET /api/live/status` shows `available`. |
+| A route answers 403 `forbidden` | The browser marked the request cross-site or sent an `Origin` that is not the server's host. Call the route from the app's own origin, or without an `Origin` header (curl, server-to-server). |

@@ -104,6 +104,7 @@ h2 {
 
 /* ---- proof ---- */
 .grid4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 40px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
 .tbl { font-family: 'Schibsted Grotesk', Arial, sans-serif; font-size: 26px; color: #eceef2; width: 100%; }
 .tblwrap { display: flex; flex-direction: column; gap: 14px; }
 

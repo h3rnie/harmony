@@ -1,6 +1,7 @@
 {
   "name": "harmony",
   "private": true,
+  "license": "AGPL-3.0-only",
   "description": "Harmonized MODIS + VIIRS burning activity calendar",
   "scripts": {
     "dev": "pnpm --dir web dev",

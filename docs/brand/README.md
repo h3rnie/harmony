@@ -42,6 +42,9 @@ Contrast is WCAG 2 against the ground.
 
 The two data ramps (inferno for activity, blue → orange for compared-with-normal) are fixed in
 `web/src/lib/color.ts` and are colour-blind safe. Never recolour them.
+Two more fixed scales exist: the calendar's "activity with confidence" mode (a value-suppressing scale plus a dot
+pattern, so confidence never rests on colour alone; `vsupColor` in `color.ts`) and the Global pulse's fire clock, which
+uses Crameri's cyclic romaO (`web/src/lib/pulse/cyclic.ts`, MIT licence, credited in the README). Do not recolour them either.
 
 ## Type
 

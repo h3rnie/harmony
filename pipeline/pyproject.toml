@@ -1,6 +1,7 @@
 [project]
 name = "harmony-pipeline"
 version = "0.1.0"
+license = "AGPL-3.0-only"
 requires-python = ">=3.13,<3.14"
 dependencies = [
     "duckdb>=2.0.0",
