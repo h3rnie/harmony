@@ -57,7 +57,9 @@ export async function loadMeta(signal?: AbortSignal): Promise<OverviewMeta> {
 
 /** Decode an 8-bit grayscale PNG into its raw values (red channel of an un-managed bitmap). */
 async function decodePng(url: string, signal?: AbortSignal): Promise<{ w: number; h: number; px: Uint8Array }> {
-  const r = await fetch(url, { signal })
+  // No Referer: image files on the data host sit behind the zone's hotlink protection, which refuses image
+  // requests whose Referer is another site (preview deployments, localhost) and answers without CORS headers.
+  const r = await fetch(url, { signal, referrerPolicy: 'no-referrer' })
   if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`)
   const bmp = await createImageBitmap(await r.blob(), { colorSpaceConversion: 'none', premultiplyAlpha: 'none' })
   const { width: w, height: h } = bmp

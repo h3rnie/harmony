@@ -371,7 +371,7 @@
           <li><span class="sw cur-sw"></span>Latest month</li>
           <li><span class="sw focus-sw"></span>Shown on the map</li>
           <li><span class="sw prov-sw"></span><span><Term id="provisional">Provisional</Term>, partial or in-progress month{ip ? ` (${MONTHS_SHORT[ip.m % 12]} ${yearOf(ip.m)} is in progress)` : ''}</span></li>
-          {#if terraYears}<li><span class="sw terra-sw"><span class="mk terra"></span></span>Terra only, bridged ({span(terraYears)})</li>{/if}
+          {#if terraYears}<li title="Terra-only estimate scaled to Terra and Aqua together. The early-2000s Terra record cannot be checked against a second sensor."><span class="sw terra-sw"><span class="mk terra"></span></span>Terra only, bridged ({span(terraYears)})</li>{/if}
           {#if viirsYears}<li><span class="sw viirs-sw"><span class="mk viirs"></span></span>{switchMode ? `VIIRS only, calibrated (${span(viirsYears)})` : `VIIRS carries most of the value (${span(viirsYears)})`}</li>{/if}
         </ul>
         {#if !switchMode && fusedYears}

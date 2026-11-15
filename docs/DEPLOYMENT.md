@@ -98,15 +98,15 @@ Or paste the JSON at R2 > `harmony-data` > Settings > CORS policy. The `--verify
 
 ### 5. Upload the data
 
-Use one version id for every part of one dataset. The default is taken from `data/dist/meta.json` (`generated`); for the 2026-11-15 build it is `20261115T110745Z`.
+Use one version id for every part of one dataset. The default is taken from `data/dist/meta.json` (`generated`); for the 2026-11-15 build it is `20261115T130031Z`.
 
 ```bash
 node scripts/upload-data.mjs --dry-run                       # what would go up: 12,714 objects, 11.1 GB
-node scripts/upload-data.mjs --version 20261115T110745Z \
+node scripts/upload-data.mjs --version 20261115T130031Z \
   --prefix meta.json --prefix validation.json --prefix watch.json \
   --prefix tiles/ --prefix overview/ --prefix ml/              # ~4,400 objects, 0.56 GB: enough for the app
-node scripts/upload-data.mjs --version 20261115T110745Z --prefix points/   # 8,291 objects, 10.6 GB: CSV export only
-node scripts/upload-data.mjs --version 20261115T110745Z --verify
+node scripts/upload-data.mjs --version 20261115T130031Z --prefix points/   # 8,291 objects, 10.6 GB: CSV export only
+node scripts/upload-data.mjs --version 20261115T130031Z --verify
 ```
 
 Every run skips objects that are already uploaded with the same size and MD5, so an interrupted run is resumed by running it again. The points archive is used only by the CSV hotspot export; the app works without it and reports the export as unavailable.
@@ -116,7 +116,7 @@ Caching: with the S3 backend every object carries `Cache-Control: public, max-ag
 ### 6. Point a preview at the data and check it
 
 ```bash
-printf '%s' 'https://data.harmony.hernie.me/v/20261115T110745Z' | vercel env add VITE_DATA_BASE -e preview --no-sensitive --yes
+printf '%s' 'https://data.harmony.hernie.me/v/20261115T130031Z' | vercel env add VITE_DATA_BASE -e preview --no-sensitive --yes
 vercel deploy                                   # prints the preview URL
 ```
 
@@ -125,7 +125,7 @@ vercel deploy                                   # prints the preview URL
 ### 7. Production
 
 ```bash
-printf '%s' 'https://data.harmony.hernie.me/v/20261115T110745Z' | vercel env add VITE_DATA_BASE -e production --no-sensitive --yes
+printf '%s' 'https://data.harmony.hernie.me/v/20261115T130031Z' | vercel env add VITE_DATA_BASE -e production --no-sensitive --yes
 vercel deploy --prod
 ```
 
