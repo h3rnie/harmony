@@ -1,5 +1,8 @@
 # Harmony — Harmonized MODIS + VIIRS Burning Activity Calendar
 
+> Original design plan of 2026-11-15, kept as a record. The build went further (fusion, drift correction,
+> conformal intervals, hosting): [METHOD.md](METHOD.md) and [ARCHITECTURE.md](ARCHITECTURE.md) describe what exists.
+
 ## Context
 Entry for NASA Space Apps 2026 challenge "Harmonization of MODIS and VIIRS Hot Spots". MODIS
 (2000→, ending ~2027, orbits drifting since 2021) and VIIRS 375 m (2012→; S-NPP data ended

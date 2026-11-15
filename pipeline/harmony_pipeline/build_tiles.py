@@ -81,9 +81,9 @@ def build_meta(con, cal: dict) -> dict:
     sources = [
         {"name": "FIRMS MODIS C6.1 (MCD14ML) Terra+Aqua, country yearly files", "years": "2000-2025",
          "quality": "standard"},
-        {"name": "FIRMS VIIRS 375 m S-NPP (VNP14IMGT), country yearly files", "years": "2012-2025",
+        {"name": "FIRMS VIIRS 375 m S-NPP (VNP14IMGTML), country yearly files", "years": "2012-2025",
          "quality": "standard"},
-        {"name": "FIRMS VIIRS 375 m NOAA-20 (VJ114IMGT), country yearly files", "years": "2018-2025",
+        {"name": "FIRMS VIIRS 375 m NOAA-20 (VJ114IMGTML), country yearly files", "years": "2018-2025",
          "quality": "standard"},
         *({"name": f"FIRMS area API {s} (world, 5-day windows)", "years": span,
            "quality": "nrt" if s.endswith("NRT") else "standard"} for s, span in api.items()),
@@ -155,7 +155,7 @@ def build_meta(con, cal: dict) -> dict:
         meta["method"]["harmonization"] = (
             "default series = per stratum x dn precision-weighted fusion of MODIS-derived meq and calibrated VIIRS kv "
             "(error model by triple collocation, strata[].err; common-mode correlation fusion.kappa); MODIS corrected "
-            "for orbit drift from drift.start_year (drift); 80/95 % bounds from split-conformal multipliers "
+            "for orbit drift from drift.start_year (drift); 80/95 % bounds from conformal multipliers (leave-one-year-out scores) "
             "(conformal) on a shifted log, log(x + 0.5); ci_scale is legacy")
     return meta
 

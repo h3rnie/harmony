@@ -27,7 +27,7 @@ const CSP = [
   `img-src 'self' data: blob: ${BASEMAP}`,
   "font-src 'self' data:",
   `connect-src 'self' ${BASEMAP} ${[...DATA_ORIGINS].join(' ')}`,
-  // MapLibre and the kernel run in workers (MapLibre's from a blob: URL).
+  // MapLibre and the kernel run in same-origin workers; blob: is kept for MapLibre's fallback worker loader.
   "worker-src 'self' blob:",
   "child-src 'self' blob:",
   "media-src 'self' blob: data:",

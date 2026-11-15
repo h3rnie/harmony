@@ -10,7 +10,7 @@
 //! * **switch**: MODIS before `switchM`, calibrated VIIRS from it (the original record).
 //!
 //! Bounds cover every covered month: on a shifted log scale (`(H + 0.5)·exp(∓q σ) − 0.5`, so a
-//! zero can be covered), `q` from the split-conformal table.
+//! zero can be covered), `q` from the conformal table (leave-one-year-out scores).
 //! A `meta.json` without the error model gives exactly the legacy record and intervals.
 
 use serde::{Deserialize, Serialize, Serializer};

@@ -46,7 +46,7 @@ Update from `data/work/refresh_run.log`, `data/work/global_run.log`, the logs in
 | Item | Value |
 | --- | --- |
 | Raw downloads | 19.4 GB: country zips 9.8 GB (48 files), API CSVs 8.9 GB (498 files), RESOLVE 0.4 GB, per-country CSVs 0.4 GB |
-| Normalized points (`work/points`) | 14.8 GB |
+| Normalized points (`work/points`) | 14.7 GB |
 | Cube | 0.7 GB (`work/cube` and `work/cube.parquet`) |
 | Output | tiles 0.58 GB, points archive 11.37 GB, overview 7 MB |
 | FIRMS standard (SP) data available through, on 2026-11-15 | MODIS 2026-08-31; VIIRS S-NPP, NOAA-20, NOAA-21 2026-07-31 |

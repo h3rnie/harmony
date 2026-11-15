@@ -10,6 +10,14 @@
 
   let open = $state(false)
 
+  /**
+   * Source names as shown. The 2026-11-15 build labels the standard-quality VIIRS country files with the
+   * near-real-time product codes (…DL); FIRMS names the standard products VNP14IMGTML and VJ114IMGTML. The data
+   * version is immutable, so the label is corrected here until the next build (build_tiles.py already is).
+   */
+  const sourceName = (name: string) => (/country yearly files/.test(name) ? name.replace(/\b(VNP14IMGT|VJ114IMGT)DL\b/, '$1ML') : name)
+  const QUALITY: Record<string, string> = { standard: 'standard quality', nrt: 'near-real-time', reference: 'reference' }
+
   onMount(() => {
     const openIt = () => (open = true)
     addEventListener('harmony:open-method', openIt)
@@ -133,7 +141,7 @@
       {#if session.meta?.sources?.length}
         <h3>Sources</h3>
         <ul class="caveats">
-          {#each session.meta.sources as s (s.name)}<li>{s.name} — {s.years} ({s.quality})</li>{/each}
+          {#each session.meta.sources as s (s.name)}<li>{sourceName(s.name)} — {s.years} ({QUALITY[s.quality] ?? s.quality})</li>{/each}
         </ul>
       {/if}
     </div>

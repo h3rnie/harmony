@@ -17,6 +17,8 @@ To rebuild after editing a slide, from the repository root:
 python docs/deck/build.py
 ```
 
+The two animated captures (`product.gif`, `globe.gif`) were assembled from screenshots of the live app; the frames and the two scripts that build the GIFs are kept outside git, in `data/work/deck/` on the build machine. Printing `/demo` from Chrome gives a seven-page 16:9 PDF.
+
 Every figure on the slides is read from `data/dist/validation.json`; the tables are in [METHOD.md](../METHOD.md).
 
 The deck is not covered by the code licence: (c) 2026 Harmony, by Toh Yu Heng. All rights reserved.

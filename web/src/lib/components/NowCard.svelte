@@ -218,7 +218,7 @@
         Near-real-time, provisional: not yet screened for static heat sources (gas flares, industry) — the calendar updates when science-quality data arrives.
         Pace = distinct (0.0125° sub-cell, local-solar date, day|night) from NOAA-20 and NOAA-21 nominal/high-confidence detections inside the area,
         averaged over the satellites that reported each day (never summed). {kText}
-        Normal = climatological median for {monthName} ÷ days in the month. MODIS is counted, not used for the pace.
+        Normal = climatological median for {monthName} ÷ days in the month. The label compares the pace with past {monthName}s per day: above the 75th or 90th percentile, or above the highest on record. MODIS is counted, not used for the pace.
       </p>
         </div>
       </details>

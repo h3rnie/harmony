@@ -85,9 +85,9 @@ Only official NASA FIRMS fire data goes in. I kept the unflattering results in v
 2. FIRMS, part of NASA EOSDIS (overview and acknowledgement) – https://earthdata.nasa.gov/firms
 3. MODIS Collection 6.1 active fire, standard quality (MCD14ML), Terra and Aqua, from FIRMS country-year files – https://firms.modaps.eosdis.nasa.gov/country/
 4. MODIS Collection 6.1 active fire, near-real-time (MCD14DL) – https://doi.org/10.5067/FIRMS/MODIS/MCD14DL.NRT.0061
-5. VIIRS 375 m active fire, Suomi NPP (VNP14IMGTDL) – https://doi.org/10.5067/FIRMS/VIIRS/VNP14IMGT_NRT.002
-6. VIIRS 375 m active fire, NOAA-20 (VJ114IMGTDL) – https://doi.org/10.5067/FIRMS/VIIRS/VJ114IMGT_NRT.002
-7. VIIRS 375 m active fire, NOAA-21 (VJ214IMGTDL) – https://doi.org/10.5067/FIRMS/VIIRS/VJ214IMGT_NRT.002
+5. VIIRS 375 m active fire, Suomi NPP (VNP14IMGTML standard, VNP14IMGTDL near-real-time) – https://doi.org/10.5067/FIRMS/VIIRS/VNP14IMGT_NRT.002
+6. VIIRS 375 m active fire, NOAA-20 (VJ114IMGTML standard, VJ114IMGTDL near-real-time) – https://doi.org/10.5067/FIRMS/VIIRS/VJ114IMGT_NRT.002
+7. VIIRS 375 m active fire, NOAA-21 (VJ214IMGTML standard, VJ214IMGTDL near-real-time) – https://doi.org/10.5067/FIRMS/VIIRS/VJ214IMGT_NRT.002
 8. FIRMS Area API (2026 data, NOAA-21, and the live "right now" view) – https://firms.modaps.eosdis.nasa.gov/api/area/
 9. FIRMS Archive Download – https://firms.modaps.eosdis.nasa.gov/download/
 10. FIRMS FAQ (attribute, confidence and type definitions) – https://www.earthdata.nasa.gov/data/tools/firms/faq

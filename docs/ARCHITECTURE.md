@@ -7,6 +7,7 @@ How the repository is laid out, how data gets from FIRMS files to pixels, and wh
 ```
 README.md                  entry point
 Cargo.toml                 Rust workspace: crates/harmony-core, crates/harmony-wasm
+pnpm-workspace.yaml        pnpm workspace (root + web/), settings and overrides; pnpm-lock.yaml is the one lockfile
 crates/harmony-core/src/   analysis kernel, pure Rust, no I/O
   geom.rs                  polygon cleaning, spherical area, per-cell coverage weights, tile keys
   store.rs                 columnar store of the tile rows inside the area
@@ -30,7 +31,8 @@ web/                       Vite 8 + Svelte 5 + TypeScript single-page app
   server/ai/                          /api/brief, /api/ask
   server/sameOrigin.ts                cross-site guard shared by the three routes
 scripts/                   build-wasm.sh and five test scripts (see the README)
-docs/                      this file, METHOD.md, OPERATIONS.md, SUBMISSION.md, design.md, brand/, ux/, deck/ (slide sources for /demo)
+docs/                      this file, METHOD.md, OPERATIONS.md, DEPLOYMENT.md, SUBMISSION.md (Space Apps form), design.md (original plan),
+                           brand/ (marks, og.html for the social card), ux/ (audit), deck/ (slide sources for /demo)
 data/                      git-ignored: raw/ (downloads), work/ (intermediate), dist/ (served)
 ```
 

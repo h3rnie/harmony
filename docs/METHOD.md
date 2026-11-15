@@ -99,7 +99,7 @@ E[M_it] = k[s(i), d, moy(t)] * r[i, d] * V_it
 with a log link and `log V` as offset, fitted by Poisson maximum likelihood (the quasi-Poisson point estimate is the same; only the variance differs). For the stratum factor the estimate is the ratio of sums over the fit window:
 
 ```
-k[s, d, k] = sum(M) / sum(V)       over 2012-02 .. 2021-12, months with cov_modis, cov_viirs, f_aqua >= 0.5
+k[s, d, moy] = sum(M) / sum(V)       over 2012-02 .. 2021-12, months with cov_modis, cov_viirs, f_aqua >= 0.5
 ```
 
 **Why this window.** It is the period in which MODIS and VIIRS both operate, before most of the MODIS orbital drift. It is not entirely clean: the measured overpass shift is still at most 0.05 h in 2021 (Table M8b), but the MODIS-to-VIIRS ratio already departs from 1 in 2020-2021 (Table M8a). Refitting on 2012-2019 moves the V-weighted factor by +0.32 % globally and by up to 6 % at night in some biome groups (Table M11d); the window was kept, and the drift analysis uses 2012-2019 only. The coefficients are applied unchanged to every later month, so a drift in MODIS after 2021 shows up as a drift in the out-of-time check and is not absorbed into the calibration.
@@ -552,7 +552,7 @@ The count ratio steps up again from 2023, when NOAA-21 joins (each satellite add
 
 Stratum-month log-RMSE by biome ranges from 0.17 (deserts) to 0.41 (flooded grasslands) for most biomes; it is 1.20 for boreal forest, 1.36 for tundra and 0.67 for the unclassified stratum (`loyo.stratum_month.by_biome`).
 
-**Table M3. Calibration parameters and interval** (`validation.json`, `params`, `interval_coverage_loyo_1deg`, `noaa_scale`, `meta.json`).
+**Table M3. Calibration parameters and interval** (`validation.json`, `params`, `interval_coverage_loyo_1deg`, `noaa_scale`, `meta.json`; the bridge row from `data/work/coefficients/calib.json`).
 
 | Item | Value |
 | --- | --- |

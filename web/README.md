@@ -7,7 +7,7 @@ the live layer, the situation brief and the exports. The project overview, the m
 ## Run it
 
 ```sh
-pnpm --dir web install
+pnpm install             # from the repository root: one workspace, one lockfile
 pnpm --dir web dev       # http://localhost:5173; serves data/dist at /data and the /api routes
 pnpm --dir web check     # svelte-check + TypeScript
 pnpm --dir web build     # production build into web/dist

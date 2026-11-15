@@ -42,7 +42,7 @@ SN S-NPP (`vs`), N20 NOAA-20, N21 NOAA-21, V the production S-NPP-equivalent VII
    DRIFT_START_YEAR, sd^2 = jackknife variance + placebo variance (mean square of the reference-year log ratios).
 3. Conformal multipliers: scores |log(obs/pred)| / sigma_log of (pred - obs) for LOYO-calibrated VIIRS against
    observed Terra∪Aqua, at three supports (1-degree x biome group, 5-degree x biome group, stratum), pooled per
-   (biome group x size class of pred); q = ceil((n+1)p)-th smallest score (split conformal), bins with fewer
+   (biome group x size class of pred); q = ceil((n+1)p)-th smallest score (conformal, leave-one-year-out scores), bins with fewer
    than CONF_MIN_N scores merged with a neighbour size class. Coverage is then measured out of time
    (OOT_TEST_YEARS, frozen fit, against raw and drift-corrected MODIS) next to the legacy ci_scale interval.
 4. Validation of the fused record (validation.json): non-circular test (fuse Aqua with VIIRS, score against

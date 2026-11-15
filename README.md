@@ -67,7 +67,7 @@ The first six items are what the challenge asks for. The rest go beyond it. The 
 ## How the harmonization works
 
 1. **Filter.** MODIS confidence of 30 or more; VIIRS confidence nominal or high; FIRMS `type` 0 (presumed vegetation fire) where `type` exists; and Harmony's own static-heat-source mask, applied to every row including near-real-time rows, which carry no `type`.
-2. **Common unit.** The unit is the *MODIS-equivalent active-fire cell-day* (AFCD-M): one distinct 0.0125° sub-cell, local-solar date and day or night with at least one accepted detection. Counting cell-days instead of detections collapses VIIRS's many 375 m pixels per fire towards what MODIS's 1 km pixel reports. Monthly sums are served on a 0.05° grid.
+2. **Common unit.** The unit is the *MODIS-equivalent active-fire cell-day* (AFCD-M): one distinct 0.0125° sub-cell, local-solar date and day or night with at least one accepted detection. Counting cell-days instead of detections collapses VIIRS's many 375 m pixels per fire towards what MODIS's 1 km pixel reports (both sizes at nadir). Monthly sums are served on a 0.05° grid.
 3. **Coverage.** Satellite outages and partial months are detected from the daily counts and corrected, and VIIRS is the per-day mean over the satellites operating, never the sum.
 4. **Strata.** RESOLVE Ecoregions 2017 biome by realm (64 strata incl. "unclassified").
 5. **Calibration.** A multiplicative ratio per stratum, day or night and month of the year, fitted on 2012-02 to 2021-12, with a per-cell shrinkage multiplier. A Terra-only bridge extends MODIS back to 2000-11. Coefficients are applied unchanged to later months.
@@ -83,14 +83,14 @@ Cell-days as a unit, a stratified ratio calibration with shrinkage, leave-one-ye
 
 ## NASA data used
 
-All fire data are official NASA FIRMS products. Nothing is taken from another fire source.
+All fire data are official NASA FIRMS products. Nothing is taken from another fire source. Collections are named as FIRMS documents them; the standard MODIS rows carry the version strings 6.2, 6.03 and 61.03, whose mapping to Collection 6 or 6.1 was not checked row by row.
 
 | Product | Satellite | Years | Access path | Normalized rows in the 2026-11-15 build |
 | --- | --- | --- | --- | --- |
 | MODIS Collection 6.1 active fire (MCD14ML standard, MCD14DL near-real-time) | Terra, Aqua | 2000-2025 bulk (standard quality); 2026 via API (standard to 2026-08-31, near-real-time after) | FIRMS country-year files, then FIRMS area API | 114,530,845 |
-| VIIRS 375 m active fire, Collection 2 (VNP14IMGT standard, VNP14IMGTDL near-real-time) | Suomi NPP | 2012-2025 bulk; 2026 via API (standard to 2026-07-31, near-real-time to 2026-11-02, when delivery stopped) | same | 296,606,261 |
-| VIIRS 375 m active fire, Collection 2 (VJ114IMGT standard, VJ114IMGTDL near-real-time) | NOAA-20 | 2018-2025 bulk; 2026 via API (standard to 2026-07-31, near-real-time after) | same | 172,990,217 |
-| VIIRS 375 m active fire, Collection 2 (VJ214IMGT standard, VJ214IMGTDL near-real-time) | NOAA-21 | 2023-03 to 2026-11-15, API only (standard to 2026-07-31, near-real-time after; no bulk files) | FIRMS area API | 73,881,901 |
+| VIIRS 375 m active fire, Collection 2 (VNP14IMGTML standard, VNP14IMGTDL near-real-time) | Suomi NPP | 2012-2025 bulk; 2026 via API (standard to 2026-07-31, near-real-time to 2026-11-02, when delivery stopped) | same | 296,606,261 |
+| VIIRS 375 m active fire, Collection 2 (VJ114IMGTML standard, VJ114IMGTDL near-real-time) | NOAA-20 | 2018-2025 bulk; 2026 via API (standard to 2026-07-31, near-real-time after) | same | 172,990,217 |
+| VIIRS 375 m active fire, Collection 2 (VJ214IMGTML standard, VJ214IMGTDL near-real-time) | NOAA-21 | 2023-03 to 2026-11-15, API only (standard to 2026-07-31, near-real-time after; no bulk files) | FIRMS area API | 73,881,901 |
 
 Row counts are summed from `data/work/normalize_stats/` after removing exact duplicates and near-real-time rows superseded by standard ones: 658,009,224 rows, equal to the rows of the hotspot archive (`data/dist/points/index.json`). Of them 103,745,759 MODIS and 431,896,872 VIIRS detections were accepted by the filters and the land and burst screen (`data/work/verify.json`). Months from 2026-07 are provisional. A row is standard only if its FIRMS version is purely numeric; `NRT`, `URT` (ultra-real-time) and `RT` versions are near-real-time. (The first 2026-11-15 build counted `URT` rows as standard and so dropped 769,150 NOAA-20 and 748,160 NOAA-21 near-real-time rows of 2026-11; the rebuild restores them.)
 

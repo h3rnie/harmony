@@ -51,6 +51,20 @@ Files under `/assets/` (content-hashed by Vite) are cached for a year as immutab
 - Preview deployments are protected by Vercel Authentication (the team default). Use `vercel curl <url>` for checks; `vercel curl` uses the CLI login.
 - Known and accepted: a missing file under `/assets/` or under a data version prefix is answered 404 with the same one-year immutable cache header as a real file, because neither host can set headers by status. A browser that requested a file before it existed keeps the 404; a hard reload clears it.
 
+## Open items (2026-11-16)
+
+Reviewed and left as they are; none blocks the live site.
+
+- **Shared counter store.** Not connected (step 3). Until it is, the daily AI cap and the per-visitor limits count per function instance.
+- **AI limits policy.** Per visitor 20 per 10 minutes and 60 per day, against a per-instance budget of 10 briefs a minute and a daily cap of 300: a few heavy visitors can use the cap, after which everyone gets the rule-based brief until midnight UTC. Lower the per-visitor limits or raise `AI_DAILY_CAP` if that matters for an event.
+- **AI route deadline.** A brief can make up to 8 provider calls of 120 s each against `maxDuration` 300 s; in that failure path the platform ends the function and the page falls back to the rule-based brief. No overall deadline is set in the code.
+- **CSP.** `worker-src` and `child-src` still allow `blob:` and `media-src` allows `'self' blob: data:`; the app appears to need none of these, but dropping them needs a browser pass with the Method lab open.
+- **Unknown paths.** The SPA fallback answers every extension-less path with the app (200), although the app routes by hash only.
+- **Data host 404s.** The Transform Rule sets the immutable cache header by host and path, so a missing object is cached as 404; adding `and http.response.code in {200 206 304}` to its expression would stop that.
+- **WebAssembly size.** The committed kernel is 372 kB with a 71 kB name section; `strip = true` in the release profile would remove it. `scripts/build-wasm.sh` overrides the profile's `opt-level` to `s`.
+- **Dependency alert.** `deepmerge` 4.3.1 (low severity, via `@sveltejs/vite-plugin-svelte`, build time only) has no patched release.
+- **Major upgrades not taken.** TypeScript 7; `@types/node` stays on 24 to match the Vercel runtime.
+
 ## Going live, in order
 
 Commands run from the repository root unless stated otherwise. For pnpm network commands behind the local TLS proxy, `export NODE_USE_SYSTEM_CA=1` first.
