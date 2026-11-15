@@ -45,7 +45,7 @@ the contract's index `m = (year-2000)*12 + month-1`. Floats are rounded to 4 dec
 80 % / 95 % interval `H·exp(∓z·ci_scale·σ_log)`, and the 80 % share before `ci_scale`.
 
 **YearRatio** = `{ year, nmod, nvii, count_ratio = nvii/nmod, afcd_ratio_raw = Σv/Σmeq, harmonized_ratio = Σkv/Σmeq }`
-(from the tiles' own values; `count_ratio` doubles in 2018 when NOAA-20 joins, `harmonized_ratio` should stay ≈ 1).
+(from the tiles' own values; `count_ratio` rises from about 4 to about 7-8 in 2018-2019 as NOAA-20 joins S-NPP, `harmonized_ratio` should stay ≈ 1). The first year (2012, VIIRS starts in February) and the last year (incomplete, and in the 2026-11-15 build without VIIRS) are not comparable with the full years.
 
 **OOT** = `{ year, pred, obs, bias_pct, r_log1p_stratum_month, months }`.
 

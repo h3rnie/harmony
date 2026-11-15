@@ -1,0 +1,130 @@
+/* Harmony deck — brand direction A "Mission control + patch".
+   Ground #0a0d12, surface #121720, hairline #232b37, text #eceef2, muted #8b94a5, ember #ff8a4c.
+   Type scale: 132 / 64 / 40 / 30 / 24. Barlow tracked caps for labels, Schibsted Grotesk for text, JetBrains Mono for figures. */
+
+section {
+  background: #0a0d12;
+  color: #eceef2;
+  font-family: 'Schibsted Grotesk', Arial, sans-serif;
+  padding: 128px 128px 160px;
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+}
+
+h2 {
+  font-family: 'Schibsted Grotesk', Arial, sans-serif;
+  font-size: 64px;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -1px;
+  color: #eceef2;
+}
+
+.eyebrow {
+  font-family: 'Barlow', Arial, sans-serif;
+  font-weight: 500;
+  font-size: 24px;
+  line-height: 1.2;
+  letter-spacing: 6px;
+  text-transform: uppercase;
+  color: #8b94a5;
+}
+
+.head { display: flex; flex-direction: column; gap: 20px; }
+
+.lede { font-size: 30px; line-height: 1.45; color: #c6cbd4; }
+
+.foot {
+  position: absolute; left: 128px; bottom: 64px; width: 1200px;
+  font-family: 'Barlow', Arial, sans-serif; font-weight: 500;
+  font-size: 24px; line-height: 1; letter-spacing: 5px; text-transform: uppercase; color: #8b94a5;
+}
+.pg {
+  position: absolute; right: 128px; bottom: 64px; width: 200px; text-align: right;
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 24px; line-height: 1; color: #8b94a5;
+}
+
+.ember { color: #ff8a4c; }
+.muted { color: #8b94a5; }
+
+/* ---- cover ---- */
+.cover { padding: 128px; gap: 0; }
+.cover .patch { position: absolute; left: 112px; top: 150px; width: 640px; height: 640px; object-fit: contain; }
+.cover .body { position: absolute; left: 850px; top: 200px; width: 942px; display: flex; flex-direction: column; gap: 28px; }
+.cover .wordmark {
+  font-family: 'Barlow', Arial, sans-serif; font-weight: 500;
+  font-size: 132px; line-height: 1; letter-spacing: 32px; color: #eceef2;
+}
+.cover .tagline { font-size: 40px; line-height: 1.25; color: #eceef2; }
+.cover .rule { border-top: 1px solid #232b37; }
+.cover .facts { display: flex; flex-direction: column; gap: 18px; }
+.cover .fact { display: flex; flex-direction: row; gap: 32px; align-items: baseline; }
+.cover .k {
+  width: 220px; font-family: 'Barlow', Arial, sans-serif; font-weight: 500;
+  font-size: 24px; line-height: 1.3; letter-spacing: 5px; text-transform: uppercase; color: #8b94a5;
+}
+.cover .v { width: 690px; font-size: 30px; line-height: 1.3; color: #eceef2; }
+
+.cover .tl { position: absolute; left: 128px; top: 880px; width: 1664px; height: 110px; }
+.tl-m { position: absolute; left: 0; top: 34px; width: 1600px; height: 2px; background: #eceef2; }
+.tl-v { position: absolute; left: 768px; top: 58px; width: 896px; height: 2px; background: #ff8a4c; }
+.tl-ov { position: absolute; left: 768px; top: 20px; width: 832px; height: 52px; background: #1a1612; border-left: 2px solid #ff8a4c; }
+.tl-lb { position: absolute; width: 760px; font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 24px; line-height: 1; color: #8b94a5; }
+.tl-lb.m { left: 0; top: 0; }
+.tl-lb.v { left: 790px; top: 84px; color: #ff8a4c; }
+.tl-ax { position: absolute; top: 84px; width: 120px; font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 24px; line-height: 1; color: #8b94a5; }
+.tl-ax.a { left: 0; }
+.tl-ax.c { left: 1544px; text-align: right; }
+
+/* ---- two-column slides ---- */
+.cols { display: flex; flex-direction: row; gap: 64px; align-items: flex-start; }
+.col { display: flex; flex-direction: column; gap: 28px; }
+
+.stat { display: flex; flex-direction: column; gap: 6px; padding-top: 20px; border-top: 1px solid #232b37; }
+.stat .big { font-family: 'JetBrains Mono', 'Courier New', monospace; font-weight: 500; font-size: 64px; line-height: 1.05; color: #eceef2; }
+.stat .big.hot { color: #ff8a4c; }
+.stat .cap { font-size: 24px; line-height: 1.35; color: #8b94a5; }
+
+.shot { border: 1px solid #232b37; background: #0a0d12; object-fit: cover; }
+.caption { font-size: 24px; line-height: 1.35; color: #8b94a5; }
+
+/* ---- method steps ---- */
+.steps { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 1fr; gap: 24px; }
+.step { display: flex; flex-direction: column; gap: 16px; padding: 28px 24px 32px; background: #121720; border-top: 2px solid #232b37; }
+.step.key { border-top: 2px solid #ff8a4c; }
+.step .n { font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 24px; line-height: 1; color: #8b94a5; }
+.step h3 { font-size: 30px; font-weight: 600; line-height: 1.2; color: #eceef2; }
+.step .d { font-size: 24px; line-height: 1.4; color: #c6cbd4; }
+.formula {
+  font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 26px; line-height: 1.5; color: #eceef2;
+  padding: 24px 28px; background: #121720; border-left: 2px solid #ff8a4c;
+}
+
+/* ---- proof ---- */
+.grid4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 40px; }
+.tbl { font-family: 'Schibsted Grotesk', Arial, sans-serif; font-size: 26px; color: #eceef2; width: 100%; }
+.tblwrap { display: flex; flex-direction: column; gap: 14px; }
+
+/* ---- full-bleed image slide ---- */
+.bleed { padding: 128px 128px 160px; }
+.bleed .bg { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; object-fit: cover; }
+.bleed .scrim { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; background: linear-gradient(90deg, #0a0d12 0%, #0a0d12 26%, rgba(10,13,18,0) 52%); }
+.bleed .panel { width: 640px; display: flex; flex-direction: column; gap: 28px; }
+.feat { display: flex; flex-direction: column; gap: 4px; padding-top: 16px; border-top: 1px solid #232b37; }
+.feat h3 { font-size: 30px; font-weight: 600; line-height: 1.25; color: #eceef2; }
+.feat .d { font-size: 24px; line-height: 1.35; color: #c6cbd4; }
+
+/* ---- close ---- */
+.close .patch { position: absolute; right: 128px; top: 128px; width: 300px; height: 300px; object-fit: contain; }
+.who { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 40px; }
+.card { display: flex; flex-direction: column; gap: 12px; padding-top: 20px; border-top: 1px solid #232b37; }
+.card h3 { font-size: 30px; font-weight: 600; line-height: 1.25; color: #eceef2; }
+.card .d { font-size: 24px; line-height: 1.4; color: #c6cbd4; }
+.ded { font-size: 30px; line-height: 1.4; color: #eceef2; padding-left: 24px; border-left: 2px solid #ff8a4c; }
+.credit { font-size: 24px; line-height: 1.4; color: #8b94a5; }
+
+/* ---- arrival motion: quiet, under a second ---- */
+@keyframes rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
+.stat, .step, .feat, .card { animation: rise 420ms ease-out both; animation-delay: calc(var(--i, 0) * 110ms); }

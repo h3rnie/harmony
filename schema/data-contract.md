@@ -9,7 +9,7 @@ data/dist/
   tiles/index.json
   tiles/L0/{tx}_{ty}.parquet      0.05 deg cells, 2.5 deg tiles
   tiles/L1/{tx}_{ty}.parquet      0.25 deg cells, 10 deg tiles
-  tiles/L2/{tx}_{ty}.parquet      1 deg cells, 30 deg tiles
+  tiles/L2/{tx}_{ty}.parquet      1 deg cells, 30 deg tiles (one 360 deg tile in the 2026-11-15 build)
   points/index.json
   points/{px}_{py}/{year}.parquet raw hotspots, 10 deg tiles
   overview/…                      global 0.5 deg PNG atlases for the pulse view (see below)
@@ -19,7 +19,9 @@ data/dist/
 - Level L has cell size `c` deg and `NX = round(360/c)`, `NY = round(180/c)`.
   `ix = floor((lon + 180) / c)`, `iy = floor((lat + 90) / c)`, `cell = iy * NX + ix` (UINT32).
 - Tile of size `t` deg: `tx = floor((lon + 180) / t)`, `ty = floor((lat + 90) / t)`, from the cell's SW corner.
-- L0 c=0.05 t=2.5 · L1 c=0.25 t=10 · L2 c=1 t=30. Levels are exactly additive (L1 = sum of 5x5 L0 …).
+- L0 c=0.05 t=2.5 · L1 c=0.25 t=10 · L2 c=1 t=30 (pipeline configuration, `config.LEVELS`). Readers must take the tile size from
+  `meta.levels[].tile_deg`, not from this text: the build of 2026-11-15 was written before L2 moved from 360 to 30 and holds
+  L2 as a single tile `0_0` (`tile_deg` 360). Levels are exactly additive (L1 = sum of 5x5 L0 …).
 - Month index `m = (year - 2000) * 12 + (month - 1)`; first data month is 2000-11 (m = 10).
 - Active-fire cell-day (AFCD): one distinct (0.0125 deg sub-cell, local-solar date, day|night) with >= 1
   accepted detection. Local-solar date = date(UTC time + lon/15 h).

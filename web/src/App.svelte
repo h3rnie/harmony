@@ -55,7 +55,7 @@
     live.init()
     if (hashView() === 'pulse') openPulse()
     const onOpen = () => openPulse()
-    const onHash = () => { if (hashView() === 'pulse') openPulse() }
+    const onHash = () => { if (hashView() === 'pulse') openPulse(); else if (pulseOpen) pulseOpen = false }
     addEventListener('harmony:open-pulse', onOpen)
     addEventListener('hashchange', onHash)
     return () => { removeEventListener('harmony:open-pulse', onOpen); removeEventListener('hashchange', onHash) }

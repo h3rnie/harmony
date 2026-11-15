@@ -74,13 +74,18 @@ def encode(x: np.ndarray, cap: float) -> np.ndarray:
 def load_grid(meta: dict) -> np.ndarray:
     """Harmonized AFCD-M as float32 (n_months, H, W), rows north-first, months m_first..m_last."""
     m0, m1, sw = meta["m_first"], meta["m_last"], meta["default_switch_m"]
+    # Same fallback as the browser kernel: a month the preferred stream does not cover uses the other one.
+    cov_v, cov_m = meta["months"]["cov_viirs"], meta["months"]["cov_modis"]
+    use_meq = [m for m in range(m0, m1 + 1)
+               if (m < sw and cov_m[m] > 0) or (m >= sw and cov_v[m] <= 0 and cov_m[m] > 0) or (m < sw and cov_v[m] <= 0)]
+    meq_months = ",".join(map(str, use_meq)) or "-1"
     with tempfile.TemporaryDirectory() as tmp:  # private spill dir: never share data/work/tmp with other jobs
         con = duckdb.connect()
         con.execute(f"SET memory_limit='8GB'; SET threads=8; SET temp_directory='{posix(tmp)}'")
         # L1 cell = iy * 1440 + ix at 0.25 deg; 0.5 deg cell (ix // 2, iy // 2)
         df = con.execute(f"""
             SELECT ((cell % 1440) // 2)::INT AS x, (359 - (cell // 1440) // 2)::INT AS y, m::INT AS m,
-                   sum(CASE WHEN m < {sw} THEN meq ELSE kv END) / 100.0 AS h
+                   sum(CASE WHEN m IN ({meq_months}) THEN meq ELSE kv END) / 100.0 AS h
             FROM read_parquet('{posix(TILES)}/L1/*.parquet')
             WHERE m BETWEEN {m0} AND {m1}
             GROUP BY ALL HAVING h > 0""").fetchnumpy()

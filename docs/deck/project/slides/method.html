@@ -1,0 +1,18 @@
+<section id="method" data-transition="fade">
+<div class="head">
+<p class="eyebrow">The method</p>
+<h2>One unit, one frozen calibration</h2>
+</div>
+<div class="steps">
+<div class="step" style="--i:0"><p class="n">01</p><h3>Filter</h3><p class="d">Keep confident vegetation fires. Mask gas flares and other static heat sources.</p></div>
+<div class="step key" style="--i:1"><p class="n">02</p><h3>Count cell-days</h3><p class="d">A 1.4 km cell that burned on a given day or night counts once, whatever the pixel size.</p></div>
+<div class="step" style="--i:2"><p class="n">03</p><h3>Average, never sum</h3><p class="d">When two or three VIIRS satellites pass overhead, their daily counts are averaged.</p></div>
+<div class="step" style="--i:3"><p class="n">04</p><h3>Calibrate</h3><p class="d">VIIRS against MODIS over 2012–2021, by biome, region, day or night and month, then per cell.</p></div>
+<div class="step" style="--i:4"><p class="n">05</p><h3>Freeze and switch</h3><p class="d">Coefficients are fixed. Calibrated VIIRS carries the record from 2023, with stated intervals.</p></div>
+</div>
+<p class="formula">AFCD-M = k [ biome × region, day | night, month ] × r [ cell ] × VIIRS cell-days</p>
+<p class="caption">AFCD-M: MODIS-equivalent active-fire cell-days. One scale from November 2000 to today, built only from NASA FIRMS data.</p>
+<p class="foot">Harmony · NASA Space Apps 2026</p>
+<p class="pg">3 / 7</p>
+<aside>The method has two ideas. First, change the unit. Instead of counting pixels, count cell-days: a 1.4 kilometre cell that had a fire on a given day or night counts once. That alone removes most of the gap, because VIIRS’s many small pixels collapse into the same cell. Second, calibrate what is left. In the ten years when both sensors flew and MODIS orbits were still stable, I fit a simple ratio for each biome, region, time of day and month, with a small per-cell adjustment, then freeze it. It is a transparent multiplicative model, not a black box, and it follows the same approach published fire-emissions datasets use.</aside>
+</section>
