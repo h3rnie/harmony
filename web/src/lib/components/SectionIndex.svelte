@@ -54,12 +54,14 @@
     const ro = new ResizeObserver(on)
     ro.observe(document.body)
     const publish = () => { if (nav) root.style.setProperty('--index-h', `${nav.offsetHeight}px`) }
-    const ro2 = new ResizeObserver(publish)
+    // Write the variable on the next frame, never inside the observer callback (that is a ResizeObserver loop).
+    let raf2 = 0
+    const ro2 = new ResizeObserver(() => { cancelAnimationFrame(raf2); raf2 = requestAnimationFrame(publish) })
     if (nav) ro2.observe(nav)
     publish()
     on()
     return () => {
-      removeEventListener('scroll', on); removeEventListener('resize', on); ro.disconnect(); ro2.disconnect(); cancelAnimationFrame(raf)
+      removeEventListener('scroll', on); removeEventListener('resize', on); ro.disconnect(); ro2.disconnect(); cancelAnimationFrame(raf); cancelAnimationFrame(raf2)
       root.style.removeProperty('--index-h')
     }
   })

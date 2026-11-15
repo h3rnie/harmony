@@ -30,7 +30,9 @@
         Demo data
       </span>
     {/if}
-    {#if through}
+    <!-- Always rendered with a reserved width, so the header does not shift when the dates arrive. -->
+    {#if !through}<span class="chip fresh placeholder" aria-hidden="true"></span>
+    {:else}
       <span class="chip fresh" title={liveAge ? 'Science record (calendar) through this date · newest near-real-time FIRMS detection, provisional' : 'Science record (calendar) through this date'}>
         <span class="dot" aria-hidden="true"></span>Data to <span class="num">{through}</span>{#if liveAge}<span class="sep" aria-hidden="true">·</span><span class="live-t">live <span class="num">{liveAge === 'just now' ? 'just now' : `${liveAge} ago`}</span></span>{/if}
       </span>
@@ -86,6 +88,8 @@
   @keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
   .sep { color: var(--ink-faint); }
   .fresh .num { color: var(--ink); }
+  .fresh { min-width: 20em; justify-content: center; }
+  .fresh.placeholder { visibility: hidden; min-height: 1.9em; }
   .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--good); }
   .nav { display: flex; align-items: center; gap: 2px; }
   .nl {
@@ -98,7 +102,7 @@
   .pulse-btn { border-color: color-mix(in srgb, var(--accent) 60%, var(--rule-strong)); color: var(--accent-ink); }
   .pulse-btn:hover:not(:disabled) { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); }
   @media (max-width: 1180px) { .tagline { display: none; } }
-  @media (max-width: 720px) { .live-t, .fresh .sep { display: none; } }
+  @media (max-width: 720px) { .live-t, .fresh .sep { display: none; } .fresh { min-width: 11.5em; } }
   @media (max-width: 560px) {
     .hdr { padding: 0 10px; gap: 8px; }
     .right { gap: 6px; }

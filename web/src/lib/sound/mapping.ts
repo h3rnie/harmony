@@ -71,6 +71,8 @@ export interface ListenInput {
   /** The month the answer describes as "latest" (the "this year" mode stops here). */
   currentM: number
   annual?: { years: number[]; total: (number | null)[]; complete: boolean[] }
+  /** Unit label of the harmonized values in the text version (AFCD-M, or AFCD-V under the VIIRS lens). Default AFCD-M. */
+  unitLabel?: string
 }
 
 export interface ScheduleOptions { msPerMonth?: number; withNormal?: boolean }
@@ -211,20 +213,21 @@ export function seamJump(inp: ListenInput): { year: number; raw: number | null; 
 export function transcript(mode: ListenMode, inp: ListenInput): string[] {
   const out: string[] = []
   const y0 = yearOf(inp.range[0]), y1 = yearOf(inp.range[1])
+  const unit = inp.unitLabel ?? 'AFCD-M'
   if (mode === 'record' && inp.annual) {
     const yrs = inp.annual.years
       .map((y, i) => ({ y, t: inp.annual!.total[i], c: inp.annual!.complete[i] }))
       .filter((r) => r.c && r.t != null && r.y >= y0 && r.y <= y1) as { y: number; t: number }[]
     if (yrs.length >= 3) {
       const by = [...yrs].sort((a, b) => b.t - a.t)
-      out.push(`Highest years (highest pitch through the season): ${by.slice(0, 3).map((r) => `${r.y} (${fmt(r.t)} fire-days)`).join(', ')}.`)
+      out.push(`Highest years (highest pitch through the season): ${by.slice(0, 3).map((r) => `${r.y} (${fmt(r.t)} ${unit})`).join(', ')}.`)
       out.push(`Lowest years: ${by.slice(-3).reverse().map((r) => `${r.y} (${fmt(r.t)})`).join(', ')}.`)
     }
     const idx = rangeIdx(inp).filter((i) => (inp.harmonized[i] ?? 0) > 0)
     if (idx.length) {
       const top = idx.reduce((a, b) => ((inp.harmonized[b] ?? 0) > (inp.harmonized[a] ?? 0) ? b : a))
       const tm = inp.months[top]
-      out.push(`The single highest note is ${MONTHS[moy(tm)]} ${yearOf(tm)} (${fmt(inp.harmonized[top]!)} fire-days).`)
+      out.push(`The single highest note is ${MONTHS[moy(tm)]} ${yearOf(tm)} (${fmt(inp.harmonized[top]!)} ${unit}).`)
     }
     const months = inp.median.map((v, i) => ({ v, i })).sort((a, b) => b.v - a.v)
     if (months[0]?.v > 0) out.push(`Each year rises to its highest notes around ${MONTHS[months[0].i]}, the usual peak, and falls back after.`)

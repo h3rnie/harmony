@@ -1,8 +1,9 @@
 <script lang="ts">
   import type { Analysis } from '../kernel/types'
   import { linear, niceMax, niceTicks, tickLabel } from '../charts/scale'
-  import { fmtNum, fmtP, ordinal } from '../format'
-  import { trendLine } from '../analysisUtil'
+  import { fmtNum, fmtP, ordinal, yearOf } from '../format'
+  import { isSparse, trendLine, trendSuppressed } from '../analysisUtil'
+  import { session } from '../session.svelte'
   import Term from './Term.svelte'
 
   let { a }: { a: Analysis } = $props()
@@ -10,25 +11,40 @@
   let width = $state(600)
   const H = 220
   const M = { t: 14, r: 12, b: 24, l: 44 }
-  const yrs = $derived(a.annual.years)
+  // Bars for the years shown ("Years shown" in the calendar settings); the trend itself uses every complete year.
+  const shown = $derived.by(() => {
+    const r = session.options.range
+    const y0 = yearOf(r[0]), y1 = yearOf(r[1])
+    return a.annual.years.map((yr, i) => ({ yr, i })).filter((o) => o.yr >= y0 && o.yr <= y1)
+  })
+  const yrs = $derived(shown.map((o) => o.yr))
   const n = $derived(yrs.length)
   const band = $derived((width - M.l - M.r) / Math.max(1, n))
   const bw = $derived(Math.max(2, Math.min(24, band - 2)))
   const x = (i: number) => M.l + band * i + band / 2
-  const yMax = $derived(niceMax(Math.max(1, ...a.annual.total.map((v) => v ?? 0))))
+  const yMax = $derived(niceMax(Math.max(1, ...shown.map((o) => a.annual.total[o.i] ?? 0))))
   const y = $derived(linear([0, yMax], [H - M.b, M.t]))
-  const line = $derived(trendLine(a))
+  const suppressed = $derived(trendSuppressed(a))
+  /** The trend line, clipped to the years shown. */
+  const line = $derived.by(() => {
+    const l = suppressed ? null : trendLine(a)
+    if (!l || !yrs.length) return null
+    const x0 = Math.max(l.x0, yrs[0]), x1 = Math.min(l.x1, yrs[yrs.length - 1])
+    if (!(x1 > x0)) return null
+    const at = (yr: number) => l.y0 + ((l.y1 - l.y0) * (yr - l.x0)) / (l.x1 - l.x0 || 1)
+    return { x0, x1, y0: at(x0), y1: at(x1) }
+  })
   const xOfYear = (yr: number) => x(yrs.indexOf(yr))
   const t = $derived(a.trend)
   const pct = $derived(Math.abs(t.slopePctPerYear))
   const pctText = $derived(pct < 1 ? pct.toFixed(1) : String(Math.round(pct)))
   const sentence = $derived(
-    t.direction === 'none' || !Number.isFinite(t.slopePctPerYear)
+    suppressed ? `Too little fire here to measure a trend${isSparse(a) ? '' : ' with any confidence'}.` : t.direction === 'none' || !Number.isFinite(t.slopePctPerYear)
       ? `No clear trend since ${t.years[0]}: the ups and downs from year to year are larger than any steady change.`
       : `Burning has ${t.direction === 'up' ? 'risen' : 'fallen'} about ${pctText} % a year since ${t.years[0]} (${t.pValue < 0.05 ? 'likely a real trend' : 'could be chance'}).`,
   )
   const answer = $derived(
-    t.direction === 'none' ? 'Not clearly.' : t.direction === 'up' ? (t.pValue < 0.05 ? 'Yes.' : 'Possibly.') : 'No.',
+    suppressed ? '' : t.direction === 'none' ? 'Not clearly.' : t.direction === 'up' ? (t.pValue < 0.05 ? 'Yes.' : 'Possibly.') : 'No.',
   )
   const ciPct = $derived.by(() => {
     const med = a.trend.slopePerYear !== 0 ? a.trend.slopePctPerYear / a.trend.slopePerYear : 0
@@ -44,7 +60,7 @@
 
 <section class="trend" id="trend" aria-labelledby="trend-h">
   <h2 id="trend-h" class="q-title">Is it getting worse?</h2>
-  <p class="lead"><strong>{answer}</strong> {sentence}</p>
+  <p class="lead">{#if answer}<strong>{answer}</strong> {/if}{sentence}</p>
 
   <div class="chart" bind:clientWidth={width}>
     <svg {width} height={H} role="img" aria-label={`Annual totals ${yrs[0]}–${yrs[n - 1]} with Theil–Sen trend line. ${sentence}`} onpointerleave={() => (hover = null)}>
@@ -57,11 +73,12 @@
         <line class="grid" x1={M.l} x2={width - M.r} y1={y(v)} y2={y(v)} />
         <text class="tk" x={M.l - 6} y={y(v)} dy="0.32em" text-anchor="end">{tickLabel(v)}</text>
       {/each}
-      {#each yrs as yr, i (yr)}
-        {@const v = a.annual.total[i]}
+      {#each shown as o, i (o.yr)}
+        {@const yr = o.yr}
+        {@const v = a.annual.total[o.i]}
         {#if v != null}
-          <path d={roundTop(x(i), y(v), bw, y(0))} class="bar" class:partial={!a.annual.complete[i]} class:top={a.annual.rank[i] === 1}
-            fill={a.annual.complete[i] ? undefined : 'url(#hatch-trend)'} />
+          <path d={roundTop(x(i), y(v), bw, y(0))} class="bar" class:partial={!a.annual.complete[o.i]} class:top={!isSparse(a) && a.annual.rank[o.i] === 1}
+            fill={a.annual.complete[o.i] ? undefined : 'url(#hatch-trend)'} />
         {/if}
         <rect x={x(i) - band / 2} y={M.t} width={band} height={H - M.t - M.b} fill="transparent" role="presentation" onpointerenter={() => (hover = i)} />
         {#if i % (width < 480 ? 6 : 4) === 0}<text class="tk" x={x(i)} y={H - 6} text-anchor="middle">{yr}</text>{/if}
@@ -70,18 +87,19 @@
         <line class="tl" x1={xOfYear(line.x0)} x2={xOfYear(line.x1)} y1={y(Math.max(0, line.y0))} y2={y(Math.max(0, line.y1))} />
       {/if}
     </svg>
-    {#if hover != null}
+    {#if hover != null && shown[hover]}
+      {@const k = shown[hover].i}
       <div class="tip" style:left={`${Math.min(width - 160, Math.max(0, x(hover) + 10))}px`}>
-        <p class="tt">{yrs[hover]}{a.annual.complete[hover] ? '' : ' · partial'}</p>
-        <p>Total <span class="num">{fmtNum(a.annual.total[hover])}</span></p>
-        {#if a.annual.rank[hover] != null}<p class="muted">Rank <span class="num">{ordinal(a.annual.rank[hover]!)}</span></p>{/if}
+        <p class="tt">{shown[hover].yr}{a.annual.complete[k] ? '' : ' · partial'}</p>
+        <p>Total <span class="num">{fmtNum(a.annual.total[k])}</span></p>
+        {#if a.annual.rank[k] != null && !isSparse(a)}<p class="muted">Rank <span class="num">{ordinal(a.annual.rank[k]!)}</span></p>{/if}
       </div>
     {/if}
   </div>
   <ul class="keys">
     <li><span class="sw bar-sw"></span><span>Total for the year (<Term id="afcdm" />)</span></li>
     <li><span class="sw partial-sw"></span>Year not finished</li>
-    <li><span class="sw tl-sw"></span>Trend line</li>
+    {#if line}<li><span class="sw tl-sw"></span>Trend line</li>{/if}
   </ul>
   <details class="more">
     <summary>Details</summary>

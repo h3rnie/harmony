@@ -60,6 +60,8 @@ export function decodePolyline(str: string, f = 1e4): number[][] {
   return pts
 }
 
+export const circleLabel = (lon: number, lat: number, km: number) => `${+km.toFixed(1)} km around ${lat.toFixed(2)}°, ${lon.toFixed(2)}°`
+
 const nums = (s: string | null) => (s ? s.split(',').map(Number) : [])
 const okNums = (a: number[], n: number) => a.length === n && a.every(Number.isFinite)
 
@@ -69,8 +71,10 @@ export function readHash(hash = location.hash): ViewState {
   const preset = presetById(q.get('p'))
   const c = nums(q.get('c')), b = nums(q.get('b')), g = q.get('g')
   if (preset) v.aoi = { rings: preset.rings, shape: { kind: 'polygon' }, label: preset.title, presetId: preset.id }
-  else if (okNums(c, 3) && c[2] > 0) v.aoi = { rings: circlePolygon(c[0], c[1], c[2]), shape: { kind: 'circle', lon: c[0], lat: c[1], km: c[2] }, label: `${c[2]} km around ${c[1].toFixed(2)}, ${c[0].toFixed(2)}` }
-  else if (okNums(b, 4) && b[2] > b[0] && b[3] > b[1]) v.aoi = { rings: bboxPolygon(b[0], b[1], b[2], b[3]), shape: { kind: 'bbox', w: b[0], s: b[1], e: b[2], n: b[3] }, label: 'Bounding box' }
+  else if (okNums(c, 3) && c[2] > 0) v.aoi = { rings: circlePolygon(c[0], c[1], c[2]), shape: { kind: 'circle', lon: c[0], lat: c[1], km: c[2] }, label: circleLabel(c[0], c[1], c[2]) }
+  // Any four numbers make a box; one the app cannot analyse (e.g. east < west across the 180° meridian) is still read,
+  // so the viewer gets a clear message instead of a link that silently does nothing (see geo.aoiProblem).
+  else if (okNums(b, 4)) v.aoi = { rings: bboxPolygon(b[0], b[1], b[2], b[3]), shape: { kind: 'bbox', w: b[0], s: b[1], e: b[2], n: b[3] }, label: 'Bounding box' }
   else if (g) {
     try {
       const ring = decodePolyline(g)
@@ -89,14 +93,34 @@ export function readHash(hash = location.hash): ViewState {
   return v
 }
 
-export function writeHash(v: ViewState) {
+// ---- browser history ----
+// Area changes and opening or closing the Global pulse push an entry, so Back walks back through places inside the
+// app; option tweaks and month selection replace the current entry. Two pushes in the same task (closing the pulse
+// because a place on the globe was picked, then analysing that place) collapse into one entry.
+let pushedThisTask = false
+export function setUrlHash(hash: string, mode: 'push' | 'replace' = 'replace') {
+  const next = hash && !hash.startsWith('#') ? `#${hash}` : hash
+  if (next === location.hash || (next === '' && location.hash === '')) return
+  const url = `${location.pathname}${location.search}${next}`
+  if (mode === 'push' && !pushedThisTask) {
+    history.pushState(null, '', url)
+    pushedThisTask = true
+    queueMicrotask(() => { pushedThisTask = false })
+  } else history.replaceState(null, '', url)
+}
+
+export function writeHash(v: ViewState, mode: 'push' | 'replace' = 'replace') {
   const q: string[] = []
   const a = v.aoi
   if (a) {
     if (a.presetId) q.push(`p=${a.presetId}`)
     else if (a.shape.kind === 'circle') q.push(`c=${[a.shape.lon, a.shape.lat, a.shape.km].map((n) => +n.toFixed(4)).join(',')}`)
     else if (a.shape.kind === 'bbox') q.push(`b=${[a.shape.w, a.shape.s, a.shape.e, a.shape.n].map((n) => +n.toFixed(4)).join(',')}`)
-    else q.push(`g=${encodeURIComponent(encodePolyline(a.rings[0]))}`)
+    else {
+      q.push(`g=${encodeURIComponent(encodePolyline(a.rings[0]))}`)
+      // A drawn or uploaded outline keeps its name (the default is not worth the bytes).
+      if (a.label && !/^Drawn /.test(a.label)) q.push(`n=${encodeURIComponent(a.label.slice(0, 80))}`)
+    }
   }
   if (v.focusM != null) q.push(`m=${monthIso(v.focusM)}`)
   if (v.calMode !== 'activity') q.push(`cal=${v.calMode}`)
@@ -116,6 +140,5 @@ export function writeHash(v: ViewState) {
       if (v) q.push(`${k}=${encodeURIComponent(v)}`)
     }
   }
-  const next = q.length ? `#${q.join('&')}` : ''
-  if (next !== location.hash) history.replaceState(null, '', `${location.pathname}${location.search}${next}`)
+  setUrlHash(q.length ? `#${q.join('&')}` : '', mode)
 }

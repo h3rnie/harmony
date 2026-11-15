@@ -5,7 +5,7 @@
   import { session } from '../session.svelte'
   import { themeState } from '../theme.svelte'
   import { live } from '../live/store.svelte'
-  import { monthStats, LEVEL_TONE, SOURCE_LABEL } from '../analysisUtil'
+  import { activityOf, monthStats, LEVEL_TONE, hasLevel, inProgressDays, inProgressOf, isSparse, meanAnnual, seasonUndefined, trendSuppressed } from '../analysisUtil'
   import { MONTHS_LONG, MONTHS_SHORT, LEVEL_LABEL, fmtArea, fmtNum, fmtRatio, monthLong, ordinal, rankFromEnds } from '../format'
   import { yearContext } from '../brief/yearContext'
   import Term from './Term.svelte'
@@ -26,24 +26,36 @@
   const s = $derived(monthStats(a, m))
   const monthName = $derived(s ? MONTHS_LONG[s.month - 1] : '')
   const tone = $derived(s ? LEVEL_TONE[s.level] ?? 'neutral' : 'neutral')
+  const sparse = $derived(isSparse(a))
+  /** "× the normal" is printed only for a real ratio with a real level (never for sparse or in-progress months). */
+  const hasRatio = $derived(!!s && s.ratio != null && hasLevel(s.level) && !sparse)
   const ratioBig = $derived.by(() => {
-    if (!s || s.ratio == null) return { n: '—', unit: '' }
+    if (!s || !hasRatio) return { n: '—', unit: '' }
     return { n: fmtRatio(s.ratio).replace('×', ''), unit: '×' }
   })
+  const unit = $derived(session.unitLabel)
+  const meanYear = $derived(sparse ? meanAnnual(a) : null)
   const season = $derived(a.season)
   const seasonText = $derived(
-    season.lengthMonths >= 12
+    seasonUndefined(a) ? 'There is no regular fire season here.' : season.lengthMonths >= 12
       ? `Fires occur all year here, peaking in ${MONTHS_LONG[season.peakMonth - 1]}.`
       : `The fire season here runs ${MONTHS_LONG[season.startMonth - 1]} to ${MONTHS_LONG[season.endMonth - 1]} and peaks in ${MONTHS_LONG[season.peakMonth - 1]}${season.secondPeak ? ` and ${MONTHS_LONG[season.secondPeak - 1]}` : ''}.`,
   )
   const rankText = $derived.by(() => {
     if (!s) return ''
     if (s.value === 0 && s.median === 0) return `No detections, as usual for ${monthName} here.`
-    if (s.rank == null) return ''
+    if (s.value === 0) return `No detections this ${monthName}.`
+    if (s.rank == null || s.inProgress) return ''
     return `The ${rankFromEnds(s.rank, s.of)} ${monthName} in ${s.of} years.`
   })
   // The year fact follows the month in view (one time frame): this year so far, or that year as a whole.
-  const yc = $derived(s ? yearContext(a, s) : null)
+  // A month in progress gives no year fact of its own: the year so far stops at the latest complete month.
+  const yc = $derived.by(() => {
+    if (!s) return null
+    if (!s.inProgress) return yearContext(a, s)
+    const c = monthStats(a, a.current.m)
+    return c ? yearContext(a, c) : null
+  })
   const yearFact = $derived.by(() => {
     if (!yc) return null
     if (!s!.isCurrent && yc.annual) {
@@ -59,27 +71,24 @@
   })
   const t = $derived(a.trend)
   const trendHead = $derived(
-    t.direction === 'none' || !Number.isFinite(t.slopePctPerYear)
+    trendSuppressed(a) ? 'Not measurable' : t.direction === 'none' || !Number.isFinite(t.slopePctPerYear)
       ? 'No clear trend'
       : `${t.direction === 'up' ? 'Rising' : 'Falling'} about ${Math.abs(t.slopePctPerYear) < 1 ? Math.abs(t.slopePctPerYear).toFixed(1) : Math.round(Math.abs(t.slopePctPerYear))} % a year`,
   )
   const record = $derived(a.records.topMonths[0])
-  // Newest drawn month, when it is partial (still in progress) and so not the month described here.
-  const inProgress = $derived.by(() => {
-    const p = a.series.partial
-    if (!p) return null
-    for (let i = a.months.length - 1; i >= 0; i--) {
-      if (a.series.harmonized[i] == null) continue
-      return p[i] && a.months[i] > a.current.m ? a.months[i] : null
-    }
-    return null
+  // Newest month when it is still in progress: the card describes the latest complete month and points to "right now".
+  const ip = $derived(inProgressOf(a))
+  const ipLine = $derived.by(() => {
+    if (!ip) return null
+    const d = inProgressDays(ip, session.meta)
+    return `${monthLong(ip.m)}: ${d != null ? `first ${d} ${d === 1 ? 'day' : 'days'} so far` : 'still in progress'}`
   })
 
   // Analog years (kernel `analysis.analogs`): one line when the latest month is in view, only if the kernel calls
   // them informative for this area (hindcast skill and agreement); otherwise they are anecdotes and stay hidden.
   const analogParts = $derived.by(() => {
     const an = a.analogs
-    if (analogs != null || !s?.isCurrent || !an?.informative || an.year !== a.current.year) return null
+    if (analogs != null || sparse || !s?.isCurrent || !an?.informative || an.year !== a.current.year) return null
     const top = an.top.filter((t) => t.restRatio != null).slice(0, 2)
     if (!top.length) return null
     const join = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}` : xs[0])
@@ -106,10 +115,11 @@
         ].filter(Boolean).join(' ')
       : '',
   )
-  const leadLine = $derived(briefLead.text && addsFact(briefLead.text, cardText) ? briefLead.text : '')
+  // Only an AI brief the viewer asked for (BriefCard sets the text then) ever reaches the card.
+  const leadLine = $derived(briefLead.text && briefLead.key && addsFact(briefLead.text, cardText) ? briefLead.text : '')
 
   // "This week" line: only when the month in view is the latest month, so the card keeps one time frame.
-  const pace = $derived(s?.isCurrent && live.available ? livePace(a) : null)
+  const pace = $derived(s?.isCurrent && !ip && !sparse && live.available ? livePace(a) : null)
   const nowDate = $derived(new Date(live.now))
   const weekLine = $derived(
     pace && pace.ratio != null && pace.calibration !== 'none'
@@ -134,27 +144,47 @@
     </div>
 
     <h2 id="status-h" class="when">
-      {monthLong(m)} <span class="vs">compared with normal</span>
-      {#if s.provisional}<Term id="provisional"><span class="chip prov">Provisional</span></Term>{/if}
+      {monthLong(m)} <span class="vs">{s.inProgress ? 'so far' : sparse ? 'in this area' : 'compared with normal'}</span>
+      {#if s.inProgress}<span class="chip prov">In progress</span>
+      {:else if s.provisional}<Term id="provisional"><span class="chip prov">Provisional</span></Term>{/if}
     </h2>
 
     <div class="answer">
-      <p class="hero">
-        <span class="big num" data-answer-numeral>{ratioBig.n}<span class="x">{ratioBig.unit}</span></span>
-        <span class="cap">the <Term id="normal">normal</Term> for {monthName}</span>
-      </p>
-      <div class="facts">
-        <span class="level {tone}">
-          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-            {#if tone === 'critical'}<path d="M6 1 11 6 6 11 1 6z" fill="currentColor" />
-            {:else if tone === 'serious' || tone === 'warning'}<path d="M6 1.5 11 10.5H1z" fill="currentColor" />
-            {:else if tone === 'info'}<path d="M6 10.5 1 1.5h10z" fill="currentColor" />
-            {:else}<circle cx="6" cy="6" r="4" fill="currentColor" />{/if}
-          </svg>
-          {LEVEL_LABEL[s.level] ?? s.level}
-        </span>
-        <p class="sentence">{rankText} {seasonText}</p>
-      </div>
+      {#if sparse}
+        <p class="hero calm">
+          <span class="statement">Too little fire here to describe a season or a trend: about <span class="nw">{fmtNum(meanYear ?? 0)} {unit}</span> a year.</span>
+          <span class="cap">{monthLong(m)}: <span class="num">{fmtNum(s.value)}</span> <Term id="afcdm" />. Totals are in the calendar below, without ranks.</span>
+        </p>
+      {:else if s.inProgress}
+        <p class="hero calm">
+          <span class="statement">{ipLine ?? `${monthLong(m)} is still in progress`}: <span class="num">{fmtNum(s.value)}</span> <Term id="afcdm" />.</span>
+          <span class="cap">A month is compared with normal and ranked only once it is complete.</span>
+        </p>
+      {:else}
+        <p class="hero">
+          {#if hasRatio}
+            <span class="big num" data-answer-numeral>{ratioBig.n}<span class="x">{ratioBig.unit}</span></span>
+            <span class="cap">the <Term id="normal">normal</Term> for {monthName}</span>
+          {:else}
+            <span class="big num" data-answer-numeral>{fmtNum(s.value)}</span>
+            <span class="cap"><Term id="afcdm" /> in {monthName}{s.median > 0 ? '' : `; ${monthName} normally has no detections here`}</span>
+          {/if}
+        </p>
+        <div class="facts">
+          {#if hasLevel(s.level)}
+            <span class="level {tone}">
+              <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+                {#if tone === 'critical'}<path d="M6 1 11 6 6 11 1 6z" fill="currentColor" />
+                {:else if tone === 'serious' || tone === 'warning'}<path d="M6 1.5 11 10.5H1z" fill="currentColor" />
+                {:else if tone === 'info'}<path d="M6 10.5 1 1.5h10z" fill="currentColor" />
+                {:else}<circle cx="6" cy="6" r="4" fill="currentColor" />{/if}
+              </svg>
+              {LEVEL_LABEL[s.level] ?? s.level}
+            </span>
+          {/if}
+          <p class="sentence">{rankText} {seasonText}</p>
+        </div>
+      {/if}
     </div>
 
     {#if analogs}<p class="line">{analogs}</p>
@@ -162,10 +192,13 @@
       <p class="line analog">{analogParts.year} so far <Term id="analogs" extra={analogParts.note}>most resembles</Term> {analogParts.years}; {analogParts.one ? 'that year' : 'those years'} went on to finish <span class="num">{analogParts.ratios}</span> normal for the rest of the year.</p>
     {/if}
     {#if leadLine}<p class="line lead-in" transition:fade={{ duration: smooth ? 250 : 0 }}>{leadLine}</p>{/if}
-    {#if weekLine}
+    {#if ipLine && s.isCurrent}
+      <p class="line week"><span class="now-dot" aria-hidden="true"></span>
+        {#if live.available}<button class="link" onclick={() => goToSection('now', smooth)}>{ipLine} — see What is burning right now <span aria-hidden="true">↓</span></button>
+        {:else}<span>{ipLine}; it is described once it is complete.</span>{/if}
+      </p>
+    {:else if weekLine}
       <p class="line week"><span class="now-dot" aria-hidden="true"></span><button class="link" onclick={() => goToSection('now', smooth)}>{weekLine} <span aria-hidden="true">↓</span></button></p>
-    {:else if inProgress != null && s.isCurrent}
-      <p class="line muted">{monthLong(inProgress)} is still in progress. <button class="link" onclick={() => goToSection('now', smooth)}>See what is burning right now <span aria-hidden="true">↓</span></button></p>
     {/if}
 
     <details class="more">
@@ -173,17 +206,21 @@
       <div class="more-body">
         <p>
           <span class="num">{fmtNum(s.value)}</span> <Term id="afcdm" />
-          {#if s.lo80 != null && s.hi80 != null}(<Term id="likely">likely range</Term> <span class="num">{fmtNum(s.lo80)}–{fmtNum(s.hi80)}</span>){/if},
+          {#if s.value === 0}(no detections){:else if s.lo80 != null && s.hi80 != null}(<Term id="likely">likely range</Term> <span class="num">{fmtNum(s.lo80)}–{fmtNum(s.hi80)}</span>){/if}{#if !s.inProgress && !sparse},
           against a normal of <span class="num">{fmtNum(s.median)}</span> for {monthName} ({session.effectiveBaseline.join('–')} median).
-          {#if s.percentile != null}<Term id="percentile" /> <span class="num">{ordinal(Math.round(s.percentile))}</span>.{/if}
-          Source: {SOURCE_LABEL[s.source]}.
+          {#if s.percentile != null}<Term id="percentile" /> <span class="num">{ordinal(Math.round(s.percentile))}</span>.{/if}{:else}.{/if}
+          Source: {s.src.label}.
         </p>
       </div>
     </details>
 
     <dl class="kpis">
       <div>
-        {#if yearFact}
+        {#if sparse}
+          <dt class="eyebrow">Average year</dt>
+          <dd>{fmtNum(meanYear)} {unit}</dd>
+          <dd class="sub">{activityOf(a)?.meanAnnual != null ? `mean of ${session.effectiveBaseline.join('–')}` : `complete years since ${a.annual.years[0]}`}</dd>
+        {:else if yearFact}
           <dt class="eyebrow">{yearFact.dt}</dt>
           <dd>{yearFact.dd}</dd>
           <dd class="sub">{yearFact.sub}</dd>
@@ -192,14 +229,14 @@
       <div>
         <dt class="eyebrow">Trend</dt>
         <dd>{trendHead}</dd>
-        <dd class="sub">since {t.years[0]}{t.direction === 'none' ? '' : t.pValue < 0.05 ? ', likely real' : ', could be chance'}</dd>
+        <dd class="sub">{#if trendSuppressed(a)}too little fire to measure one{:else}since {t.years[0]}{t.direction === 'none' ? '' : t.pValue < 0.05 ? ', likely real' : ', could be chance'}{/if}</dd>
       </div>
       <div>
         <dt class="eyebrow">Record month</dt>
-        {#if record}
+        {#if record && !sparse}
           <dd>{monthLong(record.m)}</dd>
-          <dd class="sub"><span class="num">{fmtRatio(record.ratio)}</span> normal</dd>
-        {:else}<dd>—</dd>{/if}
+          <dd class="sub">{#if record.ratio != null}<span class="num">{fmtRatio(record.ratio)}</span> normal{:else}<span class="num">{fmtNum(record.value)}</span> {unit}{/if}</dd>
+        {:else}<dd>—</dd>{#if sparse}<dd class="sub">not ranked here</dd>{/if}{/if}
       </div>
     </dl>
 
@@ -227,6 +264,9 @@
   .big { font-size: var(--fs-hero); line-height: 0.88; font-weight: 600; letter-spacing: -0.05em; color: var(--ink); }
   .x { font-size: 0.55em; color: var(--accent); margin-left: 2px; }
   .cap { color: var(--ink-2); font-size: var(--fs-base); }
+  .hero.calm { gap: 8px; }
+  .statement { font-size: var(--fs-xl); line-height: 1.3; color: var(--ink); max-width: 36ch; }
+  .answer:has(.calm) { grid-template-columns: 1fr; }
   .facts { display: grid; gap: 10px; justify-items: start; padding-bottom: 2px; }
   .sentence { font-size: var(--fs-lg); line-height: 1.45; margin: 0; max-width: 48ch; }
   .line { margin: 14px 0 0; font-size: var(--fs-base); color: var(--ink-2); }
@@ -234,7 +274,9 @@
   .lead-in { color: var(--ink); border-left: 2px solid var(--rule-strong); padding-left: 10px; }
   .week { display: flex; align-items: center; gap: 8px; }
   .now-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none; }
+  .nw { white-space: nowrap; }
   .link {
+    text-align: left;
     background: none; border: 0; padding: 0; font: inherit; color: var(--ink); cursor: pointer;
     text-decoration: underline; text-decoration-color: var(--rule-strong); text-underline-offset: 3px;
   }

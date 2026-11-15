@@ -7,6 +7,9 @@
 //     an opaque `Origin: null` is refused too).
 // Requests without these headers (curl, server-to-server, the smoke scripts) and same-origin requests pass. The aim is
 // that another website cannot make a visitor's browser spend this server's FIRMS or model quota.
+//
+// Behind a proxy that rewrites Host (or for a second public hostname), pass the extra origins that count as "own"
+// in `allowedOrigins` (exact "scheme://host[:port]" strings, compared case-insensitively).
 
 export type HeaderBag = Record<string, string | string[] | undefined> | { get(name: string): string | null }
 
@@ -17,13 +20,15 @@ function header(h: HeaderBag, name: string): string | undefined {
 }
 
 /** Why the request must be refused, or null when it is same-origin or carries no browser origin. */
-export function crossSiteReason(headers: HeaderBag): string | null {
+export function crossSiteReason(headers: HeaderBag, allowedOrigins: readonly string[] = []): string | null {
   if (header(headers, 'sec-fetch-site')?.trim().toLowerCase() === 'cross-site') return 'cross-site request'
   const origin = header(headers, 'origin')?.trim()
   if (origin == null || origin === '') return null
   let host: string
-  try { host = new URL(origin).host.toLowerCase() } catch { return 'cross-origin request' }
+  let normalized: string
+  try { const u = new URL(origin); host = u.host.toLowerCase(); normalized = u.origin.toLowerCase() } catch { return 'cross-origin request' }
   if (!host) return 'cross-origin request' // "null" and other opaque origins
+  if (allowedOrigins.some((a) => a.toLowerCase() === normalized)) return null
   const own = header(headers, 'host')?.trim().toLowerCase()
   return own && own === host ? null : 'cross-origin request'
 }

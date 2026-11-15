@@ -27,6 +27,8 @@ export interface WatchCluster {
 export interface WatchWindow {
   months: [string, string]
   provisional: boolean
+  /** Share of each month's days observed; under 0.9 = the month is still in progress (never ranked in the UI). */
+  coverage?: number[]
   baseline_years: number
   record_years: [number, number]
   clusters: WatchCluster[]

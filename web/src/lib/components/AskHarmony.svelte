@@ -45,6 +45,7 @@
     bad_request: 'The question could not be sent',
     no_key: 'Ask Harmony is not available on this server',
     bad_config: 'Ask Harmony is not available on this server',
+    daily_cap: 'Ask Harmony has reached its daily limit; try again after midnight UTC',
   }
 
   // Conversation resets when the area changes.

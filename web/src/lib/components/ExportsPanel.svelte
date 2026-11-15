@@ -4,7 +4,7 @@
   import { themeState } from '../theme.svelte'
   import { aoiGeoJson, calendarCsv, calendarSvg, download, seriesCsv, slug, svgToPng, type ExportContext } from '../export/exporters'
   import {
-    DEFAULT_MAX_ROWS, fmtBytes, isAbort, loadPointsIndex, planHotspots, runHotspots,
+    DEFAULT_MAX_ROWS, fmtBytes, isAbort, loadPointsIndex, planHotspots, planTooLarge, runHotspots,
     type HotspotPlan, type HotspotProgress,
   } from '../export/hotspots'
   import { onDestroy } from 'svelte'
@@ -63,7 +63,7 @@
   type Hot =
     | { phase: 'idle' }
     | { phase: 'planning'; p: HotspotProgress | null }
-    | { phase: 'estimate'; plan: HotspotPlan; tooLarge: boolean }
+    | { phase: 'estimate'; plan: HotspotPlan; tooLarge: 'rows' | 'bytes' | null }
     | { phase: 'running'; plan: HotspotPlan; p: HotspotProgress | null; limited: boolean }
     | { phase: 'done'; summary: string; note: string | null; blob: Blob; name: string }
     | { phase: 'error'; message: string }
@@ -71,7 +71,9 @@
   let hotAvail = $state<'checking' | 'yes' | 'no'>('checking')
   let hotAvailMsg = $state('')
   let live = $state('')
-  let hotCtl: AbortController | null = null
+  // Separate controllers: starting the run cancels nothing the run depends on (the estimate's signal is not reused).
+  let planCtl: AbortController | null = null
+  let runCtl: AbortController | null = null
   let lastPct = -1
   let exportBtn = $state<HTMLButtonElement | null>(null)
   const nf = new Intl.NumberFormat('en-US')
@@ -104,8 +106,8 @@
   })
 
   function hotReset() {
-    hotCtl?.abort()
-    hotCtl = null
+    planCtl?.abort(); runCtl?.abort()
+    planCtl = null; runCtl = null
     hot = { phase: 'idle' }
     live = ''
     lastPct = -1
@@ -117,27 +119,48 @@
     hotSpan[1]
     return () => { if (hot.phase !== 'idle' && hot.phase !== 'done') hotReset() }
   })
-  onDestroy(() => hotCtl?.abort())
+  onDestroy(() => { planCtl?.abort(); runCtl?.abort() })
+
+  // Accepted detections per month in this area (the analysis' raw counts): the low end of the estimate and the
+  // seasonal share of each year that the chosen months carry. The file holds day and night passes, so a day- or
+  // night-only analysis is not a fair low end: then the estimate falls back to the archive statistics alone.
+  const activity = $derived(
+    session.dn === 'both'
+      ? { months: a.months, counts: a.months.map((_, i) => (a.series.rawModisCount[i] ?? 0) + (a.series.rawViirsCount[i] ?? 0)) }
+      : undefined,
+  )
+  /** "1,200–1,900" (or "up to 1,900" without a low end); rounded to 2 significant figures so it does not look exact. */
+  const round2 = (v: number) => (v < 100 ? Math.round(v) : Number(v.toPrecision(2)))
+  function rangeText(pl: HotspotPlan): string {
+    const hi = round2(pl.highRows)
+    if (pl.lowRows == null) return `up to about ${nf.format(hi)}`
+    const lo = round2(pl.lowRows)
+    return lo >= hi ? `about ${nf.format(hi)}` : `about ${nf.format(lo)}–${nf.format(hi)}`
+  }
 
   async function hotEstimate() {
     if (!session.aoi || hotAvail !== 'yes') return
-    hotCtl?.abort()
-    const ctl = (hotCtl = new AbortController())
+    planCtl?.abort(); runCtl?.abort()
+    runCtl = null
+    const ctl = (planCtl = new AbortController())
     hot = { phase: 'planning', p: null }
     live = 'Checking which hotspot files cover this area.'
     try {
       const [mFrom, mTo] = hotSpan
       const plan = await planHotspots({
-        rings: session.aoi.rings, mFrom, mTo, label: session.aoi.label, signal: ctl.signal,
+        rings: session.aoi.rings, mFrom, mTo, label: session.aoi.label, activity, signal: ctl.signal,
         onProgress: (p) => { if (hot.phase === 'planning') hot = { phase: 'planning', p } },
       })
-      const tooLarge = plan.estRows > DEFAULT_MAX_ROWS
+      if (ctl !== planCtl) return
+      const tooLarge = planTooLarge(plan)
       hot = { phase: 'estimate', plan, tooLarge }
       live = plan.files.length === 0
         ? 'No hotspots were archived for this area and date range.'
-        : tooLarge
-          ? `The scan covers up to ${nf.format(plan.estRows)} rows, over the ${nf.format(DEFAULT_MAX_ROWS)} row limit. Narrow the area or dates, or export the first ${nf.format(DEFAULT_MAX_ROWS)} rows.`
-          : `Estimate ready: roughly ${nf.format(plan.likelyRows)} hotspots in ${plan.files.length} files. Export or cancel.`
+        : tooLarge === 'rows'
+          ? `Expect ${rangeText(plan)} hotspots, over the ${nf.format(DEFAULT_MAX_ROWS)} row limit. Narrow the area or dates, or export the first ${nf.format(DEFAULT_MAX_ROWS)} rows.`
+          : tooLarge === 'bytes'
+            ? `Expect ${rangeText(plan)} hotspots, but about ${fmtBytes(plan.estDownloadBytes)} to download. Narrow the area or dates, or export anyway.`
+            : `Estimate ready: ${rangeText(plan)} hotspots in ${plan.files.length} files. Export or cancel.`
       queueMicrotask(() => exportBtn?.focus())
     } catch (e) {
       if (ctl.signal.aborted || isAbort(e)) return
@@ -147,8 +170,10 @@
   }
 
   async function hotRun(plan: HotspotPlan, limited: boolean) {
-    hotCtl?.abort()
-    const ctl = (hotCtl = new AbortController())
+    // The estimate is finished; drop its controller without touching the run's (the plan's buffers take this signal).
+    planCtl?.abort(); planCtl = null
+    runCtl?.abort()
+    const ctl = (runCtl = new AbortController())
     hot = { phase: 'running', plan, p: null, limited }
     live = 'Exporting hotspots.'
     lastPct = -1
@@ -164,6 +189,7 @@
         },
       })
       const name = `${base}-hotspots-${hotRange === 'month' ? monthShort(hotSpan[0]).replace(' ', '-').toLowerCase() : hotRange === 'year' ? yearOf(hotSpan[0]) : `${yearOf(hotSpan[0])}-${yearOf(hotSpan[1])}`}.csv`
+      if (ctl !== runCtl) return
       download(name, res.blob, 'text/csv')
       const summary = `${nf.format(res.rows)} hotspots · ${fmtBytes(res.csvBytes)} · ${res.files} ${res.files === 1 ? 'file' : 'files'}`
       hot = {
@@ -172,6 +198,7 @@
       }
       live = `Hotspot export finished. ${summary}.`
     } catch (e) {
+      if (ctl !== runCtl) return // superseded by a newer estimate or run, which owns the panel now
       if (ctl.signal.aborted || isAbort(e)) { hot = { phase: 'idle' }; live = 'Hotspot export cancelled.'; return }
       hot = { phase: 'error', message: (e as Error).message }
       live = `Hotspot export failed. ${(e as Error).message}`
@@ -242,18 +269,23 @@
           <div class="row"><button class="btn" onclick={hotReset} bind:this={exportBtn}>Close</button></div>
         {:else}
           <p class="est">
-            <strong>Roughly {nf.format(pl.likelyRows)} hotspots</strong>
+            <strong>Expect {rangeText(pl)} hotspots</strong>
             <span class="dot">·</span> {pl.files.length} {pl.files.length === 1 ? 'file' : 'files'}
             <span class="dot">·</span> ~{fmtBytes(pl.estDownloadBytes)} to download
             <span class="dot">·</span> ~{fmtBytes(pl.estCsvBytes)} CSV
           </p>
           <p class="small muted">
-            Scans {pl.keptGroups} of {pl.totalGroups} row groups, up to {nf.format(pl.estRows)} rows. Rows outside the outline or the months are dropped while writing, so the count is usually far lower.
+            {#if pl.lowRows != null}The low end is the detections this analysis accepted inside the area in these months; the file also lists the rejected ones.{/if}
+            Scans {pl.keptGroups} of {pl.totalGroups} row groups, up to {nf.format(pl.estRows)} rows; rows outside the outline or the months are dropped while writing.
             {#if pl.groupsWithoutStats}{pl.groupsWithoutStats} groups carry no range statistics and are read in full.{/if}
           </p>
           {#if hot.tooLarge}
             <p class="small warn" role="alert">
-              The scan could return more than {nf.format(DEFAULT_MAX_ROWS)} rows. Narrow the area or the date range, or export only the first {nf.format(DEFAULT_MAX_ROWS)} rows.
+              {#if hot.tooLarge === 'rows'}
+                This export could return more than {nf.format(DEFAULT_MAX_ROWS)} rows. Narrow the area or the date range, or export only the first {nf.format(DEFAULT_MAX_ROWS)} rows.
+              {:else}
+                This export would download about {fmtBytes(pl.estDownloadBytes)}. Narrow the area or the date range, or export the first {nf.format(DEFAULT_MAX_ROWS)} rows anyway.
+              {/if}
             </p>
             <div class="row">
               <button class="btn primary" bind:this={exportBtn} onclick={() => hotRun(pl, true)}>Export first {nf.format(DEFAULT_MAX_ROWS)} rows anyway</button>

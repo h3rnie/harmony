@@ -85,6 +85,25 @@ def served_stream(meta: dict) -> tuple[list[int], np.ndarray]:
     return use_meq, cov
 
 
+def complete_min(meta: dict) -> float:
+    """Shared completeness threshold (meta.json `complete_min_coverage`, config.COV_COMPLETE)."""
+    from .config import COV_COMPLETE
+    return float(meta.get("complete_min_coverage", COV_COMPLETE))
+
+
+def served_days(meta: dict) -> np.ndarray:
+    """Day coverage of the served stream per absolute month m (months.days_modis / days_viirs, falling back
+    to the overpass coverage arrays): the quantity compared with `complete_min_coverage`."""
+    use_meq, _ = served_stream(meta)
+    mo = meta["months"]
+    dm, dv = mo.get("days_modis") or mo["cov_modis"], mo.get("days_viirs") or mo["cov_viirs"]
+    meq = set(use_meq)
+    out = np.zeros(meta["m_last"] + 1)
+    for m in range(meta["m_first"], meta["m_last"] + 1):
+        out[m] = dm[m] if m in meq else dv[m]
+    return out
+
+
 def load_grid(meta: dict, modis_only: bool = False):
     """Harmonized AFCD-M as float32 (n_months, H, W), rows north-first, months m_first..m_last.
     With `modis_only`, also the MODIS-derived stream `meq` for every month (the seam test of the trend map)."""
@@ -160,7 +179,7 @@ TREND_MIN_YEARS = 18            # complete years required
 TREND_MIN_NONZERO = 8           # pooled years with any activity required
 TREND_RANGE = 10.0              # %/yr mapped to the ends of the 8-bit code
 FDR_Q = 0.05                    # Benjamini–Hochberg false-discovery rate across cells
-COV_OK = 0.5                    # a year is complete if every month's served-stream coverage >= this
+# a year is complete when every month's served-stream day coverage >= meta complete_min_coverage (0.9)
 
 # Broad GFED-style basis regions as simple lat/lon boxes (first match wins): approximations of the GFED regions
 # (van der Werf et al. 2017), used only for the validation summary in meta.json.
@@ -314,11 +333,13 @@ def bh_fdr(p: np.ndarray, q: float) -> np.ndarray:
 
 
 def complete_years(meta: dict, cov: np.ndarray, y0: int, y1: int) -> list[int]:
+    """Years whose 12 months all have served-stream day coverage >= complete_min_coverage (`cov` = served_days)."""
     m0, m1 = meta["m_first"], meta["m_last"]
+    lim = complete_min(meta)
     out = []
     for y in range(y0, y1 + 1):
         ms = [(y - MONTH0_YEAR) * 12 + k for k in range(12)]
-        if ms[0] >= m0 and ms[-1] <= m1 and all(cov[m] >= COV_OK for m in ms):
+        if ms[0] >= m0 and ms[-1] <= m1 and all(cov[m] >= lim for m in ms):
             out.append(y)
     return out
 
@@ -369,9 +390,9 @@ def agreement(a: dict, b: dict, mask: np.ndarray, area: np.ndarray) -> dict:
 
 def trend_analysis(grid: np.ndarray, grid_meq: np.ndarray, meta: dict) -> dict:
     m0, sw = meta["m_first"], meta["default_switch_m"]
-    _, cov = served_stream(meta)
+    cov = served_days(meta)
     years = complete_years(meta, cov, *TREND_YEARS)
-    cov_m = np.asarray(meta["months"]["cov_modis"], float)
+    cov_m = np.asarray(meta["months"].get("days_modis") or meta["months"]["cov_modis"], float)
     years_m = complete_years(meta, cov_m, *TREND_YEARS)
     t, tm = np.array(years, float), np.array(years_m, float)
     ann, ann_m = annual(grid, m0, years), annual(grid_meq, m0, years_m)

@@ -95,6 +95,12 @@ MASK_PERSIST_MONTHS = 10       # or accepted VIIRS detections in >= 10 months of
 MASK_PERSIST_YEARS = 3         # ... in >= 3 years
 COV_MIN = 0.5                  # below this month coverage is left uncorrected (flagged via cov)
 COV_MAX_CORR = 2.0             # cap of the 1/cov correction
+# A month drives statistics (current month, ranks, baselines, YTD, analogs, outlook origin, records, annual
+# completeness, seam, trend, watchlist target and baselines) only when the stream(s) serving it delivered data
+# on >= this fraction of its days; below it the month is "in progress" (or an outage month): drawn and flagged
+# partial, never ranked. Written to meta.json as `complete_min_coverage` and read from there by the kernel,
+# the web app, overview.py and watch.py, so there is one value.
+COV_COMPLETE = 0.9
 K_MIN_SUM = 200                # min sum of the numerator stream to accept a ratio at a level
 NOAA_MAX_MONTH_SHARE = 0.5     # NOAA-20/21 -> S-NPP: max share of either sum from one month at an accepted level
 NOAA_RANGE = (0.5, 2.0)        # NOAA-20/21 -> S-NPP: plausible range of a stratum / biome factor (same VIIRS design)

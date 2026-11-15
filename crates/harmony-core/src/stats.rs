@@ -5,8 +5,13 @@
 //! baseline years (months without coverage are left out, true zeros are kept).
 //!
 //! Every statistic uses complete-enough months only ([`Monthly::stat`]): a partial month (its
-//! serving stream covers < 50 % of it, e.g. the month in progress) keeps its calendar value so
-//! it can be drawn, but never enters a baseline, rank, total, YTD, record or the seam.
+//! serving stream(s) delivered data on fewer than `meta.complete_min_coverage` = 0.9 of its days,
+//! e.g. the month in progress) keeps its calendar value so it can be drawn, but never enters a
+//! baseline, rank, ratio, total, YTD, record or the seam.
+//!
+//! A ratio to normal is reported only when the baseline median is at least
+//! [`RATIO_MEDIAN_FLOOR`] AFCD-M: below it the ratio of two small counts is noise ("56× normal"
+//! in a desert), and the level is `undefined`.
 
 use serde::Serialize;
 
@@ -51,8 +56,10 @@ impl Baseline {
         self.median[k]
     }
 
+    /// `x / median`, or `None` when the baseline median is below [`RATIO_MEDIAN_FLOOR`].
     pub fn ratio(&self, k: usize, x: f64) -> Option<f64> {
-        robust::ratio(x, self.median[k]?)
+        let med = self.median[k].filter(|m| *m >= RATIO_MEDIAN_FLOOR)?;
+        robust::ratio(x, med)
     }
 
     pub fn percentile(&self, k: usize, x: f64) -> Option<f64> {
@@ -93,22 +100,28 @@ fn rank_desc(x: f64, others: impl IntoIterator<Item = f64>) -> (u32, u32) {
 #[derive(Debug, Clone, Serialize)]
 pub struct Calendar {
     pub years: Vec<i32>,
+    /// Drawn value; partial months keep theirs.
     pub value: Vec<[Option<f64>; 12]>,
+    /// Ratio, percentile and z of complete-enough months only (null for partial months).
     pub ratio: Vec<[Option<f64>; 12]>,
     pub percentile: Vec<[Option<f64>; 12]>,
     pub z: Vec<[Option<f64>; 12]>,
+    /// The month is partial (in progress or an outage month): drawn, not ranked.
+    pub partial: Vec<[bool; 12]>,
 }
 
 /// Year × month matrices over the whole record.
 pub fn calendar(mo: &Monthly, base: &Baseline) -> Calendar {
-    let mut c = Calendar { years: vec![], value: vec![], ratio: vec![], percentile: vec![], z: vec![] };
+    let mut c = Calendar { years: vec![], value: vec![], ratio: vec![], percentile: vec![], z: vec![], partial: vec![] };
     for y in record_years(mo) {
         let vals = year_values(mo, y);
-        let per = |f: &dyn Fn(usize, f64) -> Option<f64>| std::array::from_fn(|k| vals[k].and_then(|x| f(k, x)));
+        let stats = year_stats(mo, y);
+        let per = |f: &dyn Fn(usize, f64) -> Option<f64>| std::array::from_fn(|k| stats[k].and_then(|x| f(k, x)));
         c.years.push(y);
         c.ratio.push(per(&|k, x| base.ratio(k, x)));
         c.percentile.push(per(&|k, x| base.percentile(k, x)));
         c.z.push(per(&|k, x| base.z(k, x)));
+        c.partial.push(std::array::from_fn(|k| vals[k].is_some() && stats[k].is_none()));
         c.value.push(vals);
     }
     c
@@ -268,21 +281,45 @@ pub struct Current {
     pub rank: u32,
     pub of: u32,
     pub provisional: bool,
+    /// `extreme`, `well-above`, `above`, `normal`, `below`, `well-below` ([`LEVELS`]), or
+    /// `undefined` (no baseline, or a baseline median below [`RATIO_MEDIAN_FLOOR`]).
     pub level: &'static str,
 }
 
-/// Label from the baseline percentile: ≤10 well-below, ≤25 below, <75 normal, <90 above,
-/// <97.5 well-above, else extreme. Unknown percentile reads as normal.
-pub fn level_label(p: Option<f64>) -> &'static str {
-    match p {
-        None => "normal",
-        Some(p) if p <= 10.0 => "well-below",
-        Some(p) if p <= 25.0 => "below",
-        Some(p) if p < 75.0 => "normal",
-        Some(p) if p < 90.0 => "above",
-        Some(p) if p < 97.5 => "well-above",
-        Some(_) => "extreme",
+/// Smallest baseline median (AFCD-M, MODIS units) for which a ratio to normal and a level are
+/// reported.
+pub const RATIO_MEDIAN_FLOOR: f64 = 1.0;
+
+/// Level thresholds `(label, percentile, ratio)`: a month is labelled only when both its rank
+/// among the baseline years (percentile) and its size against the median (ratio) agree. Above:
+/// percentile ≥ p and ratio ≥ r; below: percentile ≤ p and ratio ≤ r (reciprocal ratios).
+/// Checked in this order; anything else is `normal`.
+pub const LEVELS: [(&str, f64, f64); 5] = [
+    ("extreme", 97.5, 2.0),
+    ("well-above", 90.0, 1.5),
+    ("above", 75.0, 1.2),
+    ("well-below", 10.0, 1.0 / 1.5),
+    ("below", 25.0, 1.0 / 1.2),
+];
+
+/// Level of a value `x` with baseline percentile `p` against a baseline median `median`
+/// (both conditions of [`LEVELS`]). `undefined` when there is no baseline or its median is below
+/// [`RATIO_MEDIAN_FLOOR`] (a ratio of tiny counts says nothing).
+pub fn level_label(p: Option<f64>, x: f64, median: Option<f64>) -> &'static str {
+    let (Some(p), Some(med)) = (p.filter(|p| p.is_finite()), median.filter(|m| m.is_finite())) else {
+        return "undefined";
+    };
+    if med < RATIO_MEDIAN_FLOOR || !x.is_finite() {
+        return "undefined";
     }
+    let r = x / med;
+    for (label, pc, rc) in LEVELS {
+        let hit = if rc >= 1.0 { p >= pc && r >= rc } else { p <= pc && r <= rc };
+        if hit {
+            return label;
+        }
+    }
+    "normal"
 }
 
 /// The latest complete-enough month versus its calendar-month baseline.
@@ -312,7 +349,7 @@ pub fn current(mo: &Monthly, base: &Baseline) -> Current {
         rank,
         of,
         provisional: i.is_some_and(|i| mo.provisional[i]),
-        level: level_label(percentile),
+        level: level_label(percentile, value, base.median(k).filter(|_| has)),
     }
 }
 

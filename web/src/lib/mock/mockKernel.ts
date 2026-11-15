@@ -6,7 +6,7 @@ import type {
 } from '../kernel/types'
 import { ringsAreaKm2, ringsBbox, ringsCentroid, pointInRings, type Rings } from '../geo'
 import { gaussian, mannKendall, median, mulberry32, pearson, percentileOf, quantile, sortNum, theilSen } from '../stats'
-import { levelFromPercentile, monthOf, toM, yearOf } from '../format'
+import { monthOf, toM, yearOf } from '../format'
 
 const M_FIRST = 10
 // Mock "today" follows the real clock so the demo always ends on the current month.
@@ -79,6 +79,18 @@ const seasonShape = (mo: number, r: Regime) => {
 interface Record_ {
   modisEq: number[]; viirsCal: (number | null)[]; viirsRaw: (number | null)[]
   rawModis: number[]; rawViirs: number[]; k: number; trueV: number[]
+}
+
+/** Level from rank and size (the kernel's stats::level_label): both the percentile and the ratio to the median. */
+function levelOf(p: number | null, x: number, median: number): string {
+  if (p == null || !(median >= 1)) return 'undefined'
+  const r = x / median
+  if (p >= 97.5 && r >= 2) return 'extreme'
+  if (p >= 90 && r >= 1.5) return 'well-above'
+  if (p >= 75 && r >= 1.2) return 'above'
+  if (p <= 10 && r <= 1 / 1.5) return 'well-below'
+  if (p <= 25 && r <= 1 / 1.2) return 'below'
+  return 'normal'
 }
 
 export class MockKernel implements KernelClient {
@@ -238,6 +250,7 @@ export class MockKernel implements KernelClient {
       ratio: years.map((y) => Array.from({ length: 12 }, (_, i) => { const v = cell(y, i + 1); return v == null ? null : ratioOf(v, i + 1) })),
       percentile: years.map((y) => Array.from({ length: 12 }, (_, i) => { const v = cell(y, i + 1); return v == null ? null : pctOf(v, i + 1) })),
       z: years.map((y) => Array.from({ length: 12 }, (_, i) => { const v = cell(y, i + 1); return v == null ? null : zOf(v, i + 1) })),
+      partial: years.map(() => new Array<boolean>(12).fill(false)),
     }
 
     // Annual totals (display range), completeness and rank.
@@ -284,7 +297,7 @@ export class MockKernel implements KernelClient {
       m: cm, year: yNow, month: cmo, value: cv, lo80: lo80[cm], hi80: hi80[cm],
       median: clim.median[cmo - 1], ratio: ratioOf(cv, cmo), percentile: pct, z: zOf(cv, cmo),
       rank: 1 + sameMonth.filter((v) => v > cv).length, of: sameMonth.length,
-      provisional: prov(cm), level: levelFromPercentile(pct),
+      provisional: prov(cm), level: levelOf(pct, cv, clim.median[cmo - 1]),
     }
 
     // Trend on complete years in range.
@@ -298,6 +311,7 @@ export class MockKernel implements KernelClient {
       slopePerYear: ts.slope, slopePctPerYear: medTot > 0 ? (100 * ts.slope) / medTot : 0,
       lo: ts.lo, hi: ts.hi, tau: mk.tau, pValue: mk.p,
       direction: (mk.p < 0.05 ? (ts.slope > 0 ? 'up' : 'down') : 'none') as 'up' | 'down' | 'none',
+      suppressed: false,
     }
 
     // Season.
@@ -318,6 +332,7 @@ export class MockKernel implements KernelClient {
     const season = {
       peakMonth: peak, startMonth: start, endMonth: end, lengthMonths: len,
       concentration: med.reduce((s, v, i) => s + (inSeason(i + 1) ? v : 0), 0) / sumAll, secondPeak: second,
+      defined: true,
     }
 
     // Outlook (anomaly persistence on log scale; skill decides whether to show it).
@@ -405,7 +420,7 @@ export class MockKernel implements KernelClient {
         harmonized: pick(H), lo80: pick(lo80), hi80: pick(hi80), lo95: pick(lo95), hi95: pick(hi95),
         modisEq: pick(modisEqL), viirsCal: pick(viirsCalL), viirsRaw: pick(rec.viirsRaw),
         rawModisCount: pick(rec.rawModis), rawViirsCount: pick(rec.rawViirs), naive: pick(naive),
-        source: pick(src), provisional: months.map(prov),
+        source: pick(src), provisional: months.map(prov), partial: months.map(() => false),
         modisWeight: pick(wM), modisAdj: pick(modisAdj),
       },
       harmonization: {
@@ -417,6 +432,10 @@ export class MockKernel implements KernelClient {
       annual: { years, total, complete, rank },
       ytd, current, trend, season, outlook, seam,
       records: { topMonths, topYears },
+      activity: {
+        meanAnnual: clim.mean.reduce((a, b) => a + b, 0), sparse: false,
+        nonzeroMonths: 240, baselineMonths: 240, modisEraMean: null, viirsEraMean: null,
+      },
       aoi: { ...this.info, level: this.level, nCells, rows: nCells * 40 },
     }
   }

@@ -21,6 +21,11 @@ Rules
   (each MODIS satellite contributes half of the nominal overpasses); cov_viirs = fraction of days
   with >= 1 VIIRS satellite available (V is a per-day mean, so one satellite gives a full day).
   Days after data_through count as missing, so a partial last month has cov < 1.
+- Day coverage (for completeness, config.COV_COMPLETE): days_modis = fraction of days with >= 1 MODIS
+  satellite available (Terra before AQUA_START); days_viirs = cov_viirs. A month whose serving stream
+  delivered data on fewer than COV_COMPLETE of its days is not used in statistics (the month in progress,
+  or a Terra-only month with an outage); an outage of one MODIS satellite while the other flies leaves
+  days_modis at 1 (the month is coverage-corrected, and complete).
 """
 from __future__ import annotations
 
@@ -111,6 +116,8 @@ def main(force: bool = False) -> None:
                         FROM av GROUP BY 1),
             vday AS (SELECT (year(date) - 2000) * 12 + month(date) - 1 AS m, count(DISTINCT date) AS d_viirs
                      FROM av WHERE available AND satellite IN ('SNPP','NOAA20','NOAA21') GROUP BY 1),
+            mday AS (SELECT (year(date) - 2000) * 12 + month(date) - 1 AS m, count(DISTINCT date) AS d_modis
+                     FROM av WHERE available AND satellite IN ('Terra','Aqua') GROUP BY 1),
             nrt AS (SELECT m, count(*) AS nrt_rows FROM read_parquet('{points_glob()}')
                     WHERE quality = 'nrt' GROUP BY 1)
             SELECT mon.m::USMALLINT AS m, ndays, -- calendar days in month (based on true month)
@@ -120,9 +127,11 @@ def main(force: bool = False) -> None:
               f_terra AS cov_terra,
               CASE WHEN mon.m < {aqua_m} THEN f_terra ELSE (f_terra + f_aqua) / 2 END AS cov_modis,
               coalesce(d_viirs, 0) / ndays AS cov_viirs,
+              coalesce(d_modis, 0) / ndays AS days_modis,
+              coalesce(d_viirs, 0) / ndays AS days_viirs,
               coalesce(viirs_sats, 0)::UTINYINT AS viirs_sats,
               coalesce(nrt_rows, 0) AS nrt_rows
-            FROM mon LEFT JOIN per_sat USING (m) LEFT JOIN vday USING (m) LEFT JOIN nrt USING (m)
+            FROM mon LEFT JOIN per_sat USING (m) LEFT JOIN vday USING (m) LEFT JOIN mday USING (m) LEFT JOIN nrt USING (m)
             ORDER BY m) TO '{posix(OUT_M)}' (FORMAT parquet)""")
         print(f"  rule={'regional (operating period - known outages)' if regional else 'global count'}; "
               f"data_through={through}")

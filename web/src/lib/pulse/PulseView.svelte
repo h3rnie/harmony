@@ -74,6 +74,8 @@
   const baseline = $derived(meta ? `${meta.clim.baseline[0]}–${meta.clim.baseline[1]}` : '')
   const trendYears = $derived(meta?.trend ? `${meta.trend.years[0]}–${meta.trend.years[meta.trend.years.length - 1]}` : '')
   const watchM = $derived(watch ? parseMonthIso(watch.month) : null)
+  /** The watch month is still in progress: pace so far, never a rank (same rule as the area view). */
+  const watchIp = $derived(!!watch && (watch.windows.month.coverage ?? []).some((v) => v < 0.9))
   const watchClusters = $derived(watch ? watch.windows.month.clusters : [])
   const ringsOn = $derived(status === 'ready' && !still && watchM != null && cur === watchM && watchClusters.length > 0)
   // geodesic circles around each watch cluster, projected every rendered frame
@@ -651,10 +653,10 @@
     {#if ringHover && watchM != null}
       {@const c = ringHover.c}
       <div class="tip small" style:left={`${ringHover.x + 14}px`} style:top={`${ringHover.y + 14}px`} aria-hidden="true">
-        <span class="eyebrow">Unusual fire · #{c.rank}</span>
+        <span class="eyebrow">Unusual fire{watchIp ? ' · month in progress' : ` · #${c.rank}`}</span>
         <strong class="main">{c.label}</strong>
-        <span><span class="num">≈ {fmtNum(c.afcd)}</span> AFCD-M · {c.normal_near_zero ? 'normally almost none' : `about ${fmtRatio(c.ratio)} normal`}</span>
-        <span>{rankWords(c.record_rank, c.record_years, MONTHS_LONG[moyOfM(watchM)])}{c.record_rank > 1 ? ` (most: ${c.record_max_year})` : ''}</span>
+        <span><span class="num">≈ {fmtNum(c.afcd)}</span> AFCD-M · {c.normal_near_zero ? 'normally almost none' : `about ${fmtRatio(c.ratio)} ${watchIp ? 'the normal pace so far' : 'normal'}`}</span>
+        {#if !watchIp}<span>{rankWords(c.record_rank, c.record_years, MONTHS_LONG[moyOfM(watchM)])}{c.record_rank > 1 ? ` (most: ${c.record_max_year})` : ''}</span>{/if}
         <span class="muted"><span class="num">{Math.round(c.area_km2).toLocaleString('en-US')}</span> km²{c.biome ? ` · ${c.biome}` : ''}</span>
         <span class="muted">Click to analyse the area around it</span>
       </div>

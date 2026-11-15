@@ -9,7 +9,7 @@ import {
   type HotspotExportOk, type HotspotPlan, type HotspotProgress, type HotspotTooLarge, type PointsIndex,
 } from './hotspotsCore'
 
-export { DEFAULT_MAX_ROWS, fmtBytes, isAbort } from './hotspotsCore'
+export { DEFAULT_MAX_ROWS, MAX_DOWNLOAD_BYTES, fmtBytes, isAbort, planTooLarge } from './hotspotsCore'
 export type { HotspotExportOk, HotspotPlan, HotspotProgress, HotspotTooLarge, PointsIndex } from './hotspotsCore'
 
 export class HotspotsUnavailable extends Error {}
@@ -47,6 +47,8 @@ export interface HotspotRequestUi {
   mFrom: number
   mTo: number
   label?: string
+  /** Monthly accepted detections of the area (analysis.months with rawModisCount + rawViirsCount), for the estimate. */
+  activity?: { months: number[]; counts: number[] }
   onProgress?: (p: HotspotProgress) => void
   signal?: AbortSignal
 }
@@ -61,7 +63,7 @@ const baseOptions = async (r: HotspotRequestUi) => ({
 
 /** Step 1 of the UI flow: read Parquet footers, prune row groups, estimate rows and download size. No row data is downloaded. */
 export async function planHotspots(r: HotspotRequestUi): Promise<HotspotPlan> {
-  return planHotspotExport({ rings: r.rings, mFrom: r.mFrom, mTo: r.mTo, label: r.label }, await baseOptions(r))
+  return planHotspotExport({ rings: r.rings, mFrom: r.mFrom, mTo: r.mTo, label: r.label, activity: r.activity }, await baseOptions(r))
 }
 
 /** Step 2: download the surviving row groups and build the CSV. rowLimit caps the rows (first N in file order). */
@@ -79,7 +81,7 @@ export async function exportHotspotsCsv(
   r: HotspotRequestUi & { maxRows?: number; force?: boolean },
 ): Promise<HotspotExportOk | HotspotTooLarge> {
   return exportHotspots(
-    { rings: r.rings, mFrom: r.mFrom, mTo: r.mTo },
+    { rings: r.rings, mFrom: r.mFrom, mTo: r.mTo, activity: r.activity },
     { ...(await baseOptions(r)), ack: FIRMS_ACK, label: r.label, maxRows: r.maxRows ?? DEFAULT_MAX_ROWS, force: r.force },
   )
 }

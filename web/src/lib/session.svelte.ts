@@ -1,6 +1,6 @@
 // Application state (Svelte 5 runes) and the AOI -> tiles -> kernel -> Analysis pipeline.
 import type { Analysis, AnalyzeOptions, AoiInfo, CellLayer, KernelClient, Meta } from './kernel/types'
-import type { Aoi } from './geo'
+import { aoiProblem, type Aoi } from './geo'
 import { selectKernel, type KernelSelection } from './kernelSelect'
 import { beginTileRun, mapLimit, readTile, tileInfo } from './data/tileReader'
 import { DEBOUNCE_MS, DEFAULT_BASELINE, FETCH_CONCURRENCY, MAX_AOI_BYTES, MAX_AOI_CELLS } from './config'
@@ -15,6 +15,8 @@ class Stale extends Error {}
 class Session {
   status = $state<Status>('booting')
   error = $state<string | null>(null)
+  /** 'area': the chosen area cannot be analysed (crosses the 180° meridian, too large); 'run': loading or analysis failed. */
+  errorKind = $state<'area' | 'run'>('run')
   progress = $state({ done: 0, total: 0, bytes: 0, level: -1 })
   sel = $state.raw<KernelSelection | null>(null)
   aoi = $state.raw<Aoi | null>(null)
@@ -113,7 +115,10 @@ class Session {
     this.unit = v.unit
     this.status = 'idle'
     // A shared preset link without an explicit month opens on the preset's story month.
-    if (v.aoi) this.setAoi(v.aoi, v.aoi.presetId && v.focusM == null ? {} : { keepFocus: true })
+    if (v.aoi) this.setAoi(v.aoi, { ...(v.aoi.presetId && v.focusM == null ? {} : { keepFocus: true }), history: 'replace' })
+    // Back / Forward (popstate) and hand-edited hashes (hashchange) restore the state without adding history.
+    // The handler is idempotent, so the pair of events one step can fire restores once.
+    addEventListener('popstate', () => this.onHashChange())
     addEventListener('hashchange', () => this.onHashChange())
   }
 
@@ -126,17 +131,18 @@ class Session {
       v.recordMode !== this.recordMode || v.unit !== this.unit
     this.switchYear = v.switchYear; this.baseline = v.baseline; this.dn = v.dn; this.rangeYears = v.rangeYears
     this.recordMode = v.recordMode; this.unit = v.unit
-    if (!sameAoi && v.aoi) this.setAoi(v.aoi, v.aoi.presetId && v.focusM == null ? {} : { keepFocus: true })
+    if (!sameAoi) this.setAoi(v.aoi, { ...(v.aoi?.presetId && v.focusM == null ? {} : { keepFocus: true }), history: 'replace' })
     else if (optsChanged) this.scheduleAnalyze()
     else this.refreshLayer()
   }
 
-  private syncHash() {
+  /** Mirror the state in the URL: 'push' adds a history entry (a different place), 'replace' amends the current one. */
+  private syncHash(mode: 'push' | 'replace' = 'replace') {
     writeHash({
       aoi: this.aoi, focusM: this.focusM, calMode: this.calMode, overlay: this.overlay,
       switchYear: this.switchYear, baseline: this.baseline, dn: this.dn, rangeYears: this.rangeYears,
       recordMode: this.recordMode, unit: this.unit,
-    })
+    }, mode)
   }
 
   // ---------------------------------------------------------------- public actions
@@ -146,7 +152,24 @@ class Session {
    * is ready. Any other change is a different place: its old answer is cleared at once, so a stale answer for the
    * wrong area or month never shows and then flips (audit F9).
    */
-  setAoi(aoi: Aoi | null, o: { keepFocus?: boolean; focusM?: number | null; edit?: boolean } = {}) {
+  setAoi(aoi: Aoi | null, o: { keepFocus?: boolean; focusM?: number | null; edit?: boolean; history?: 'push' | 'replace' | 'none' } = {}) {
+    // A different place is a new history entry; reshaping the same place, or restoring from Back/Forward, is not.
+    const hist = o.history ?? (o.edit || (aoi && aoi === this.aoi) ? 'replace' : 'push')
+    const why = aoi ? aoiProblem(aoi) : null
+    if (why) {
+      // Nothing of the previous area stays on screen, and nothing stray is drawn: no area, one clear message.
+      clearTimeout(this.fullTimer)
+      this.abort?.abort()
+      this.runId++
+      this.aoi = null; this.analysis = null; this.layer = null; this.layerM = null; this.aoiInfo = null
+      this.focusM = null; this.pendingMonth = null; this.dataReady = false
+      if (hist !== 'none') this.syncHash('replace')
+      this.error = why
+      this.errorKind = 'area'
+      this.status = 'error'
+      this.announce = why
+      return
+    }
     this.aoi = aoi
     if (!o.edit) { this.analysis = null; this.layer = null; this.layerM = null; this.aoiInfo = null }
     if (!o.keepFocus) this.focusM = o.focusM ?? null
@@ -156,17 +179,19 @@ class Session {
       if (preset.focus.year != null) this.focusM = toM(preset.focus.year, preset.focus.month)
       else this.pendingMonth = preset.focus.month
     }
-    this.syncHash()
+    if (hist !== 'none') this.syncHash(hist)
     clearTimeout(this.fullTimer)
     this.abort?.abort()
     this.runId++
     if (!aoi) {
       this.analysis = null; this.layer = null; this.aoiInfo = null
       this.status = 'idle'
+      this.error = null
       return
     }
     this.status = 'loading'
     this.error = null
+    this.errorKind = 'run'
     this.fullTimer = setTimeout(() => this.runFull(), DEBOUNCE_MS)
   }
 
@@ -335,8 +360,12 @@ class Session {
 
   private fail(e: unknown) {
     console.error(e)
-    this.error = e instanceof Error ? e.message : String(e)
+    const msg = e instanceof Error ? e.message : String(e)
+    // The kernel's own limit, phrased for people (it is checked up front too, see geo.aoiProblem).
+    this.error = /area too large/i.test(msg) ? 'This area is too large to analyse; the Global pulse shows the whole planet.' : msg
+    this.errorKind = /area too large/i.test(msg) ? 'area' : 'run'
     this.status = 'error'
+    if (this.errorKind === 'area') { this.analysis = null; this.layer = null }
   }
 
   private summaryText(a: Analysis): string {

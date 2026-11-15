@@ -71,7 +71,7 @@ flowchart TD
   D --> ML[Method lab: ONNX]
 ```
 
-The `all` stage order is `normalize, availability, static_mask, afcd, strata, calibrate, harmonize, tiles, points, overview, watch, verify` (`cli.py`, `STAGES`). `ml` is run by name.
+The `all` stage order is `normalize, availability, static_mask, screen, afcd, strata, calibrate, harmonize, tiles, points, overview, watch, verify` (`cli.py`, `STAGES`). `ml` is run by name.
 
 1. **Normalize** (`normalize.py`) reads each sensor-year from its country zip and from API files, maps columns to one schema, drops duplicates, lets standard-quality rows replace near-real-time rows per satellite and UTC month where standard inputs cover the month, computes the sub-cell, the L0 cell, the local-solar date and the month index, and writes `work/points/{sensor}/{year}.parquet`. Per-file statistics go to `work/normalize_stats/`. A row is standard only when its `version` is purely numeric; `NRT`, `URT` (ultra-real-time) and `RT` versions are near-real-time (METHOD.md section 2).
 2. **Availability, static mask, cube** compute satellite-day availability, the mask, and the cell-day cube (`afcd.py`) one local-solar year at a time to bound memory.
@@ -193,6 +193,8 @@ Nothing about the analysis needs a server. A deployment is:
 2. **Object storage or a static host for `data/dist`** that supports HTTP `Range` requests and `Accept-Ranges`, serves `.parquet` with a binary content type and `.json` as JSON, and sends `Access-Control-Allow-Origin` if it is on another origin. Set `VITE_DATA_BASE` at build time to its URL. Tiles are immutable per release, so long cache lifetimes with a versioned path are safe; `meta.json`, `watch.json` and the indexes should not be cached long.
 3. **Up to three serverless functions** wrapping `getLive`/`liveStatus`, `getBrief`/`getStatus` and `getAnswer`, with the keys in the platform's secret store and the same-origin check (`sameOrigin.ts`) applied to the request headers. They must be reachable at the same origin as the app: the live client uses the fixed path `/api/live`, and the AI client uses `/api/brief` and `/api/ask` unless `VITE_BRIEF_API` and `VITE_ASK_API` are set (`VITE_BRIEF_API=off` skips the probe for a site without AI). Without them the app still works; the live view and the AI features report themselves as unavailable.
 4. **A shared cache and rate limiter** (a key-value store or the platform's edge rate limiting) in place of the in-memory maps, with per-client limits.
+
+The Vercel deployment implements this: `web/api/*.ts` are Node.js functions that call the Request/Response handlers in `web/server/fetchRoutes.ts`, which wrap the same cores with per-visitor limits (keyed on an HMAC of the IP address) and a daily cap on AI requests, counted in Redis when one is configured (`web/server/limits.ts`) and in memory otherwise. The in-process caches stay as the first layer. Steps and settings are in [DEPLOYMENT.md](DEPLOYMENT.md).
 
 No COOP/COEP headers are needed. The data is rebuilt offline ([OPERATIONS.md](OPERATIONS.md)) and published as a new release of `data/dist`.
 

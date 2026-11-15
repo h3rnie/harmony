@@ -59,8 +59,8 @@ export function resetLiveState(): void {
 }
 
 /** Call first on every live route: refuses cross-site browser requests with 403 forbidden (see sameOrigin.ts). */
-export function assertSameOrigin(headers: HeaderBag): void {
-  const why = crossSiteReason(headers)
+export function assertSameOrigin(headers: HeaderBag, allowedOrigins: readonly string[] = []): void {
+  const why = crossSiteReason(headers, allowedOrigins)
   if (why) throw new LiveError(403, 'forbidden', why)
 }
 

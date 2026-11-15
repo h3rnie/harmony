@@ -54,6 +54,18 @@ def main(force: bool = False) -> None:
 
 
 def used_sql(points: str) -> str:
-    """Rows of `points` (a relation) with the `used` flag, joined to the static mask."""
-    return f"""SELECT p.*, (p.conf_ok AND coalesce(p.type, 0) = 0 AND sm.sub IS NULL) AS used
-               FROM {points} p LEFT JOIN read_parquet('{posix(OUT)}') sm ON p.sub = sm.sub"""
+    """Rows of `points` (a relation) with the `used` flag: confidence ok, type 0 (or none), outside the static mask,
+    and not removed by the land and burst screen (screen.py): a row without `type` (near-real-time) in a water
+    cell, or a suspect row of a near-real-time burst day. Before the screen stage has run, only the first three
+    conditions apply."""
+    from .screen import EXCLUDED, WATER
+    if not (WATER.exists() and EXCLUDED.exists()):
+        return f"""SELECT p.*, (p.conf_ok AND coalesce(p.type, 0) = 0 AND sm.sub IS NULL) AS used
+                   FROM {points} p LEFT JOIN read_parquet('{posix(OUT)}') sm ON p.sub = sm.sub"""
+    return f"""SELECT p.*, (p.conf_ok AND coalesce(p.type, 0) = 0 AND sm.sub IS NULL
+                            AND NOT (p.type IS NULL AND sw.l0 IS NOT NULL)
+                            AND sx.l0 IS NULL) AS used
+               FROM {points} p LEFT JOIN read_parquet('{posix(OUT)}') sm ON p.sub = sm.sub
+               LEFT JOIN read_parquet('{posix(WATER)}') sw ON sw.l0 = p.l0
+               LEFT JOIN read_parquet('{posix(EXCLUDED)}') sx
+                 ON sx.l0 = p.l0 AND sx.satellite = p.satellite AND sx.utc_date = p.utc_date"""

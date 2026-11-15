@@ -12,9 +12,11 @@
   import { session } from '../session.svelte'
   import { themeState } from '../theme.svelte'
   import { renderCellLayer, type RenderedOverlay } from './cellOverlay'
-  import { normalizeRings, polygonFromGeoJSON, ringsBbox, type Aoi } from '../geo'
+  import { circleFromRing, circlePolygon, normalizeRings, polygonFromGeoJSON, ringsBbox, type Aoi } from '../geo'
+  import { circleLabel } from '../urlState'
   import { PRESETS, type Preset } from '../presets'
   import { fmtNum, fmtRatio, monthShort } from '../format'
+  import { isInProgress } from '../analysisUtil'
   import CoordinatesPopover from './CoordinatesPopover.svelte'
   import MapLegend from './MapLegend.svelte'
   import type { ClimOverlay } from '../pulse/climOverlay'
@@ -43,6 +45,7 @@
   let fitNext = true
   let liveShown = $state(0)
   let panelWidth = $state(800)
+  let panelHeight = $state(600)
   let livePopup: Popup | undefined
   let lastFittedKey = ''
   /** The viewer's live-dots choice for this area; null = default (on only when the month in view is the latest). */
@@ -206,9 +209,16 @@
         session.setAoi({ rings, shape: { kind: 'polygon' }, label: session.aoi?.label ?? 'Drawn area' }, { keepFocus: true, edit: true })
         return
       }
-      const label = drawMode === 'circle' ? 'Drawn circle' : drawMode === 'rectangle' ? 'Drawn rectangle' : 'Drawn polygon'
       fitNext = false
-      session.setAoi({ rings, shape: { kind: 'polygon' }, label })
+      // A drawn circle is kept as a circle (centre + radius), so its share link is `c=lon,lat,km`, not 64 vertices.
+      const c = drawMode === 'circle' ? circleFromRing(rings[0]) : null
+      if (c) {
+        const lon = +c.lon.toFixed(4), lat = +c.lat.toFixed(4), km = +c.km.toFixed(1)
+        session.setAoi({ rings: circlePolygon(lon, lat, km), shape: { kind: 'circle', lon, lat, km }, label: circleLabel(lon, lat, km) })
+      } else {
+        const label = drawMode === 'circle' ? 'Drawn circle' : drawMode === 'rectangle' ? 'Drawn rectangle' : 'Drawn polygon'
+        session.setAoi({ rings, shape: { kind: 'polygon' }, label })
+      }
       endDraw()
     })
   }
@@ -299,6 +309,18 @@
       maxPitch: 0,
     })
     map.touchZoomRotate.disableRotation()
+    // MapLibre opens the compact attribution the moment the basemap's credits arrive, which pushes the zoom buttons
+    // up and shifts the layout. Close it as it opens (once; afterwards the (i) button is the viewer's to use).
+    const attrib = container.querySelector('.maplibregl-ctrl-attrib')
+    if (attrib) {
+      const mo = new MutationObserver(() => {
+        if (!attrib.classList.contains('maplibregl-compact')) return
+        attrib.classList.remove('maplibregl-compact-show')
+        attrib.removeAttribute('open')
+        mo.disconnect()
+      })
+      mo.observe(attrib, { attributes: true, attributeFilter: ['class'] })
+    }
     // The basemap style references a few sprite icons (e.g. "circle-11") its sprite sheet lacks. They were never drawn;
     // supply an empty image so MapLibre stops warning about each one.
     map.on('styleimagemissing', (e) => {
@@ -426,11 +448,17 @@
     })
   })
 
-  const focusLabel = $derived(session.layerM != null ? monthShort(session.layerM) : '')
+  // Same wording as the Global pulse for the newest, unfinished month.
+  const focusLabel = $derived(
+    session.layerM != null
+      ? `${monthShort(session.layerM)}${session.analysis && isInProgress(session.analysis, session.layerM) ? ' · month in progress' : ''}`
+      : '',
+  )
 </script>
 
 <div
   bind:clientWidth={panelWidth}
+  bind:clientHeight={panelHeight}
   class="map-panel"
   role="region"
   aria-label="Area of interest map"
@@ -438,8 +466,6 @@
   ondragleave={() => (dropActive = false)}
   ondrop={onDrop}
 >
-  <div class="map" bind:this={container} aria-label="Interactive map. Use the toolbar to choose an area." role="application"></div>
-
   <div class="toolbar" role="toolbar" aria-label="Area tools">
     <div class="group">
       <button class="tool" class:on={presetsOpen} aria-expanded={presetsOpen} aria-controls="preset-menu" onclick={() => { presetsOpen = !presetsOpen; coordsOpen = false; drawOpen = false }}>
@@ -464,6 +490,10 @@
       <input bind:this={fileInput} name="geojson" type="file" accept=".geojson,.json,application/geo+json,application/json" class="sr-only" tabindex="-1" aria-label="GeoJSON file" onchange={(e) => { const f = (e.currentTarget as HTMLInputElement).files?.[0]; if (f) loadFile(f); (e.currentTarget as HTMLInputElement).value = '' }} />
     </div>
   </div>
+
+  <!-- The map follows the tools in the DOM so Stories and Draw area come first in tab order (its zoom and
+       attribution links are inside it); the toolbar is positioned over it. -->
+  <div class="map" bind:this={container} aria-label="Interactive map. Use the toolbar to choose an area." role="application"></div>
 
   {#if presetsOpen}
     <div class="popover presets" id="preset-menu" role="dialog" aria-label="Story presets">
@@ -529,7 +559,7 @@
       {liveOn}
       liveShown={liveShown}
       onlive={(on) => (liveChoice = on)}
-      compact={panelWidth < 480}
+      compact={panelWidth < 480 || panelHeight < 440}
     />
   {/if}
 

@@ -31,7 +31,7 @@
   )
 </script>
 
-<div class="legend" role="group" aria-label="Map legend">
+<div class="legend" class:collapsed={!full} role="group" aria-label="Map legend">
   <div class="row">
     <span class="title"><span class="m num">{month}</span> {mode === 'harmonized' ? 'fire activity' : 'vs normal'}</span>
     {#if full}
@@ -53,6 +53,9 @@
 </div>
 
 <style>
+  /* Collapsed (phones, or a short map at 200 % zoom): one narrow strip, so it never covers much of the area. */
+  .legend.collapsed { width: 230px; padding: 6px 8px; }
+  .legend.collapsed .unit { display: none; }
   .legend {
     position: absolute; left: 12px; bottom: 34px; z-index: 2; width: 300px; max-width: calc(100% - 70px);
     background: var(--overlay-bg); border: 1px solid var(--rule-strong);

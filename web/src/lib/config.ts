@@ -1,4 +1,4 @@
-export const DATA_BASE: string = (import.meta.env.VITE_DATA_BASE ?? '/data').replace(/\/+$/, '')
+export const DATA_BASE: string = (import.meta.env.VITE_DATA_BASE || '/data').replace(/\/+$/, '')
 
 /** Finest pyramid level whose AOI tiles total at most this many bytes is used. */
 export const MAX_AOI_BYTES = 16 * 1024 * 1024

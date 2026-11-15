@@ -20,7 +20,7 @@ const MAX_BBOX_CELLS: u64 = 12_000_000;
 const ANTIMERIDIAN: &str =
     "areas crossing the antimeridian are not supported yet; split the polygon at 180°";
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AoiInfo {
     pub area_km2: f64,

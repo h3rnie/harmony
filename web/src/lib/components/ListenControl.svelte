@@ -46,6 +46,7 @@
     viirsStartM: session.meta?.viirs_start_m ?? toM(2012, 1),
     currentM: a.current.m,
     annual: a.annual,
+    unitLabel: session.unitLabel,
   })
   const schedule = $derived(buildSchedule(mode, input, { msPerMonth: SPEEDS[speed], withNormal: mode === 'record' && withNormal }))
   const words = $derived(transcript(mode, input))
@@ -233,6 +234,7 @@
       <details class="more">
         <summary>Text version</summary>
         <div class="more-body">
+          <p>Values are in <Term id="afcdm" />.</p>
           {#each words as w (w)}<p>{w}</p>{:else}<p>Nothing to describe for these years.</p>{/each}
         </div>
       </details>

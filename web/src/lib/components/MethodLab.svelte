@@ -5,6 +5,7 @@
   import { session } from '../session.svelte'
   import { linear, linePath, niceMax, niceTicks, tickLabel } from '../charts/scale'
   import { fmtNum, monthShort, yearOf } from '../format'
+  import { validation } from '../validation.svelte'
 
   let { a }: { a: Analysis } = $props()
 
@@ -43,7 +44,7 @@
       const lab = await import('../ml/lab')
       model = await lab.loadModelJson()
       // Same out-of-time years as the global test in model.json (the latest year may be partial).
-      const ootYears = model.out_of_time.by_year.production?.map((y) => y.year) ?? []
+      const ootYears = (model.out_of_time.by_year.challenger ?? model.out_of_time.by_year.production)?.map((y) => y.year) ?? []
       const ootLastM = ootYears.length ? (Math.max(...ootYears) - 2000) * 12 + 11 : undefined
       const r = await lab.runLab(session.meta!, session.sel?.index ?? null, layer, () => session.aoi === aoi, ootLastM)
       if (r == null || session.aoi !== aoi) return
@@ -151,7 +152,23 @@
     const pick = (sc: 'cell1deg_month' | 'stratum_month') => methods.reduce((b, k) => ((t[k][sc].log_rmse ?? 9) < (t[b][sc].log_rmse ?? 9) ? k : b), methods[0])
     return { c1: pick('cell1deg_month'), st: pick('stratum_month') }
   })
-  const ootYears = $derived(model?.out_of_time.by_year.production?.map((r) => r.year) ?? [])
+  // Years of the global out-of-time test: the challenger's (model.json); the production row comes from validation.json,
+  // the single source for the served calibration, so the two tables on the page can never disagree.
+  $effect(() => { if (open) void validation.load() })
+  const ootYears = $derived((model?.out_of_time.by_year.challenger ?? model?.out_of_time.by_year.production)?.map((r) => r.year) ?? [])
+  const prodOot = $derived.by(() => {
+    const rows = validation.data?.out_of_time?.by_year
+    if (!rows) return model?.out_of_time.by_year.production ?? null
+    return ootYears.map((y) => ({ year: y, bias_pct: rows.find((r) => r.year === y)?.bias_pct ?? NaN }))
+  })
+  const ootRow = (k: string) => (k === 'production' ? prodOot : model?.out_of_time.by_year[k] ?? null)
+  const fmtDay = (iso: string | undefined) => {
+    if (!iso) return null
+    const d = new Date(iso)
+    return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
+  }
+  const trainedOn = $derived(fmtDay(model?.trained_on_build))
+  const dataBuild = $derived(fmtDay(session.meta?.generated))
   const OOT_ROWS = ['production', 'challenger', 'challenger_raw', 'naive']
   const ootLabel: Record<string, string> = { production: 'Production ratio method', challenger: 'ML challenger', challenger_raw: 'ML challenger, before mass balance', naive: 'Naive global ratio' }
   const span = (m: [number, number]) => `${monthShort(m[0])} – ${monthShort(m[1])}`
@@ -303,14 +320,19 @@
             <table class="mt small">
               <thead><tr><th scope="col">Bias by year</th>{#each ootYears as yy (yy)}<th scope="col" class="num">{yy}</th>{/each}</tr></thead>
               <tbody>
-                {#each OOT_ROWS.filter((k) => model!.out_of_time.by_year[k]) as k (k)}
-                  <tr class:hl={k === 'production' || k === 'challenger'}><th scope="row">{ootLabel[k]}</th>{#each model.out_of_time.by_year[k] as r (r.year)}<td class="num">{pct(r.bias_pct)}</td>{/each}</tr>
+                {#each OOT_ROWS.filter((k) => ootRow(k)) as k (k)}
+                  <tr class:hl={k === 'production' || k === 'challenger'}><th scope="row">{ootLabel[k]}</th>{#each ootRow(k) ?? [] as r (r.year)}<td class="num">{pct(r.bias_pct)}</td>{/each}</tr>
                 {/each}
               </tbody>
             </table>
           </div>
         {/if}
         <p class="verdict">{model.verdict}</p>
+        {#if trainedOn}
+          <p class="small muted">Trained on the data build of {trainedOn}{dataBuild && dataBuild !== trainedOn ? `; the record on this page is the build of ${dataBuild}` : ''}.</p>
+        {:else if fmtDay(model.generated)}
+          <p class="small muted">Model trained {fmtDay(model.generated)}.</p>
+        {/if}
         <p class="small muted">{model.architecture} · {fmtNum(model.n_params, 1e9)} parameters · {(model.onnx.bytes / 1024).toFixed(0)} KB ONNX · {model.form}.</p>
       {/if}
     </div>

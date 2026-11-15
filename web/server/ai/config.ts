@@ -90,7 +90,7 @@ function target(id: ProviderId, env: AiEnv, profile: ProfileName, modelOverride:
   const provider = createOpenRouterProvider({
     apiKey: key,
     baseUrl: clean(env.OPENROUTER_BASE_URL) || OPENROUTER_BASE,
-    referer: clean(env.OPENROUTER_REFERER) || 'https://github.com/harmony-space-apps',
+    referer: clean(env.OPENROUTER_REFERER) || 'https://harmony.hernie.me',
     title: 'Harmony',
   })
   return { provider, id, model, effort: spec.effort }

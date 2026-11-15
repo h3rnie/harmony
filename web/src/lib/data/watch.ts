@@ -26,13 +26,17 @@ export interface WatchItem {
 }
 
 /** Top clusters of the one-month window, best first, with the words the list shows. */
+/** The watch month is still in progress (under 90 % of its days observed): its pace is shown, never a rank. */
+export const watchInProgress = (doc: WatchDoc): boolean => (doc.windows.month.coverage ?? []).some((c) => c < 0.9)
+
 export function watchItems(doc: WatchDoc, n = 6): WatchItem[] {
   const m = parseMonthIso(doc.month)
   const name = m == null ? 'month' : MONTHS_LONG[monthOf(m) - 1]
+  const ip = watchInProgress(doc)
   return doc.windows.month.clusters.slice(0, n).map((c) => ({
     c,
-    ratio: c.normal_near_zero ? 'normally almost none' : `about ${c.ratio >= 10 ? Math.round(c.ratio) : c.ratio.toFixed(1)}× normal`,
-    rank: rankWords(c.record_rank, c.record_years, name),
+    ratio: c.normal_near_zero ? 'normally almost none' : `about ${c.ratio >= 10 ? Math.round(c.ratio) : c.ratio.toFixed(1)}× ${ip ? 'the normal pace' : 'normal'}`,
+    rank: ip ? 'month in progress, not ranked' : rankWords(c.record_rank, c.record_years, name),
   }))
 }
 

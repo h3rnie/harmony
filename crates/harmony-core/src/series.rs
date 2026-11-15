@@ -229,7 +229,12 @@ pub struct Plan {
     pub drift_idx: Option<usize>,
     /// VIIRS error row (number of satellites − 1).
     pub era: usize,
-    /// The month has a value but no complete-enough stream contributes to it.
+    /// Fraction of the month's days covered by the stream(s) serving it (the larger of the two
+    /// when both are fused); 0 when no stream serves it.
+    pub coverage: f64,
+    /// The month has a value but its serving stream(s) delivered data on fewer than
+    /// `meta.complete_min` of its days (the month in progress, or an outage month): drawn, never
+    /// used in a statistic.
     pub partial: bool,
 }
 
@@ -245,18 +250,25 @@ pub fn plan(meta: &Meta, m: i32, mode: Mode, switch_m: i32, model: bool) -> Plan
     let (mok, vok, mfull, vfull) = (meta.modis_ok(m), meta.viirs_ok(m), meta.modis_full(m), meta.viirs_full(m));
     let bridge = m < meta.aqua_start_m;
     let era = meta.viirs_era(m);
+    let coverage_of = |use_m: bool, use_v: bool| {
+        let cm = if use_m { meta.modis_days(m) } else { 0.0 };
+        let cv = if use_v { meta.viirs_days(m) } else { 0.0 };
+        cm.max(cv)
+    };
     if mode == Mode::Switch || !model {
         let src = source_for(meta, m, switch_m);
         let (use_m, use_v) = (matches!(src, Source::Bridge | Source::Modis), src == Source::Viirs);
-        let partial = (use_m && !mfull) || (use_v && !vfull);
-        return Plan { m, use_m, use_v, bridge, drift_idx: None, era, partial };
+        let coverage = coverage_of(use_m, use_v);
+        let partial = (use_m || use_v) && coverage < meta.complete_min;
+        return Plan { m, use_m, use_v, bridge, drift_idx: None, era, coverage, partial };
     }
-    // Fused: a partial stream is dropped when the other one is complete enough.
+    // Fused: a stream below MIN_COVERAGE (not coverage-corrected) is dropped when the other one reaches it.
     let use_m = mok && (mfull || !vfull);
     let use_v = vok && (vfull || !mfull);
-    let partial = (use_m || use_v) && !((use_m && mfull) || (use_v && vfull));
+    let coverage = coverage_of(use_m, use_v);
+    let partial = (use_m || use_v) && coverage < meta.complete_min;
     let drift_idx = if mok { meta.drift.as_ref().and_then(|d| d.index(year_of(m))) } else { None };
-    Plan { m, use_m, use_v, bridge, drift_idx, era, partial }
+    Plan { m, use_m, use_v, bridge, drift_idx, era, coverage, partial }
 }
 
 /// Estimate of one stratum × dn group (or one tile row) for a month.
@@ -325,10 +337,13 @@ pub struct Monthly {
     /// Drift-corrected MODIS where MODIS exists (equal to `meq` when no correction applies).
     pub madj: Vec<Option<f64>>,
     pub provisional: Vec<bool>,
-    /// The month has a value but the stream serving it covers less than
-    /// [`MIN_COVERAGE`](crate::meta::MIN_COVERAGE) of it: drawn, never used in a statistic.
+    /// The month has a value but the stream(s) serving it delivered data on fewer than
+    /// `meta.complete_min` of its days (see [`Plan::partial`]): drawn, never used in a statistic.
     pub partial: Vec<bool>,
-    /// MODIS / calibrated VIIRS coverage is complete enough (for the seam).
+    /// Day coverage of the serving stream(s) ([`Plan::coverage`]).
+    pub coverage: Vec<f64>,
+    /// MODIS / calibrated VIIRS delivered data on at least `meta.complete_min` of the month's
+    /// days (for the seam).
     pub modis_full: Vec<bool>,
     pub viirs_full: Vec<bool>,
     /// The error model and the conformal table produced the bounds.
@@ -409,6 +424,36 @@ fn month_q(meta: &Meta, parts: &[(i32, f64)], h: f64) -> [f64; 2] {
     [acc[0] / h, acc[1] / h]
 }
 
+/// Variance floor of a month: the variance at the level `LOG_SHIFT` of the area's typical group,
+/// i.e. the activity-weighted mean over the area's stratum × dn groups (record totals) of each
+/// group's variance law under this month's plan. The variance law gives `Var(0) = 0`, which would
+/// collapse the interval of a zero month to 0–0; with the floor a zero month keeps an upper bound
+/// (an observed zero is compatible with a small latent activity). It matters only below a few
+/// cell-days. An area without any activity in the record falls back to Poisson (`Var = LOG_SHIFT`).
+/// `harmonize.py` applies the same floor to the conformal scores.
+fn var_floor(meta: &Meta, pl: &Plan, params: &[StratumMeta], act: &[f64]) -> f64 {
+    if !pl.covered() {
+        return 0.0;
+    }
+    let total: f64 = act.iter().filter(|a| a.is_finite() && **a > 0.0).sum();
+    if total <= 0.0 {
+        return LOG_SHIFT;
+    }
+    let mut acc = 0.0;
+    for (k, &a) in act.iter().enumerate() {
+        if !(a.is_finite() && a > 0.0) {
+            continue;
+        }
+        acc += a * estimate(meta, pl, &params[k / 2], k % 2, LOG_SHIFT, LOG_SHIFT).var;
+    }
+    let f = acc / total;
+    if f.is_finite() {
+        f.max(0.0)
+    } else {
+        0.0
+    }
+}
+
 /// One pass over the stored rows: monthly totals for the `dn` filter, the harmonized series for
 /// `mode` (`switch_m` in switch mode) and its bounds per month.
 pub fn aggregate(meta: &Meta, store: &Store, dn: Dn, mode: Mode, switch_m: i32) -> Monthly {
@@ -473,11 +518,19 @@ pub fn aggregate(meta: &Meta, store: &Store, dn: Dn, mode: Mode, switch_m: i32) 
         madj: Vec::with_capacity(n),
         provisional: Vec::with_capacity(n),
         partial: Vec::with_capacity(n),
+        coverage: Vec::with_capacity(n),
         modis_full: Vec::with_capacity(n),
         viirs_full: Vec::with_capacity(n),
         conformal: model && meta.conformal.is_some(),
         fused: model && mode == Mode::Fused,
     };
+    // Activity of each group over the whole record: weights of the variance floor.
+    let mut act = vec![0f64; ns * 2];
+    for i in 0..n {
+        for (k, g) in groups[i * ns * 2..(i + 1) * ns * 2].iter().enumerate() {
+            act[k] += g.meq + g.kv;
+        }
+    }
     let mut parts: Vec<(i32, f64)> = Vec::with_capacity(ns * 2);
     for (i, &[meq, kv, v, nmod, nvii]) in tot.iter().enumerate() {
         let m = meta.m_first + i as i32;
@@ -511,6 +564,7 @@ pub fn aggregate(meta: &Meta, store: &Store, dn: Dn, mode: Mode, switch_m: i32) 
             if pl.covered() {
                 let q = month_q(meta, &parts, h);
                 let w = (h > 0.0).then(|| (wh / h).clamp(0.0, 1.0));
+                let var = var.max(var_floor(meta, &pl, &params, &act));
                 (Some(h), Some(bounds_shifted(h, var, q[0], q[1])), w, madj)
             } else {
                 (None, None, None, madj)
@@ -560,8 +614,9 @@ pub fn aggregate(meta: &Meta, store: &Store, dn: Dn, mode: Mode, switch_m: i32) 
         out.madj.push(meta.modis_ok(m).then_some(madj));
         out.provisional.push(meta.provisional(m));
         out.partial.push(pl.partial);
-        out.modis_full.push(meta.modis_full(m));
-        out.viirs_full.push(meta.viirs_full(m));
+        out.coverage.push(pl.coverage);
+        out.modis_full.push(meta.modis_ok(m) && meta.modis_days(m) >= meta.complete_min);
+        out.viirs_full.push(meta.viirs_ok(m) && meta.viirs_days(m) >= meta.complete_min);
     }
     out
 }
@@ -643,8 +698,9 @@ pub struct Series {
     pub naive: Vec<f64>,
     pub source: Vec<Source>,
     pub provisional: Vec<bool>,
-    /// The month has a value but its serving stream covers < 50 % of it (e.g. the month in
-    /// progress): drawn, but excluded from every statistic.
+    /// The month has a value but its serving stream(s) delivered data on fewer than
+    /// `meta.complete_min_coverage` (0.9) of its days (the month in progress, or an outage month):
+    /// drawn, but excluded from every statistic.
     pub partial: Vec<bool>,
     /// MODIS share of the harmonized value (0..1); null without a value or when it is 0.
     pub modis_weight: Vec<Option<f64>>,

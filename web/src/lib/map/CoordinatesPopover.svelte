@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { bboxPolygon, circlePolygon, type Aoi } from '../geo'
+  import { AOI_MSG_ANTIMERIDIAN, aoiProblem, bboxPolygon, circlePolygon, type Aoi } from '../geo'
+  import { circleLabel } from '../urlState'
 
   let { onsubmit, onclose }: { onsubmit: (aoi: Aoi) => void; onclose: () => void } = $props()
 
@@ -23,13 +24,19 @@
       if (!ok(lat, -85, 85)) return void (error = 'Latitude must be between −85 and 85.')
       if (!ok(lon, -180, 180)) return void (error = 'Longitude must be between −180 and 180.')
       if (!ok(km, 1, 2000)) return void (error = 'Radius must be between 1 and 2000 km.')
-      onsubmit({ rings: circlePolygon(lon, lat, km), shape: { kind: 'circle', lon, lat, km }, label: `${km} km around ${lat.toFixed(2)}°, ${lon.toFixed(2)}°` })
+      const aoi: Aoi = { rings: circlePolygon(lon, lat, km), shape: { kind: 'circle', lon, lat, km }, label: circleLabel(lon, lat, km) }
+      const why = aoiProblem(aoi)
+      if (why) return void (error = why)
+      onsubmit(aoi)
     } else {
       if (!ok(w, -180, 180) || !ok(e, -180, 180)) return void (error = 'West and east must be between −180 and 180.')
       if (!ok(s, -85, 85) || !ok(n, -85, 85)) return void (error = 'South and north must be between −85 and 85.')
-      if (!(e > w)) return void (error = 'East must be greater than west (boxes crossing the antimeridian are not supported).')
+      if (!(e > w)) return void (error = AOI_MSG_ANTIMERIDIAN)
       if (!(n > s)) return void (error = 'North must be greater than south.')
-      onsubmit({ rings: bboxPolygon(w, s, e, n), shape: { kind: 'bbox', w, s, e, n }, label: `Box ${w}°…${e}°, ${s}°…${n}°` })
+      const aoi: Aoi = { rings: bboxPolygon(w, s, e, n), shape: { kind: 'bbox', w, s, e, n }, label: `Box ${w}°…${e}°, ${s}°…${n}°` }
+      const why = aoiProblem(aoi)
+      if (why) return void (error = why)
+      onsubmit(aoi)
     }
   }
 </script>

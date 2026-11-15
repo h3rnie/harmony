@@ -39,4 +39,6 @@ ratio of sums absorbs and a row-level `v · exp(f)` model cannot. Standardisatio
 adds `by_biome`. `out_of_time.by_year[method]` = `{year, pred, obs, bias_pct, r_log1p_stratum_month}`
 for models fitted on 2012-02…2021-12 (production = the served k × r) applied to 2022–2025.
 `parity` = ONNX Runtime vs the training forward pass on 100 k held-out rows. `verdict` is generated
-from the table.
+from the table. `trained_on_build` = `{ meta_generated, data_through, snapshot_taken, calib_m_last, trained }`:
+the `meta.json` build the model was trained on (compare with the served `meta.json`). The `ml` stage takes a new
+snapshot whenever `data/work/cube.parquet` or the coefficients are newer than the old one.

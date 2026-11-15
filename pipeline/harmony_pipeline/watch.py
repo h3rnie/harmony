@@ -1,6 +1,7 @@
 """Watchlist: where is fire unusual this month? -> data/dist/watch.json (schema/watch.md).
 
-For the latest month whose served-stream coverage is >= COV_OK (and, separately, the three-month window ending
+For the latest month whose served stream delivered data on >= `complete_min_coverage` of its days (meta.json,
+config.COV_COMPLETE = 0.9; the month in progress is skipped) (and, separately, the three-month window ending
 there) every 0.5 deg cell is compared with the same calendar month(s) in the CLIM_BASELINE years of the harmonized
 record. Cells with meaningful activity that exceed the 90th baseline percentile and twice the baseline median are
 grouped into 8-connected clusters; clusters are ranked by excess activity (sum of value - baseline median) and the
@@ -24,11 +25,10 @@ import numpy as np
 from .build_tiles import META, TILES
 from .common import fresh, posix, timed, write_json
 from .config import CLIM_BASELINE, DIST, MONTH0_YEAR, WORK
-from .overview import CELL, H, REGIONS, W, cell_centres, load_grid, served_stream
+from .overview import CELL, H, REGIONS, W, cell_centres, complete_min, load_grid, served_days, served_stream
 
 OUT = DIST / "watch.json"
 HIST = WORK / "watch"
-COV_OK = 0.5
 MIN_CELL = 5.0            # AFCD-M per 0.5 deg cell in the month (window) for a cell to be considered
 MIN_PCT = 90.0            # cell must be at or above this empirical percentile of its baseline years
 MIN_RATIO = 2.0           # ... and at least this multiple of its baseline median
@@ -201,15 +201,17 @@ def dominant_strata(meta: dict, months: list[int]) -> np.ndarray:
     return out
 
 
-def window_series(grid: np.ndarray, m0: int, cov: np.ndarray, months: list[int]):
-    """Same calendar window in every year of the record: years, (n_years, H, W) sums, and which are complete."""
+def window_series(grid: np.ndarray, m0: int, cov: np.ndarray, months: list[int], lim: float):
+    """Same calendar window in every year of the record whose months all have served-stream day coverage
+    >= `lim`: years and (n_years, H, W) sums. Years with an incomplete month are left out of the baseline
+    and of the record ranks."""
     k0 = months[0] % 12
     span = len(months)
     last_year = MONTH0_YEAR + (m0 + len(grid)) // 12
     years, vals = [], []
     for y in range(MONTH0_YEAR, last_year + 1):
         ms = [(y - MONTH0_YEAR) * 12 + k0 + i for i in range(span)]
-        if ms[0] < m0 or ms[-1] >= m0 + len(grid) or any(cov[m] < COV_OK for m in ms):
+        if ms[0] < m0 or ms[-1] >= m0 + len(grid) or any(cov[m] < lim for m in ms):
             continue
         years.append(y)
         vals.append(grid[ms[0] - m0:ms[-1] - m0 + 1].sum(0))
@@ -222,11 +224,11 @@ def month_iso(m: int) -> str:
 
 def analyse(grid: np.ndarray, meta: dict, months: list[int], strata: np.ndarray) -> dict:
     m0 = meta["m_first"]
-    _, cov = served_stream(meta)
-    years, series = window_series(grid, m0, cov, months)
+    cov, lim = served_days(meta), complete_min(meta)
+    years, series = window_series(grid, m0, cov, months, lim)
     target_year = MONTH0_YEAR + months[0] // 12
     if target_year not in years:
-        raise SystemExit(f"[watch] {month_iso(months[-1])}: window not covered (coverage < {COV_OK})")
+        raise SystemExit(f"[watch] {month_iso(months[-1])}: window not complete (day coverage < {lim})")
     it = int(np.nonzero(years == target_year)[0][0])
     x = series[it]
     bsel = (years >= CLIM_BASELINE[0]) & (years <= CLIM_BASELINE[1]) & (years != target_year)
@@ -305,8 +307,9 @@ def analyse(grid: np.ndarray, meta: dict, months: list[int], strata: np.ndarray)
 
 
 def latest_month(meta: dict, cov: np.ndarray) -> int:
-    m = meta["m_last"]
-    while m > meta["m_first"] and cov[m] < COV_OK:
+    """Latest month whose served-stream day coverage reaches complete_min_coverage (skips the month in progress)."""
+    m, lim = meta["m_last"], complete_min(meta)
+    while m > meta["m_first"] and cov[m] < lim:
         m -= 1
     return m
 
@@ -317,7 +320,7 @@ def main(force: bool = False, month: str | None = None) -> None:
         print("[watch] up to date")
         return
     meta = json.loads(META.read_text())
-    _, cov = served_stream(meta)
+    cov = served_days(meta)
     if month:
         y, mo = (int(v) for v in month.split("-"))
         m = (y - MONTH0_YEAR) * 12 + mo - 1
@@ -338,7 +341,9 @@ def main(force: bool = False, month: str | None = None) -> None:
             "method": {
                 "grid": "0.5 deg cells (L1 tiles summed 2 x 2)",
                 "baseline": list(CLIM_BASELINE), "baseline_note": "same calendar month(s); the target year is excluded",
-                "coverage_min": COV_OK,
+                "coverage_min": complete_min(meta),
+                "coverage_rule": "target and baseline months need served-stream day coverage >= coverage_min "
+                                 "(meta.json complete_min_coverage); the month in progress is never a target",
                 "cell_min_afcd": MIN_CELL, "cell_min_percentile": MIN_PCT, "cell_min_ratio": MIN_RATIO,
                 "median_floor_afcd": MEDIAN_FLOOR,
                 "clustering": "8-connected cells, longitude wraps", "score": "sum over cells of (value - baseline median)",

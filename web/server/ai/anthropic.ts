@@ -1,4 +1,4 @@
-// Anthropic adapter (official SDK). Request shape, per the claude-api skill:
+// Anthropic adapter (official SDK). Request shape:
 //  - system = two text blocks, each with a cache breakpoint: [rules][area dossier]; the conversation / task is in
 //    `messages`, after the last breakpoint, so only the variable tail is ever uncached.
 //  - effort goes in output_config.effort; thinking is left at the model default (adaptive on Claude 5.x).

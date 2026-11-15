@@ -56,10 +56,15 @@ Parquet v1, ZSTD, sorted by (cell, stratum, m, dn). A row exists only if some va
   "default_switch_m": 276,                // 2023-01
   "fit_window_m": [145, 263],
   "months": {                             // arrays indexed by m, length m_last + 1
-    "cov_modis": [..], "cov_viirs": [..], // fraction of days with data (values already scaled by 1/cov)
+    "cov_modis": [..], "cov_viirs": [..], // overpass coverage: cov_modis = (f_terra + f_aqua)/2 (Terra alone
+                                          // before Aqua), cov_viirs = fraction of days with >= 1 VIIRS satellite
     "provisional": [..],                  // 1 if the month contains NRT (no `type`) rows
-    "viirs_sats": [..]                    // bitmask 1 S-NPP, 2 NOAA-20, 4 NOAA-21
+    "viirs_sats": [..],                   // bitmask 1 S-NPP, 2 NOAA-20, 4 NOAA-21
+    "days_modis": [..], "days_viirs": [..] // (2026-11 review) fraction of days with >= 1 MODIS / VIIRS satellite
   },
+  "complete_min_coverage": 0.9,           // (2026-11 review) a month enters statistics only when its serving
+                                          // stream(s) delivered data on >= this fraction of its days (days_*);
+                                          // pipeline config.COV_COMPLETE, read by the kernel, the app and watch.py
   "strata": [{ "id": 0, "biome": 7, "realm": "NT", "name": "Tropical & subtropical grasslands · Neotropic",
                "relvar": [day, night],          // Var(k)/k^2 of the VIIRS->MODIS factor (year jackknife)
                "alpha": [day, night],           // NB dispersion: var = mu + alpha mu^2 at L0 cell-month
@@ -101,6 +106,21 @@ schema is unchanged.
 `months.viirs_sats` (bitmask 1 S-NPP, 2 NOAA-20, 4 NOAA-21) selects the VIIRS error row: number of set bits,
 clamped to 1..3. `biome` of a stratum comes from `strata[].biome`.
 
+The tiles' `meq` from 2002-07 is `m_ta` divided by a union-aware coverage per day|night,
+`1 - (1 - f_aqua)(1 - t_dn) - (1 - f_terra)(1 - a_dn)` with `t_dn`, `a_dn` the shares of Terra∪Aqua cell-days seen by
+Terra and by Aqua (`validation.json` `modis_union_share`), capped at x2 and applied where `cov_modis >= 0.5`
+(docs/METHOD.md section 4). `cov_modis` in `meta.json` stays the overpass coverage used for the 0.5 rules.
+
+## Completeness (2026-11 review)
+A month drives statistics only when the stream(s) serving it delivered data on at least `complete_min_coverage`
+(0.9) of its days: `days_modis` for MODIS (Terra or Aqua available), `days_viirs` for VIIRS; in fused mode the
+larger of the used streams. Below it the month is *partial*: drawn (`Series.harmonized`, `Calendar.value`) and
+flagged (`Series.partial`, `Calendar.partial`), but excluded from every baseline, ratio, percentile, level, rank,
+annual total, YTD, record, analog, outlook origin, trend and the seam. When the last month of the record is partial
+the analysis carries `inProgress { m, coverage, daysCovered, daysInMonth }`. Without `days_*` arrays the kernel uses
+`cov_*`; without `complete_min_coverage` it uses 0.9. In the 2026-11-15 build the partial months are 2001-06
+(Terra-only, 15 of 30 days), 2002-03 (Terra-only, 0.71) and 2026-11 (in progress, 15 of 30 days).
+
 ## Series formula (kernel)
 Groups `g` = stratum × dn present in the AOI. Per month and group: `M_g = Σ w_i meq_i`, `V_g = Σ w_i kv_i` (AFCD).
 - **MODIS stream**: bridge parameters before `aqua_start_m`, `modis` after. Drift (fused mode only), for months
@@ -121,6 +141,9 @@ Groups `g` = stratum × dn present in the AOI. Per month and group: `M_g = Σ w_
   `= Σ w_g H_g / Σ H_g` (null when `H = 0` or no MODIS).
 - **Switch mode**: the legacy stream choice at `switchM` (no drift correction), `Var` = that stream's variance.
 - **Bounds** for every covered month, on a shifted log (c = 0.5 AFCD, so a zero can be covered):
+  `Var ← max(Var, Var_floor)` with `Var_floor` = the activity-weighted mean (record totals of `meq + kv` per group)
+  of the groups' variance laws evaluated at `μ = c` under the month's plan (Poisson `c` when the area has no activity
+  at all), so a zero month keeps an upper bound (the law alone gives `Var(0) = 0`, a 0-0 interval);
   `σ = sqrt(Var) / (H + 0.5)`, size class from `H` (MODIS units), `q = Σ_g H_g q[group(g)][class] / H` (global row
   when `H = 0`; an invalid entry falls back to the global row, then to `z · ci_scale`),
   `lo = max(0, (H + 0.5) · exp(−q σ) − 0.5)`, `hi = (H + 0.5) · exp(+q σ) − 0.5`; q80 for the 80 %, q95 for the 95 %
@@ -137,12 +160,27 @@ Groups `g` = stratum × dn present in the AOI. Per month and group: `M_g = Σ w_
   stratum parameters and drift factor (`mode` there already means harmonized | ratio). The overview atlases use the
   switch rule.
 - **Lens** (`unit: "viirs"`): every MODIS-equivalent value of month m (fused value, bounds, modisEq, viirsCal,
-  modisAdj and all statistics computed from them) is divided by `f_k = Σ kv / Σ v` of calendar month `k` over the AOI's
-  `fit_window_m` months (fallback: all fit-window months, then all months with `v > 0`, else 1;
-  `harmonization.lensFallback` is true if any calendar month used a fallback).
+  modisAdj, calendar values, climatology, annual totals, YTD curves, current value/median/bounds, outlook levels,
+  record values, analog rest totals; trend slopes keep their relative size) is divided by `f_k = Σ kv / Σ v` of
+  calendar month `k` over the AOI's `fit_window_m` months (fallback: all fit-window months, then all months with
+  `v > 0`, else 1; `harmonization.lensFallback` is true if any calendar month used a fallback). Season, peak month,
+  percentiles, ratios, z, ranks, levels, analogs (choice, distance, ratios, skill), trend direction, p and tau, the
+  outlook method and skill, the seam and `activity` are computed on the MODIS-equivalent record and do not change
+  with the lens (2026-11 review; before, they were computed on the lensed record, so the season could shift).
+- **Levels** (`current.level`): a label needs both rank and size, checked in this order: `extreme` percentile >= 97.5
+  and ratio >= 2; `well-above` >= 90 and >= 1.5; `above` >= 75 and >= 1.2; `well-below` <= 10 and <= 1/1.5; `below`
+  <= 25 and <= 1/1.2; otherwise `normal`; `undefined` when there is no baseline or the baseline median is below
+  1 AFCD-M. A ratio (`current.ratio`, `calendar.ratio`, `records.topMonths.ratio`) is null when that median is below
+  1 AFCD-M.
+- **Activity and sparse areas** (`activity`): `meanAnnual` = sum of the 12 calendar-month baseline means (AFCD-M).
+  `sparse` when `meanAnnual < 10`, or fewer than 24 baseline months have any activity, or the complete MODIS-only
+  years average < 1 AFCD-M a year while the complete VIIRS years average < 20. Sparse: `trend.direction = "none"`,
+  `trend.suppressed = true`, `season.defined = false`, no `analogs`, outlook method `climatology` with skill 0.
 - **Analysis additions** (optional): `harmonization { mode, unit, intervals: 'conformal' | 'legacy', lensFactor,
   lensFallback }` (`mode` is the effective mode: 'switch' when meta has no error model) and `analogs`
-  (`web/src/lib/kernel/types.ts`, docs/METHOD.md section 17).
+  (`web/src/lib/kernel/types.ts`, docs/METHOD.md section 17). 2026-11 review: `activity { meanAnnual, sparse, reason?,
+  nonzeroMonths, baselineMonths, modisEraMean, viirsEraMean }`, `inProgress { m, coverage, daysCovered, daysInMonth }`,
+  `trend.suppressed`, `season.defined`, `calendar.partial`, and the level value `undefined`.
 
 ## Interval formula (legacy kernel, used when the fields above are absent)
 For one month and AOI weights `w_i`, VIIRS-derived value `H = Σ w_i kv_i`:
@@ -169,7 +207,7 @@ so row-group min/max statistics prune by area (latitude/longitude) and by date (
 | brightness, bright_2 | FLOAT | MODIS ch21/22 + ch31; VIIRS I4 + I5 |
 | scan, track | FLOAT | km |
 | version | VARCHAR | |
-| used | BOOLEAN | passed the harmonization filters (confidence, type 0, not static-masked) |
+| used | BOOLEAN | passed the harmonization filters (confidence, type 0, not static-masked, and the land and burst screen: a row without `type` in a water cell, or a suspect row of a near-real-time burst day, is not used; docs/METHOD.md section 2) |
 
 `points/index.json`: `{ "px_py": { "2023": [bytes, rows], … }, … }`.
 
@@ -184,7 +222,7 @@ overview/pulse/{year}.png    2880 x 1080 atlas, 4 cols x 3 rows of months (Jan t
 overview/clim.png            same layout: per-cell median over 2003–2022 of each calendar month (zeros included)
 overview/land.png            1440 x 720 land fraction x 255 (RESOLVE Ecoregions 2017, 2 x 2 supersampled)
 overview/season.png          720 x 2520: 7 layers of 720 x 360 stacked vertically (fire clock)
-overview/trend.png           720 x 1800: 5 layers of 720 x 360 stacked vertically (trend 2001–2025)
+overview/trend.png           720 x 1800: 5 layers of 720 x 360 stacked vertically (trend over the complete years of 2001–2025; 2003–2025 in the 2026-11-15 build)
 ```
 - Each month is a 720 x 360 equirectangular image: row 0 = 90 N, column 0 = 180 W, 0.5 deg cells
   (`x = floor((lon + 180) / 0.5)`, `y = floor((90 - lat) / 0.5)`). Months outside `m_first..m_last` are all zero.
@@ -248,5 +286,6 @@ sums, % of the window's baseline mean per year):
 }
 ```
 Version 3 adds `season` and `trend`; readers accept version 2 (without them). A year is complete for the trend when
-every month's coverage of the served stream (`meq` before the switch, `kv` after, with the kernel's fallback) is >= 0.5.
+every month's day coverage of the served stream (`days_modis` before the switch, `days_viirs` after, with the kernel's
+fallback) is >= `complete_min_coverage` (0.9); before the 2026-11 review the rule was overpass coverage >= 0.5.
 The watchlist (`data/dist/watch.json`) is described in `schema/watch.md`.

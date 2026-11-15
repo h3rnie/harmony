@@ -4,9 +4,8 @@
   import { session } from '../session.svelte'
   import { themeState } from '../theme.svelte'
   import { activityDomain, activityInverse, activityT, divColor, inkOn, percentileT, rangeHalfPct, ratioT, seqColor, uncertaintyClass, vsupColor, UNC_WORD, type UncClass } from '../color'
-  import { MONTHS_LONG, MONTHS_SHORT, fmtCell, fmtNum, fmtRatio, ordinal, toM } from '../format'
-  import { monthStats, seriesIndex, SOURCE_LABEL, SOURCE_SHORT } from '../analysisUtil'
-  import type { SourceCode } from '../kernel/types'
+  import { MONTHS_LONG, MONTHS_SHORT, fmtCell, fmtNum, fmtRatio, ordinal, toM, yearOf } from '../format'
+  import { inProgressDays, inProgressOf, isSparse, monthSource, monthStats, seriesIndex, viirsMark, type MonthSource } from '../analysisUtil'
   import type { CalMode } from '../urlState'
   import type { Snippet } from 'svelte'
   import AnalysisSettings from './AnalysisSettings.svelte'
@@ -34,8 +33,12 @@
     { v: 'percentile', label: 'Rank among years' },
     { v: 'uncertainty', label: 'Activity with confidence' },
   ]
+  const sparse = $derived(isSparse(a))
+  const ip = $derived(inProgressOf(a))
+  const ipDays = $derived(ip ? inProgressDays(ip, session.meta) : null)
   const lead = $derived.by(() => {
     const se = a.season
+    if (sparse) return 'Too little fire here to describe a season: the calendar shows what was detected, without ranks.'
     const top = a.records.topYears[0]
     const when = se.lengthMonths >= 12
       ? `Fires occur all year here, most in ${MONTHS_LONG[se.peakMonth - 1]}.`
@@ -54,15 +57,25 @@
   const mode = $derived(session.calMode)
   const modeLabel = $derived(MODES.find((x) => x.v === mode)?.label ?? mode)
   const theme = $derived(themeState.theme)
-  // Rows: latest year on top.
-  const rows = $derived(a.calendar.years.map((y, i) => ({ y, i })).reverse())
+  // Rows: latest year on top, limited to "Years shown" (the kernel's statistics still use the whole record).
+  const shownYears = $derived.by<[number, number]>(() => {
+    const r = session.options.range
+    return [yearOf(r[0]), yearOf(r[1])]
+  })
+  const rows = $derived(
+    a.calendar.years.map((y, i) => ({ y, i })).filter(({ y }) => y >= shownYears[0] && y <= shownYears[1]).reverse(),
+  )
   const dom = $derived(activityDomain([...a.calendar.value.flat(), ...a.climatology.median]))
   const maxTotal = $derived(Math.max(1, ...a.annual.total.map((t) => t ?? 0)))
+  const switchMode = $derived((a.harmonization?.mode ?? 'switch') === 'switch')
   const switchYear = $derived(Math.floor(session.effectiveSwitchM / 12) + 2000)
   const focusM = $derived(session.focus)
 
   type Cell = {
-    m: number; v: number | null; fill: string; ink: string; label: string; src: SourceCode; prov: boolean; partial: boolean; empty: boolean
+    m: number; v: number | null; fill: string; ink: string; label: string; src: MonthSource; vmark: boolean; prov: boolean; partial: boolean
+    /** The month in progress: hatched, labelled, never compared with normal or ranked. */
+    ip: boolean
+    empty: boolean
     lo: number | null; hi: number | null; u: UncClass
   }
 
@@ -83,17 +96,23 @@
   const grid = $derived<Cell[][]>(
     rows.map(({ y, i }) =>
       Array.from({ length: 12 }, (_, c) => {
-        const v = a.calendar.value[i][c], ratio = a.calendar.ratio[i][c], pct = a.calendar.percentile[i][c]
         const m = toM(y, c + 1)
+        const inProg = ip?.m === m && a.calendar.value[i][c] != null
+        // No ratio or percentile is shown for the month in progress, nor percentiles where fire is too sparse to rank.
+        const v = a.calendar.value[i][c]
+        const ratio = inProg ? null : a.calendar.ratio[i][c]
+        const pct = inProg || sparse ? null : a.calendar.percentile[i][c]
         const si = seriesIndex(a, m)
         const prov = si >= 0 ? a.series.provisional[si] : false
-        const partial = si >= 0 && v != null ? (a.series.partial?.[si] ?? false) : false
+        const partial = inProg || (si >= 0 && v != null ? (a.series.partial?.[si] ?? false) : false)
         const lo = si >= 0 ? (a.series.lo80?.[si] ?? null) : null, hi = si >= 0 ? (a.series.hi80?.[si] ?? null) : null
         const u = uncertaintyClass(lo, hi, prov, partial)
-        const fill = colorFor(v, ratio, pct, u)
+        const fill = inProg && mode !== 'activity' && mode !== 'uncertainty' ? (v == null ? null : divColor(0, theme)) : colorFor(v, ratio, pct, u)
+        const src = monthSource(a, si)
         return {
-          m, v, fill: fill ?? 'transparent', ink: fill ? inkOn(fill) : 'var(--ink-3)', label: labelFor(v, ratio, pct),
-          src: (si >= 0 ? a.series.source[si] : 0) as SourceCode, prov, partial, empty: v == null, lo, hi, u,
+          m, v, fill: fill ?? 'transparent', ink: fill ? inkOn(fill) : 'var(--ink-3)',
+          label: inProg && mode !== 'activity' && mode !== 'uncertainty' ? '' : labelFor(v, ratio, pct),
+          src, vmark: viirsMark(src), prov, partial, ip: inProg, empty: v == null, lo, hi, u,
         }
       }),
     ),
@@ -111,16 +130,19 @@
     if (cell.empty) return `${name}: outside the record`
     const s = monthStats(a, cell.m)
     if (!s) return name
+    if (cell.ip) {
+      return `${name}: in progress${ipDays != null ? `, first ${ipDays} days` : ''}, ${fmtNum(s.value)} ${session.unitLabel} so far; not compared with normal or ranked until complete; ${cell.src.label}`
+    }
     const parts = [`${name}: ${fmtNum(s.value)} ${session.unitLabel}`]
     if (mode === 'uncertainty') {
       parts.push(cell.lo != null && cell.hi != null ? `likely range ${fmtNum(cell.lo)} to ${fmtNum(cell.hi)}` : 'no modelled range')
       parts.push(`${UNC_WORD[cell.u]} confidence`)
     }
-    if (s.ratio != null) parts.push(`${fmtRatio(s.ratio)} the normal`)
-    if (s.percentile != null) parts.push(`${ordinal(Math.round(s.percentile))} percentile`)
-    parts.push(SOURCE_LABEL[cell.src])
+    if (s.ratio != null && !sparse) parts.push(`${fmtRatio(s.ratio)} the normal`)
+    if (s.percentile != null && !sparse) parts.push(`${ordinal(Math.round(s.percentile))} percentile`)
+    parts.push(cell.src.label)
     if (cell.prov) parts.push('provisional')
-    if (cell.partial) parts.push('partial month, still in progress')
+    if (cell.partial) parts.push('partial month')
     return parts.join(', ')
   }
 
@@ -170,6 +192,15 @@
     const r = rows.findIndex((row) => row.y === Math.floor(f / 12) + 2000)
     if (r >= 0) { activeR = r; activeC = f % 12 }
   })
+
+  const markYears = (pred: (c: Cell) => boolean) => {
+    const ys = grid.flatMap((row, r) => (row.some((c) => !c.empty && pred(c)) ? [rows[r].y] : []))
+    return ys.length ? [Math.min(...ys), Math.max(...ys)] : null
+  }
+  const terraYears = $derived(markYears((c) => c.src.era === 'terra'))
+  const viirsYears = $derived(markYears((c) => c.vmark))
+  const fusedYears = $derived(markYears((c) => c.src.era === 'fused'))
+  const span = (r: number[] | null) => (r ? (r[0] === r[1] ? String(r[0]) : `${r[0]}–${r[1]}`) : '')
 
   const tipStats = $derived(tip ? monthStats(a, grid[tip.r]?.[tip.c]?.m ?? -1) : null)
   const tipCell = $derived(tip ? grid[tip.r]?.[tip.c] : null)
@@ -228,7 +259,7 @@
             {@const total = ai >= 0 ? a.annual.total[ai] : null}
             {@const complete = ai >= 0 ? a.annual.complete[ai] : false}
             {@const rank = ai >= 0 ? a.annual.rank[ai] : null}
-            <div class="row" role="row" class:switch={row.y === switchYear} style:--d={`${r * 14}ms`}>
+            <div class="row" role="row" class:switch={switchMode && row.y === switchYear} style:--d={`${r * 14}ms`}>
               <span class="yl num" role="rowheader">{row.y}</span>
               {#each grid[r] as cell, c (c)}
                 <!-- keyboard is handled on the grid (roving tabindex) -->
@@ -237,6 +268,7 @@
                   class="cal-cell"
                   class:empty={cell.empty}
                   class:prov={cell.prov || cell.partial}
+                  class:ip={cell.ip}
                   class:u1={mode === 'uncertainty' && !cell.empty && cell.u === 1}
                   class:u2={mode === 'uncertainty' && !cell.empty && cell.u === 2}
                   class:u3={mode === 'uncertainty' && !cell.empty && cell.u === 3}
@@ -256,16 +288,16 @@
                   onfocus={(e) => { activeR = r; activeC = c; showTip(r, c, e.currentTarget) }}
                   onblur={() => (tip = null)}
                 >
-                  {#if cell.src === 1 && !cell.empty}<span class="mk terra" aria-hidden="true"></span>{/if}
-                  {#if cell.src === 3 && !cell.empty}<span class="mk viirs" aria-hidden="true"></span>{/if}
+                  {#if cell.src.era === 'terra' && !cell.empty}<span class="mk terra" aria-hidden="true"></span>{/if}
+                  {#if cell.vmark && !cell.empty}<span class="mk viirs" aria-hidden="true"></span>{/if}
                   {#if showNumbers && !cell.empty}<span class="n num" aria-hidden="true">{cell.label}</span>{/if}
                 </div>
               {/each}
-              <span class="ann" role="gridcell" aria-label={total == null ? `${row.y}: no data` : `${row.y} total ${fmtNum(total)} ${session.unitLabel}${complete ? (rank ? `, rank ${rank}` : '') : ', incomplete year'}`}>
+              <span class="ann" role="gridcell" aria-label={total == null ? `${row.y}: no data` : `${row.y} total ${fmtNum(total)} ${session.unitLabel}${complete ? (rank && !sparse ? `, rank ${rank}` : '') : ', incomplete year'}`}>
                 {#if total != null}
                   <span class="bar" class:partial={!complete} style:width={`${(72 * total) / maxTotal}%`}></span>
-                  {#if complete && rank != null && rank <= 3}<span class="rk num" aria-hidden="true">#{rank}</span>{/if}
-                  {#if !complete}<span class="rk partial-l" aria-hidden="true">partial</span>{/if}
+                  {#if complete && !sparse && rank != null && rank <= 3}<span class="rk num" aria-hidden="true">#{rank}</span>{/if}
+                  {#if !complete}<span class="rk partial-l" aria-hidden="true">{ip && yearOf(ip.m) === row.y ? 'in progress' : 'partial'}</span>{/if}
                 {/if}
               </span>
             </div>
@@ -285,17 +317,29 @@
 
       {#if tip && tipStats && tipCell && !tipCell.empty}
         <div class="tip" class:below={tip.below} style:left={`${tip.x}px`} style:top={`${tip.y}px`} role="tooltip">
-          <p class="tt">{MONTHS_LONG[tipStats.month - 1]} {tipStats.year}{tipCell.partial ? ' · partial month' : tipStats.provisional ? ' · provisional' : ''}</p>
+          <p class="tt">{MONTHS_LONG[tipStats.month - 1]} {tipStats.year}{tipCell.ip ? ' · in progress' : tipCell.partial ? ' · partial month' : tipStats.provisional ? ' · provisional' : ''}</p>
+          {#if tipCell.ip}
+          <dl>
+            <dt>So far</dt><dd class="num">{fmtNum(tipStats.value)} {session.unitLabel}</dd>
+            {#if ipDays != null}<dt>Days observed</dt><dd class="num">{ipDays}</dd>{/if}
+            <dt>Source</dt><dd>{tipCell.src.label}</dd>
+          </dl>
+          <p class="tnote">Compared with normal and ranked once the month is complete.</p>
+          {:else}
           <dl>
             <dt>Activity</dt><dd class="num">{fmtNum(tipStats.value)} {session.unitLabel}</dd>
-            {#if tipStats.lo80 != null && tipStats.hi80 != null}<dt>Likely range</dt><dd class="num">{fmtNum(tipStats.lo80)} – {fmtNum(tipStats.hi80)}</dd>{/if}
+            {#if tipStats.value === 0 && !tipStats.hi80}<dt>Likely range</dt><dd>no detections</dd>
+            {:else if tipStats.lo80 != null && tipStats.hi80 != null}<dt>Likely range</dt><dd class="num">{fmtNum(tipStats.lo80)} – {fmtNum(tipStats.hi80)}</dd>{/if}
             {#if mode === 'uncertainty'}<dt>Confidence</dt><dd>{UNC_WORD[tipCell.u]}{tipCell.lo != null && tipCell.hi != null ? ` (${rangeHalfPct(tipCell.lo, tipCell.hi)})` : ''}</dd>{/if}
-            <dt>Normal</dt><dd class="num">{fmtNum(tipStats.median)}</dd>
-            <dt>vs normal</dt><dd class="num">{fmtRatio(tipStats.ratio)}</dd>
-            <dt>Percentile</dt><dd class="num">{tipStats.percentile == null ? '—' : ordinal(Math.round(tipStats.percentile))}</dd>
-            {#if tipStats.rank != null}<dt>Rank</dt><dd class="num">{ordinal(tipStats.rank)} of {tipStats.of}</dd>{/if}
-            <dt>Source</dt><dd>{SOURCE_LABEL[tipCell.src]}</dd>
+            {#if !sparse}
+              <dt>Normal</dt><dd class="num">{fmtNum(tipStats.median)}</dd>
+              <dt>vs normal</dt><dd class="num">{tipStats.ratio == null ? '—' : fmtRatio(tipStats.ratio)}</dd>
+              <dt>Percentile</dt><dd class="num">{tipStats.percentile == null ? '—' : ordinal(Math.round(tipStats.percentile))}</dd>
+              {#if tipStats.rank != null}<dt>Rank</dt><dd class="num">{ordinal(tipStats.rank)} of {tipStats.of}</dd>{/if}
+            {/if}
+            <dt>Source</dt><dd>{tipCell.src.label}</dd>
           </dl>
+          {/if}
         </div>
       {/if}
     </div>
@@ -326,17 +370,20 @@
         <ul class="keys">
           <li><span class="sw cur-sw"></span>Latest month</li>
           <li><span class="sw focus-sw"></span>Shown on the map</li>
-          <li><span class="sw prov-sw"></span><span><Term id="provisional">Provisional</Term> or partial month</span></li>
-          <li><span class="sw terra-sw"><span class="mk terra"></span></span>Terra-only years, bridged (2000–02)</li>
-          <li><span class="sw viirs-sw"><span class="mk viirs"></span></span>Calibrated VIIRS (from {switchYear})</li>
+          <li><span class="sw prov-sw"></span><span><Term id="provisional">Provisional</Term>, partial or in-progress month{ip ? ` (${MONTHS_SHORT[ip.m % 12]} ${yearOf(ip.m)} is in progress)` : ''}</span></li>
+          {#if terraYears}<li><span class="sw terra-sw"><span class="mk terra"></span></span>Terra only, bridged ({span(terraYears)})</li>{/if}
+          {#if viirsYears}<li><span class="sw viirs-sw"><span class="mk viirs"></span></span>{switchMode ? `VIIRS only, calibrated (${span(viirsYears)})` : `VIIRS carries most of the value (${span(viirsYears)})`}</li>{/if}
         </ul>
-        <p>Era marks never change the colours: every cell is in the same <Term id="modiseq">MODIS-equivalent</Term> unit.</p>
+        {#if !switchMode && fusedYears}
+          <p>Unmarked cells from {fusedYears[0]} fuse MODIS and VIIRS, weighted by how reliable each is there; the tooltip gives each month’s MODIS share.</p>
+        {/if}
+        <p>Source marks never change the colours: every cell is in the same <Term id="modiseq">MODIS-equivalent</Term> unit.</p>
       </div>
     </details>
   {:else if mode === 'uncertainty'}
     <div class="table-wrap">
       <table class="cal-table long">
-        <caption class="small muted"><button class="btn back" onclick={() => (showTable = false)}>View as calendar</button> Harmonized activity by month ({session.unitLabel}) with the likely range (80 %) and confidence, newest first; * provisional</caption>
+        <caption class="small muted"><button class="btn back" onclick={() => (showTable = false)}>View as calendar</button> Harmonized activity by month ({session.unitLabel}) with the likely range (80 %) and confidence, newest first; * provisional{ip ? '; † in progress' : ''}</caption>
         <thead>
           <tr><th scope="col">Month</th><th scope="col">Activity</th><th scope="col">Likely range, low</th><th scope="col">Likely range, high</th><th scope="col">Confidence</th><th scope="col">Source</th></tr>
         </thead>
@@ -345,12 +392,12 @@
             {#each [...rowCells].reverse() as cell (cell.m)}
               {#if !cell.empty}
                 <tr>
-                  <th scope="row" class="num">{MONTHS_SHORT[cell.m % 12]} {rows[r].y}{cell.prov ? '*' : ''}</th>
+                  <th scope="row" class="num">{MONTHS_SHORT[cell.m % 12]} {rows[r].y}{cell.ip ? '†' : cell.prov ? '*' : ''}</th>
                   <td class="num">{fmtNum(cell.v)}</td>
                   <td class="num">{cell.lo == null ? '—' : fmtNum(cell.lo)}</td>
                   <td class="num">{cell.hi == null ? '—' : fmtNum(cell.hi)}</td>
-                  <td class="conf">{UNC_WORD[cell.u]}{cell.partial ? ' (partial month)' : ''}</td>
-                  <td class="conf">{SOURCE_SHORT[cell.src]}</td>
+                  <td class="conf">{UNC_WORD[cell.u]}{cell.ip ? ' (in progress)' : cell.partial ? ' (partial month)' : ''}</td>
+                  <td class="conf">{cell.src.short}</td>
                 </tr>
               {/if}
             {/each}
@@ -361,7 +408,7 @@
   {:else}
     <div class="table-wrap">
       <table class="cal-table">
-        <caption class="small muted"><button class="btn back" onclick={() => (showTable = false)}>View as calendar</button> Harmonized activity by month ({mode === 'activity' ? session.unitLabel : mode === 'anomaly' ? 'ratio to median' : 'percentile'}); * provisional</caption>
+        <caption class="small muted"><button class="btn back" onclick={() => (showTable = false)}>View as calendar</button> Harmonized activity by month ({mode === 'activity' ? session.unitLabel : mode === 'anomaly' ? 'ratio to median' : 'percentile'}); * provisional{ip ? '; † in progress, not compared or ranked' : ''}</caption>
         <thead>
           <tr><th scope="col">Year</th>{#each MONTHS_SHORT as mo (mo)}<th scope="col">{mo}</th>{/each}<th scope="col">Total</th></tr>
         </thead>
@@ -371,7 +418,7 @@
             <tr>
               <th scope="row" class="num">{row.y}</th>
               {#each grid[r] as cell (cell.m)}
-                <td class="num">{cell.empty ? '' : mode === 'activity' ? fmtNum(cell.v) : cell.label}{cell.prov && !cell.empty ? '*' : ''}</td>
+                <td class="num">{cell.empty ? '' : mode === 'activity' || cell.ip ? fmtNum(cell.v) : cell.label}{cell.empty ? '' : cell.ip ? '†' : cell.prov ? '*' : ''}</td>
               {/each}
               <td class="num">{ai >= 0 ? fmtNum(a.annual.total[ai]) : ''}{ai >= 0 && !a.annual.complete[ai] ? ' (partial)' : ''}</td>
             </tr>
@@ -466,7 +513,12 @@
     .mh .full { display: none; }
     .mh .ini { display: inline; }
     .n { display: none; }
-    .row { grid-template-columns: 2.6em repeat(12, minmax(0, 1fr)) 34px; }
+    /* Touch: every month cell is at least 24 x 24 CSS px (WCAG 2.5.8): narrower labels, 1 px gaps, taller cells. */
+    .grid, .row { gap: 1px; }
+    .row { grid-template-columns: 30px repeat(12, minmax(0, 1fr)) 22px; }
+    .cal-cell, .nums .cal-cell { height: 24px; }
+    .yl { padding-right: 3px; }
+    .ann { padding-left: 3px; }
     .rk { display: none; }
     .ah { font-size: 0; }
   }
@@ -481,6 +533,7 @@
   .tip dl { display: grid; grid-template-columns: auto 1fr; gap: 1px 12px; margin: 0; }
   .tip dt { color: var(--ink-3); }
   .tip dd { margin: 0; text-align: right; }
+  .tnote { margin: 4px 0 0; color: var(--ink-3); max-width: 24ch; }
 
   .legend { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 14px 28px; align-items: flex-start; margin-top: 14px; }
   .ramp { width: min(300px, 100%); }

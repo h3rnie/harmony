@@ -1,10 +1,11 @@
 <script lang="ts">
+  import { setUrlHash } from '../urlState'
   // Landing-page watchlist: where fire is most unusual in the latest month, from data/dist/watch.json.
   // Absent or still loading: renders nothing, so the landing stays as calm as before.
   import { onMount } from 'svelte'
   import { session } from '../session.svelte'
   import { fmtArea, monthIso, monthLong, parseMonthIso } from '../format'
-  import { clusterAoi, outlineAreaKm2, watchDoc, watchItems, type WatchDoc } from '../data/watch'
+  import { clusterAoi, outlineAreaKm2, watchDoc, watchInProgress, watchItems, type WatchDoc } from '../data/watch'
 
   let doc = $state.raw<WatchDoc | null>(null)
   onMount(() => {
@@ -29,7 +30,7 @@
     if (m == null) return
     const q = new URLSearchParams(location.hash.slice(1))
     q.set('view', 'pulse'); q.set('t', monthIso(m)); q.set('mode', 'anomaly')
-    history.replaceState(null, '', `${location.pathname}${location.search}#${q.toString().replace(/%2C/g, ',')}`)
+    setUrlHash(`#${q.toString().replace(/%2C/g, ',')}`, 'push')
     dispatchEvent(new CustomEvent('harmony:open-pulse'))
   }
 </script>
@@ -38,7 +39,7 @@
   <section class="watch" aria-labelledby="watch-h">
     <div class="wh">
       <h3 id="watch-h">Where is fire unusual this month?</h3>
-      <p class="when">{monthLong(m)}{win?.provisional ? ' · provisional' : ''}</p>
+      <p class="when">{monthLong(m)}{watchInProgress(doc) ? ' · month in progress' : win?.provisional ? ' · provisional' : ''}</p>
     </div>
     <ol class="list">
       {#each items as it, i (it.c.id)}
@@ -56,7 +57,7 @@
     {/if}
     <p class="foot">
       <button class="link" onclick={globe}>See all on the globe <span aria-hidden="true">→</span></button>
-      <span class="cav">Opening one analyses the wider outline around it, so its ratio is lower. Ranked against {nYears} years{win?.provisional ? '; recent months are provisional and may include unscreened static heat sources' : ''}.</span>
+      <span class="cav">Opening one analyses the wider outline around it, so its ratio is lower. {watchInProgress(doc) ? `The month is in progress, so each is compared at its pace so far and not ranked` : `Ranked against ${nYears} years`}{win?.provisional ? '; recent months are provisional and may include unscreened static heat sources' : ''}.</span>
     </p>
   </section>
 {/if}

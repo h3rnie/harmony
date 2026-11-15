@@ -37,7 +37,17 @@ export interface Meta {
   levels: LevelMeta[]
   aqua_start_m: MonthIndex; viirs_start_m: MonthIndex; default_switch_m: MonthIndex
   fit_window_m: [MonthIndex, MonthIndex]
-  months: { cov_modis: number[]; cov_viirs: number[]; provisional: number[]; viirs_sats: number[] }
+  months: {
+    cov_modis: number[]; cov_viirs: number[]; provisional: number[]; viirs_sats: number[]
+    /** Fraction of the month's days with >= 1 MODIS / VIIRS satellite delivering data (2026-11 builds on; optional). */
+    days_modis?: number[]; days_viirs?: number[]
+  }
+  /**
+   * A month enters statistics only when its serving stream(s) delivered data on at least this fraction of its
+   * days (pipeline config.COV_COMPLETE; 0.9). Below it the month is drawn but flagged `partial` (in progress).
+   * Optional: absent in older builds (the kernel then uses 0.9).
+   */
+  complete_min_coverage?: number
   strata: StratumMeta[]
   /** Legacy interval inflation; used only when the error model / conformal table is absent. */
   ci_scale: number
@@ -101,10 +111,12 @@ export interface Series {
   source: SourceCode[]
   provisional: boolean[]
   /**
-   * The month has a value but the stream serving it covers < 50 % of it (typically the month in
-   * progress). Drawn, but never used in a statistic: `current`, YTD, ranks, records, annual totals,
-   * the seam and the outlook origin all stop at the latest complete-enough month. Optional for
-   * older kernels/mocks; absent = no partial months.
+   * The month has a value but the stream(s) serving it delivered data on fewer than
+   * `meta.complete_min_coverage` (0.9) of its days: the month in progress (see `Analysis.inProgress`) or an
+   * outage month (e.g. Terra-only 2001-06). Drawn, but never used in a statistic: `current`, YTD, ranks,
+   * ratios, levels, records, annual totals, the seam, analogs, the trend and the outlook origin all stop at the
+   * latest complete-enough month. Exports should carry this flag. Optional for older kernels/mocks; absent = no
+   * partial months.
    */
   partial?: boolean[]
   /**
@@ -118,11 +130,14 @@ export interface Series {
 
 export interface Calendar {
   years: number[]
-  /** [yearIdx][0..11]; null = month outside the record. */
+  /** [yearIdx][0..11]; null = month outside the record. Partial months keep their (drawn) value. */
   value: (number | null)[][]
-  ratio: (number | null)[][]               // value / baseline median of that calendar month
-  percentile: (number | null)[][]          // 0..100 among baseline years for that calendar month
-  z: (number | null)[][]                   // robust z = (x - median) / (1.4826 MAD)
+  /** value / baseline median of that calendar month; null for partial months and when the median is < 1 AFCD-M. */
+  ratio: (number | null)[][]
+  percentile: (number | null)[][]          // 0..100 among baseline years for that calendar month; null for partial months
+  z: (number | null)[][]                   // robust z = (x - median) / (1.4826 MAD); null for partial months
+  /** [yearIdx][0..11]: the month is partial (drawn, not ranked); the calendar export's partial flag. Optional. */
+  partial?: boolean[][]
 }
 
 export interface Climatology {
@@ -150,7 +165,12 @@ export interface Current {
   median: number; ratio: number | null; percentile: number | null; z: number | null
   rank: number; of: number                 // rank among all years for this calendar month
   provisional: boolean
-  /** normal | above | well-above | extreme | below | well-below — from the percentile. */
+  /**
+   * extreme | well-above | above | normal | below | well-below | undefined. A label needs both rank and size:
+   * extreme = percentile >= 97.5 and ratio >= 2; well-above >= 90 and >= 1.5; above >= 75 and >= 1.2;
+   * well-below <= 10 and <= 1/1.5; below <= 25 and <= 1/1.2; otherwise normal. 'undefined' (new) when there is
+   * no baseline or the baseline median is below 1 AFCD-M (then `ratio` is null too).
+   */
   level: string
 }
 
@@ -160,6 +180,8 @@ export interface Trend {
   lo: number; hi: number                   // 95 % CI of the Theil–Sen slope
   tau: number; pValue: number
   direction: 'up' | 'down' | 'none'
+  /** The area is sparse (`Analysis.activity.sparse`): direction is forced to 'none'; do not describe a trend. Optional. */
+  suppressed?: boolean
 }
 
 export interface Season {
@@ -169,6 +191,11 @@ export interface Season {
   concentration: number
   /** Second peak month if the regime is bimodal, else null. */
   secondPeak: number | null
+  /**
+   * A fire season can be described (activity in the profile and the area is not sparse). When false the other
+   * fields are placeholders: say "no regular fire season". Optional (absent in older kernels = true).
+   */
+  defined?: boolean
 }
 
 export interface Outlook {
@@ -239,6 +266,34 @@ export interface Harmonization {
   lensFallback: boolean
 }
 
+/** How much fire the area has; the sparse rule (docs/METHOD.md section 19). Always in AFCD-M (lens-independent). */
+export interface Activity {
+  /** Mean annual harmonized activity over the baseline years (sum of the 12 calendar-month means), AFCD-M. */
+  meanAnnual: number
+  /**
+   * True when meanAnnual < 10 AFCD-M, or fewer than 24 baseline months have any activity, or the complete
+   * MODIS-only years average < 1 AFCD-M a year while the VIIRS years average < 20 (ratio of eras undefined).
+   * Then trend.direction = 'none' (trend.suppressed), season.defined = false, no analogs, outlook = climatology
+   * with skill 0.
+   */
+  sparse: boolean
+  /** Why it is sparse (absent when not sparse). */
+  reason?: string
+  nonzeroMonths?: number; baselineMonths?: number
+  /** Mean annual total of complete MODIS-only years (before the VIIRS start year) and of complete VIIRS years. */
+  modisEraMean?: number | null; viirsEraMean?: number | null
+}
+
+/** The newest month of the record when it is partial: "November 2026: first 15 days so far". */
+export interface InProgress {
+  m: MonthIndex
+  /** Day coverage of the stream(s) drawing it, 0..1. */
+  coverage: number
+  /** round(coverage x daysInMonth). */
+  daysCovered: number
+  daysInMonth?: number
+}
+
 export interface Analysis {
   months: MonthIndex[]
   series: Series
@@ -255,8 +310,12 @@ export interface Analysis {
   aoi: AoiInfo & { level: number; nCells: number; rows: number }
   /** Optional for older kernels/mocks. */
   harmonization?: Harmonization
-  /** Absent when the area has fewer than 4 complete years before the latest year. */
+  /** Absent when the area has fewer than 4 complete years before the latest year, or is sparse. */
   analogs?: Analogs
+  /** Activity level and the sparse flag. Optional for older kernels/mocks. */
+  activity?: Activity
+  /** Present when the last month of the record is partial (in progress); it is drawn but never ranked. */
+  inProgress?: InProgress
 }
 
 export interface CellLayerOptions {

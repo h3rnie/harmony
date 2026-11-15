@@ -121,7 +121,14 @@ for (const k of ['median', 'q25', 'q75', 'min', 'max']) assert.equal(a.ytd[k].le
 assert.ok(isNum(a.ytd.rank) && isNum(a.ytd.of) && isNumOrNull(a.ytd.ratio))
 const c = a.current
 assert.equal(c.m, M_LAST); assert.equal(c.year, 2025); assert.equal(c.month, 12); assert.equal(c.provisional, true)
-assert.ok(['normal', 'above', 'well-above', 'extreme', 'below', 'well-below'].includes(c.level))
+assert.ok(['normal', 'above', 'well-above', 'extreme', 'below', 'well-below', 'undefined'].includes(c.level))
+// A level needs rank and size together (stats::LEVELS); the ratio is reported only above a 1 AFCD-M median.
+if (c.level === 'extreme') assert.ok(c.percentile >= 97.5 && c.ratio >= 2)
+if (c.level === 'well-above') assert.ok(c.percentile >= 90 && c.ratio >= 1.5)
+if (c.level === 'above') assert.ok(c.percentile >= 75 && c.ratio >= 1.2)
+assert.equal(typeof a.activity.meanAnnual, 'number'); assert.equal(a.activity.sparse, false)
+assert.equal(a.season.defined, true); assert.equal(a.trend.suppressed, false); assert.equal(a.inProgress, undefined)
+assert.equal(a.calendar.partial.length, a.calendar.years.length)
 for (const k of ['value', 'median', 'rank', 'of']) assert.ok(isNum(c[k]), `current.${k}`)
 for (const k of ['slopePerYear', 'slopePctPerYear', 'lo', 'hi', 'tau', 'pValue']) assert.ok(isNum(a.trend[k]), `trend.${k}`)
 assert.ok(['up', 'down', 'none'].includes(a.trend.direction)); assert.deepEqual(a.trend.years, [2001, 2025])
@@ -162,10 +169,11 @@ const dv = dnLayer('day'), nv = dnLayer('night')
 assert.ok(values.every((v, i) => Math.abs(dv[i] + nv[i] - v) < 1e-3 * Math.max(1, v)), 'day + night cell layers = both')
 assert.ok(nv.some((v, i) => v < values[i]), 'night layer differs from both')
 
-// ---------- a trailing month below 50 % coverage is drawn but not described ----------
+// ---------- a trailing month below 90 % day coverage (here half a month) is drawn but not described ----------
 {
   const pm = structuredClone(meta)
-  pm.months.cov_viirs[M_LAST] = 0.48
+  pm.months.cov_viirs[M_LAST] = 0.5
+  assert.equal(pm.complete_min_coverage ?? 0.9, 0.9)
   const k = new Kernel(JSON.stringify(pm))
   k.set_aoi(flat, Uint32Array.from([0, outer.length, outer.length + hole.length]))
   k.begin(0); ingest(k, tile)
@@ -175,6 +183,8 @@ assert.ok(nv.some((v, i) => v < values[i]), 'night layer differs from both')
   assert.equal(p.current.m, M_LAST - 1); assert.equal(p.ytd.throughMonth, 11)
   assert.deepEqual(p.outlook.months, [M_LAST, M_LAST + 1, M_LAST + 2])
   assert.ok(isNum(p.calendar.value.at(-1)[11]))
+  assert.equal(p.calendar.partial.at(-1)[11], true); assert.equal(p.calendar.percentile.at(-1)[11], null)
+  assert.deepEqual(p.inProgress, { m: M_LAST, coverage: 0.5, daysCovered: 16, daysInMonth: 31 })
   k.free()
 }
 
@@ -253,6 +263,10 @@ modelMeta.conformal = {
     if (v1 !== null) assert.ok(Math.abs(v1 / fac[mo] - v2) < 1e-9 * Math.max(1, v1), `lens value ${y}/${mo}`)
   }
   assert.equal(v.current.level, f.current.level); assert.equal(v.current.rank, f.current.rank)
+  // Lens invariance: season, trend direction and significance, annual ranks, analogs follow the MODIS-unit record.
+  assert.deepEqual(v.season, f.season); assert.equal(v.trend.direction, f.trend.direction); assert.equal(v.trend.pValue, f.trend.pValue)
+  assert.deepEqual(v.annual.rank, f.annual.rank)
+  assert.deepEqual(v.analogs?.top.map((t) => t.year), f.analogs?.top.map((t) => t.year))
   // Analogs.
   const an = f.analogs
   assert.ok(an && an.year === 2025 && an.throughMonth === 12 && an.candidates === 24, JSON.stringify(an)?.slice(0, 200))

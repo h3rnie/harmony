@@ -2,7 +2,7 @@
   import type { Analysis } from '../kernel/types'
   import { linear, linePath, niceMax, niceTicks, tickLabel } from '../charts/scale'
   import { fmtNum, fmtRatio, monthShort, MONTHS_SHORT } from '../format'
-  import { seriesIndex } from '../analysisUtil'
+  import { isSparse, seriesIndex } from '../analysisUtil'
   import Term from './Term.svelte'
 
   let { a }: { a: Analysis } = $props()
@@ -28,6 +28,7 @@
   const pastPath = $derived(linePath(past.map((p) => (p.v == null ? null : [x(p.m), y(p.v)]))))
   const climPath = $derived(linePath(allM.map((m) => [x(m), y(a.climatology.median[m % 12])])))
   const lead = $derived.by(() => {
+    if (isSparse(a)) return 'Too little fire here to forecast: expect the occasional detection, as before.'
     const n = o.months.length
     const span = n > 1 ? `${monthShort(o.months[0]).split(' ')[0]} to ${monthShort(o.months[n - 1]).split(' ')[0]}` : monthShort(o.months[0])
     if (noSkill) return `For ${span}, expect about the seasonal normal: Harmony cannot forecast this area better than its usual pattern.`
@@ -51,8 +52,12 @@
     {#each o.months as m, i (m)}
       <div class="card">
         <span class="mo">{monthShort(m)}</span>
-        <strong class="num">{fmtRatio(o.climatology[i] > 0 ? o.median[i] / o.climatology[i] : null)} <span class="nl">normal</span></strong>
-        <span class="small muted">{#if i === 0}<Term id="likely">Likely range</Term>{:else}Likely range{/if} <span class="num">{fmtNum(o.lo80[i])}–{fmtNum(o.hi80[i])}</span></span>
+        {#if o.climatology[i] > 0 && !isSparse(a)}
+          <strong class="num">{fmtRatio(o.median[i] / o.climatology[i])} <span class="nl">normal</span></strong>
+        {:else}
+          <strong class="num">{fmtNum(o.median[i])} <span class="nl"><Term id="afcdm" /></span></strong>
+        {/if}
+        <span class="small muted">{#if o.hi80[i] > 0}{#if i === 0}<Term id="likely">Likely range</Term>{:else}Likely range{/if} <span class="num">{fmtNum(o.lo80[i])}–{fmtNum(o.hi80[i])}</span>{:else}No detections expected{/if}</span>
       </div>
     {/each}
   </div>

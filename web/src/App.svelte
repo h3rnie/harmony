@@ -22,12 +22,11 @@
   import MethodSection from './lib/components/MethodSection.svelte'
   import Deferred from './lib/components/Deferred.svelte'
   import type { Component } from 'svelte'
+  import { setUrlHash } from './lib/urlState'
 
   // Global fire pulse: full-viewport view, lazy-loaded; `#view=pulse&t=YYYY-MM` keeps it shareable.
   let Pulse = $state.raw<Component<{ onclose: () => void }> | null>(null)
   let pulseOpen = $state(false)
-  /** Bumped when the hash changes from outside while the pulse is open, so it re-reads `t`. */
-  let pulseKey = $state(0)
   let pulseOpener: HTMLElement | null = null
   const hashView = () => new URLSearchParams(location.hash.slice(1)).get('view')
 
@@ -35,9 +34,10 @@
     if (pulseOpen) return
     pulseOpener = document.activeElement as HTMLElement | null
     if (hashView() !== 'pulse') {
+      // Opening the pulse is a step the viewer can go Back from.
       const q = new URLSearchParams(location.hash.slice(1))
       q.set('view', 'pulse')
-      history.replaceState(null, '', `${location.pathname}${location.search}#${q.toString().replace(/%2C/g, ',')}`)
+      setUrlHash(`#${q.toString().replace(/%2C/g, ',')}`, 'push')
     }
     Pulse ??= (await import('./lib/pulse/PulseView.svelte')).default
     pulseOpen = true
@@ -46,9 +46,10 @@
     pulseOpen = false
     const q = new URLSearchParams(location.hash.slice(1))
     if (q.has('view') || q.has('t') || q.has('mode')) {
+      // Closing is a step too (when a place on the globe was picked, the area's own entry replaces this one).
       q.delete('view'); q.delete('t'); q.delete('mode')
       const h = q.toString().replace(/%2C/g, ',')
-      history.replaceState(null, '', `${location.pathname}${location.search}${h ? `#${h}` : ''}`)
+      setUrlHash(h ? `#${h}` : '', 'push')
     }
     pulseOpener?.focus()
   }
@@ -59,18 +60,38 @@
     live.init()
     if (hashView() === 'pulse') openPulse()
     const onOpen = () => openPulse()
+    // Back / Forward (popstate) and edited hashes (hashchange) open or close the pulse without adding history.
+    // Idempotent, so the pair of events one step can fire acts once; an open pulse follows `t` and `mode` itself.
     const onHash = () => {
-      if (hashView() === 'pulse') { if (pulseOpen) pulseKey++; else openPulse() }
-      else if (pulseOpen) pulseOpen = false
+      if (hashView() === 'pulse') { if (!pulseOpen) openPulse() }
+      else if (pulseOpen) { pulseOpen = false; pulseOpener?.focus() }
     }
     addEventListener('harmony:open-pulse', onOpen)
     addEventListener('hashchange', onHash)
-    return () => { removeEventListener('harmony:open-pulse', onOpen); removeEventListener('hashchange', onHash) }
+    addEventListener('popstate', onHash)
+    return () => { removeEventListener('harmony:open-pulse', onOpen); removeEventListener('hashchange', onHash); removeEventListener('popstate', onHash) }
+  })
+
+  // An area that cannot be analysed: bring its message into view (the page may be scrolled far down).
+  $effect(() => {
+    if (session.status === 'error' && session.errorKind === 'area') {
+      queueMicrotask(() => scrollTo({ top: 0, behavior: 'instant' }))
+    }
+  })
+
+  // A new area starts at its answer: return to the top while it loads, so the shorter skeleton never pulls the footer
+  // into view and pushes it away again when the answer arrives (layout shift).
+  // (A pre-effect: it scrolls before the DOM swaps the answer for the skeleton.)
+  $effect.pre(() => {
+    if (session.aoi && !session.analysis && session.status !== 'error' && scrollY > 0) scrollTo({ top: 0, behavior: 'instant' })
   })
 
   const a = $derived(session.analysis)
   const noDetections = $derived(a != null && a.annual.total.every((t) => !t))
   const busy = $derived(session.status === 'loading' || session.status === 'analyzing')
+  // A link that names an area shows the loading skeleton from the first paint, not the landing page for a moment.
+  const linkedArea = /(^#|&)(p|c|b|g)=/.test(location.hash)
+  const booting = $derived(session.status === 'booting' && linkedArea)
 
   // The guided scroll, in the order of a newcomer's questions. Short labels for the index; the titles are questions.
   const index = $derived<IndexItem[]>([
@@ -101,14 +122,24 @@
     {/if}
 
     {#if session.status === 'error'}
-      <div class="error" role="alert">
-        <h2>Something went wrong</h2>
-        <p>{session.error}</p>
-        <button class="btn" onclick={() => session.aoi && session.setAoi(session.aoi, { keepFocus: true })}>Try again</button>
-      </div>
+      {#if session.errorKind === 'area'}
+        <div class="error area-msg" role="alert">
+          <h2>This area cannot be analysed</h2>
+          <p>{session.error}</p>
+          {#if /too large/.test(session.error ?? '')}
+            <button class="btn" onclick={() => dispatchEvent(new CustomEvent('harmony:open-pulse'))}>Open the Global pulse</button>
+          {/if}
+        </div>
+      {:else}
+        <div class="error" role="alert">
+          <h2>Something went wrong</h2>
+          <p>{session.error}</p>
+          <button class="btn" onclick={() => session.aoi && session.setAoi(session.aoi, { keepFocus: true })}>Try again</button>
+        </div>
+      {/if}
     {/if}
 
-    {#if !session.aoi}
+    {#if !session.aoi && !booting}
       <Intro>{#snippet watchlist()}<Watchlist />{/snippet}</Intro>
       <MethodSection />
     {:else if a && noDetections}
@@ -152,7 +183,7 @@
 </main>
 
 {#if pulseOpen && Pulse}
-  {#key pulseKey}<Pulse onclose={closePulse} />{/key}
+  <Pulse onclose={closePulse} />
 {/if}
 
 <div class="sr-only" aria-live="polite" aria-atomic="true">{session.announce}</div>
@@ -179,7 +210,10 @@
   .nodata h2 { margin: 0 0 8px; }
   .error { padding: 24px 0; border-bottom: 1px solid var(--rule); }
   .error h2 { color: var(--critical); margin-bottom: 6px; }
-  .loading { padding: 22px 0; display: grid; gap: 14px; }
+  .area-msg h2 { color: var(--ink); }
+  /* Fixed heights matching the answer card, the section index and the calendar, and tall enough that nothing below
+     it (the footer) is in view, so the page does not shift when the analysis arrives. */
+  .loading { padding: 22px 0; display: grid; gap: 14px; align-content: start; min-height: calc(100vh - var(--header-h)); }
   .skel { height: 22px; border-radius: 4px; background: linear-gradient(90deg, var(--surface) 0%, var(--surface-2) 50%, var(--surface) 100%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
   .skel.line { height: 14px; width: 30%; }
   .skel.big { height: 84px; width: 60%; }

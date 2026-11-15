@@ -59,7 +59,7 @@ import pandas as pd
 
 from .afcd import OUT as CUBE
 from .availability import OUT_M as AVAIL_M
-from .calibrate import CALIB_JSON, COEF, VALIDATION, fit_k, l0_values_sql, pettitt, r3, sdiv
+from .calibrate import CALIB_JSON, COEF, VALIDATION, cf_union, fit_k, l0_values_sql, pettitt, r3, sdiv
 from .common import connect, fresh, points_glob, posix, timed, write_json
 from .config import (BIOME_GROUPS, CONF_MIN_N, CONF_Q_MAX, CONF_SIZE_EDGES, COV_MAX_CORR, COV_MIN, DRIFT_ATTR_FRAC,
                      DRIFT_MIN_EXP, DRIFT_REF_YEARS, DRIFT_START_YEAR, FIT_END, FIT_START, JACK_GROUPS,
@@ -99,7 +99,8 @@ def build_inputs(con, cal: dict, force: bool) -> None:
                          WHERE cu.m BETWEEN {cal['viirs_start_m']} AND {cal['m_last']})
               SELECT (((c.l0 // 7200) // 20) * 360 + (c.l0 % 7200) // 20)::UINTEGER AS c1, c.s::USMALLINT AS s,
                 c.dn, c.m,
-                sum(c.m_ta * {cfn('c.cov_modis')}) U, sum(c.m_t * {cfn('c.f_terra')}) T,
+                sum(c.m_ta * {cf_union('c.dn', 'c.f_terra', 'c.f_aqua', 'c.cov_modis', cal['modis_union_share'], 'NULL')}) U,
+                sum(c.m_t * {cfn('c.f_terra')}) T,
                 sum(c.m_a * {cfn('c.f_aqua')}) A, sum(c.vs * {cfn('c.f_snpp')}) SN,
                 sum(c.v20 * {cfn('c.f_noaa20')}) N20, sum(c.v21 * {cfn('c.f_noaa21')}) N21,
                 sum({v} * {cfn('c.cov_viirs')}) V,
@@ -844,7 +845,24 @@ def unit_level(rows: pd.DataFrame, unit_col: np.ndarray, em: dict, ctx: Ctx, pre
     g["Var"] = var_fn(g.P.to_numpy(float), s, dn, nsat)
     P = g.P.to_numpy(float)
     g["Vold"] = ctx.relvar[s, dn] * P ** 2 + P + ctx.alpha[s, dn] * g.Q.to_numpy(float)
-    return g.groupby(["u", "m"], as_index=False)[["P", "O", "Var", "Vold"]].sum()
+    out = g.groupby(["u", "m"], as_index=False)[["P", "O", "Var", "Vold"]].sum()
+    # Variance floor (as in the kernel, series.rs var_floor): the variance at the shifted-log offset C_SHIFT of the
+    # unit's typical group, i.e. the activity-weighted mean over the unit's stratum x dn groups (record totals of
+    # P + O) of each group's variance law. Without it Var(0) = 0, so a unit-month predicted at 0 has a zero-width
+    # interval (and an infinite score when anything is observed).
+    ga = g.groupby(["u", "s", "dn"], as_index=False)[["P", "O"]].sum()
+    a = (ga.P + ga.O).to_numpy(float)
+    asum = pd.Series(a).groupby(ga.u.to_numpy()).sum()
+    floors = {}
+    for n in (1, 2, 3):
+        v = var_fn(np.full(len(ga), C_SHIFT), ga.s.to_numpy(), ga.dn.to_numpy(), np.full(len(ga), n))
+        floors[n] = (pd.Series(a * v).groupby(ga.u.to_numpy()).sum() / asum).fillna(0.0)
+    n_out = np.clip(ctx.nsat[np.minimum(out.m.to_numpy(), len(ctx.nsat) - 1)], 1, 3)
+    u_out = out.u.to_numpy()
+    fl = np.select([n_out == 1, n_out == 2, n_out == 3],
+                   [floors[k].reindex(u_out).to_numpy(float) for k in (1, 2, 3)])
+    out["Var"] = np.maximum(out.Var.to_numpy(float), np.nan_to_num(fl))
+    return out
 
 
 def conformal(d: pd.DataFrame, sc: dict, em: dict, dr: dict, ctx: Ctx):

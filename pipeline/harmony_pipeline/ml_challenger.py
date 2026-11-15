@@ -42,7 +42,7 @@ from datetime import datetime, timezone
 import numpy as np
 import pandas as pd
 
-from .calibrate import cf, fit_k, unit_metrics, r3
+from .calibrate import cf, cf_union, fit_k, unit_metrics, r3
 from .common import posix, write_json
 from .config import COV_MIN, DIST, FIT_END, FIT_START, L0_NX, WORK, month_index, ym_index
 
@@ -84,6 +84,7 @@ def snapshot() -> None:
               "coefficients/noaa.parquet", "coefficients/calib.json", "coefficients/strata_params.parquet"]:
         shutil.copy2(WORK / f, SNAP / f.split("/")[-1])
     W = posix(WORK)
+    share = json.loads((SNAP / "calib.json").read_text())["modis_union_share"]
     con = duckdb.connect()
     (ML_WORK / "tmp").mkdir(parents=True, exist_ok=True)
     con.execute(f"SET memory_limit='10GB'; SET threads=8; SET preserve_insertion_order=false; "
@@ -92,7 +93,7 @@ def snapshot() -> None:
       SELECT c.l0, sc.stratum::USMALLINT AS s, c.m, c.dn, c.m_ta, c.m_a, c.ws, c.w20, c.w21, c.nmod, c.nvii,
              am.cov_modis, am.cov_viirs, am.f_aqua, nf.c20, nf.c21,
              (c.ws + nf.c20 * c.w20 + nf.c21 * c.w21) * {cf('am.cov_viirs')} AS v,
-             c.m_ta * {cf('am.cov_modis')} AS meq, kc.k, coalesce(rc.r, 1.0) AS r
+             c.m_ta * {cf_union('c.dn', 'am.f_terra', 'am.f_aqua', 'am.cov_modis', share)} AS meq, kc.k, coalesce(rc.r, 1.0) AS r
       FROM read_parquet('{W}/cube.parquet') c JOIN read_parquet('{W}/strata_cells.parquet') sc USING (l0)
       JOIN read_parquet('{W}/availability_monthly.parquet') am USING (m)
       JOIN read_parquet('{W}/coefficients/noaa.parquet') nf ON nf.s = sc.stratum AND nf.dn = c.dn
@@ -466,8 +467,12 @@ def main(force: bool = False) -> None:
     if not force and out_json.exists() and out_onnx.exists():
         print("[ml] up to date (use --force to retrain)")
         return
-    if not ROWS.exists():
-        print("[ml] snapshot data/work -> data/work/ml/snap")
+    # A snapshot older than the cube or the coefficients would train on a superseded record: take a new one.
+    srcs = [WORK / "cube.parquet", WORK / "coefficients" / "k.parquet", WORK / "coefficients" / "r.parquet",
+            WORK / "coefficients" / "calib.json"]
+    stale = ROWS.exists() and any(q.exists() and q.stat().st_mtime > ROWS.stat().st_mtime for q in srcs)
+    if not ROWS.exists() or stale:
+        print(f"[ml] snapshot data/work -> data/work/ml/snap{' (previous snapshot predates the cube)' if stale else ''}")
         snapshot()
     lines: list[str] = []
 
@@ -551,9 +556,17 @@ def main(force: bool = False) -> None:
               "ratio_kr": "Production ratio method (k × per-cell EB multiplier)",
               "challenger_raw": "ML challenger before mass balance", "challenger": "ML challenger (MLP, mass-balanced)",
               "challenger_r": "ML challenger × per-cell EB multiplier"}
+    dist_meta = json.loads((DIST / "meta.json").read_text()) if (DIST / "meta.json").exists() else {}
     model_json = {
         "version": 1,
         "generated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        # which build the challenger was trained on (compare with meta.json `generated` / `data_through`)
+        "trained_on_build": {
+            "meta_generated": dist_meta.get("generated"), "data_through": dist_meta.get("data_through"),
+            "snapshot_taken": datetime.fromtimestamp(ROWS.stat().st_mtime, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "calib_m_last": cal.get("m_last"),
+            "trained": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        },
         "onnx": {"file": "model.onnx", "bytes": out_onnx.stat().st_size, "opset": OPSET,
                  "inputs": {"x": f"float32 [N, {F}] raw features (standardisation is inside the graph)",
                             "v": "float32 [N, 1] uncalibrated VIIRS AFCD (tile v / 100)"},

@@ -13,15 +13,16 @@ All pipeline commands run from `pipeline/` and use `uv run python -m harmony_pip
 | 1 | `normalize` | `work/points/{sensor}/{year}.parquet`, `work/normalize_stats/` |
 | 2 | `availability` | `work/availability.parquet`, `availability_monthly.parquet` |
 | 3 | `static_mask` (aliases `static-mask`, `mask`) | `work/static_mask.parquet` |
-| 4 | `afcd` (alias `cube`) | `work/cube/`, `work/cube.parquet` |
-| 5 | `strata` | `work/strata*.parquet` |
-| 6 | `calibrate` | `work/coefficients/`, `dist/validation.json` |
-| 7 | `harmonize` | `work/coefficients/harmonize.json`, adds the error-model, drift, conformal and fusion tables to `dist/validation.json` |
-| 8 | `build_tiles` (alias `tiles`) | `dist/tiles/`, `dist/meta.json` |
-| 9 | `build_points` (alias `points`) | `dist/points/` |
-| 10 | `overview` | `dist/overview/` |
-| 11 | `watch` | `dist/watch.json` |
-| 12 | `verify` | `work/verify.json` |
+| 4 | `screen` | `work/land_l0.npy` (cached land raster), `work/screen_water.parquet`, `work/screen_excluded.parquet`, `work/screen.json` (land rule for near-real-time rows and the burst screen; METHOD.md section 2) |
+| 5 | `afcd` (alias `cube`) | `work/cube/`, `work/cube.parquet` |
+| 6 | `strata` | `work/strata*.parquet` |
+| 7 | `calibrate` | `work/coefficients/`, `dist/validation.json` (with `land_screen`, `bursts`, `modis_union_share`) |
+| 8 | `harmonize` | `work/coefficients/harmonize.json`, adds the error-model, drift, conformal and fusion tables to `dist/validation.json` |
+| 9 | `build_tiles` (alias `tiles`) | `dist/tiles/`, `dist/meta.json` |
+| 10 | `build_points` (alias `points`; `points --years 2026` rebuilds only those UTC years) | `dist/points/` |
+| 11 | `overview` | `dist/overview/` |
+| 12 | `watch` | `dist/watch.json` |
+| 13 | `verify` | `work/verify.json` |
 
 Not part of `all`: `fetch-country`, `fetch-api` (downloads) and `ml` (the ML challenger). `watch --month YYYY-MM` analyses a past month and writes `work/watch/watch-YYYY-MM.json` instead of `dist/watch.json`.
 
@@ -29,17 +30,18 @@ Not part of `all`: `fetch-country`, `fetch-api` (downloads) and `ml` (the ML cha
 
 Update from `data/work/refresh_run.log`, `data/work/global_run.log`, the logs in `data/work/logs/` (the fix rebuild: `fix_normalize.log`, `fix_all.log`) and file sizes after a refresh. Seconds are summed over years.
 
-| Item | First full run (all years) | Refresh run (2026 and NOAA-21 added) | Fix rebuild (2026 re-normalized, then `all --from availability --force`) |
-| --- | --- | --- | --- |
-| normalize | 4,933 s | 295 s (only changed sensor-years re-read) | 96 s (four sensors, 2026 only) |
-| availability / static_mask / afcd | 8 s / 111 s / 764 s | 3 s / 24 s / 217 s | 2 s / 25 s / 239 s |
-| strata / calibrate | 268 s / 104 s | 45 s / 87 s | 119 s / 83 s |
-| harmonize | not in that run | 29 s | 47 s |
-| tiles | 422 s | 69 s | 149 s |
-| points archive | 3,286 s | 1,701 s | 2,244 s |
-| overview / watch | 0 s / not in that run | 10 s / 2 s | 11 s / 2 s |
-| verify | 137 s | 10 s | 16 s |
-| ML stage | 207 s | not re-run | not re-run |
+| Item | First full run (all years) | Refresh run (2026 and NOAA-21 added) | Fix rebuild (2026 re-normalized, then `all --from availability --force`) | Review rebuild (stages by name with `--force`; points for 2026 only) |
+| --- | --- | --- | --- | --- |
+| normalize | 4,933 s | 295 s (only changed sensor-years re-read) | 96 s (four sensors, 2026 only) | not re-run |
+| availability / static_mask / afcd | 8 s / 111 s / 764 s | 3 s / 24 s / 217 s | 2 s / 25 s / 239 s | 3 s / not re-run / 218 s |
+| screen | not in that run | not in that run | not in that run | 385 s (land raster 49 s, cached afterwards) |
+| strata / calibrate | 268 s / 104 s | 45 s / 87 s | 119 s / 83 s | 46 s / 72 s |
+| harmonize | not in that run | 29 s | 47 s | 24 s |
+| tiles | 422 s | 69 s | 149 s | 56 s |
+| points archive | 3,286 s | 1,701 s | 2,244 s | 34 s (`points --years 2026`) |
+| overview / watch | 0 s / not in that run | 10 s / 2 s | 11 s / 2 s | 11 s / 2 s |
+| verify | 137 s | 10 s | 16 s | 16 s |
+| ML stage | 207 s | not re-run | not re-run | 229 s (new snapshot) |
 
 | Item | Value |
 | --- | --- |
@@ -64,7 +66,7 @@ cd pipeline
 uv run python -m harmony_pipeline.cli fetch-api --dry-run   # print the windows that would be fetched
 uv run python -m harmony_pipeline.cli fetch-api             # download them
 uv run python -m harmony_pipeline.cli all                   # rebuild everything downstream
-uv run python -m harmony_pipeline.cli ml --force            # optional, after deleting data/work/ml/snap
+uv run python -m harmony_pipeline.cli ml --force            # optional; takes a new snapshot when the cube is newer
 ```
 
 `fetch-api` options: `--sensors` (any of `modis viirs-snpp viirs-noaa20 viirs-noaa21`), `--from` and `--to` (dates), `--limit N` (testing), `--bbox w,s,e,n` (writes to `data/raw/api_bbox/`, which the pipeline does not read), `--dry-run`.
@@ -93,7 +95,7 @@ uv run python -m harmony_pipeline.cli verify
 
 `all --from <stage>` starts at a later stage; `--force` recomputes a stage even when it looks up to date; `normalize` accepts `--sensors` and `--years` to restrict what it re-reads. `calibrate` rewrites `validation.json`, so always run `harmonize` after it (it is in `all`), otherwise the file lacks the harmonization tables and `meta.json` lacks the error model.
 
-After the run, check `data/work/verify.json` (`ok` true for every check), `data/dist/meta.json` (`data_through`, `generated`, the `provisional` array and the last values of `cov_modis` and `cov_viirs`) and `data/dist/watch.json` (`month`). Two checks are worth doing by hand after a top-up that adds near-real-time data: that the newest months have VIIRS coverage (a month with `cov_viirs` near 0 means rows were dropped; see Troubleshooting) and that `normalize_stats/*.json` `nrt_superseded` is plausible for the sensor-years touched. The web app reads the new files directly; `Cache-Control: no-cache` is set for `/data` in the dev server, and a static host should do the same for `meta.json`, `watch.json` and the indexes.
+After the run, check `data/work/verify.json` (`ok` true for every check), `data/dist/meta.json` (`data_through`, `generated`, the `provisional` array and the last values of `cov_modis` and `cov_viirs`) and `data/dist/watch.json` (`month`: the latest month with at least 0.9 day coverage, so the month in progress is skipped), and `data/work/screen.json` (`bursts.flagged`: near-real-time burst days that were excluded, with their counts; `bursts.standard_quality_top`: the highest science-quality satellite-days, reported only). Two checks are worth doing by hand after a top-up that adds near-real-time data: that the newest months have VIIRS coverage (a month with `cov_viirs` near 0 means rows were dropped; see Troubleshooting) and that `normalize_stats/*.json` `nrt_superseded` is plausible for the sensor-years touched. The web app reads the new files directly; `Cache-Control: no-cache` is set for `/data` in the dev server, and a static host should do the same for `meta.json`, `watch.json` and the indexes.
 
 The calibration is refitted at every rebuild on the fixed 2012-02 to 2021-12 window, and `harmonize` re-estimates the error model, the drift ratios and the conformal multipliers. New data does not enter the calibration fit, but the static mask and the availability table are recomputed over all data, so coefficients can move slightly between builds. Compare `data/dist/validation.json` before and after a refresh.
 
@@ -103,7 +105,7 @@ A month is flagged provisional (`meta.months.provisional`, and a marker in the a
 
 A row counts as standard only if its FIRMS `version` is purely numeric (`2`, `61.03`); any suffix (`NRT`, `URT` for the ultra-real-time first pass of the newest granules, `RT`) makes it NRT. A `URT` row is dropped when an `NRT` row of the same satellite has the same acquisition time (the reprocessed granule), and standard rows replace NRT rows only on days a standard input covers (`normalize_stats/*.json`, `supersession`, lists every satellite-month that lost rows and whether standard data cover the whole month). `verify` fails if a satellite-month loses more than 2 % of its rows without whole-month standard coverage, or if an NRT-type version is labelled standard.
 
-Standard data lag the present by months (Table O1: on 2026-11-15, about 2.5 months for MODIS and 3.5 for VIIRS), so the latest three to four months stay provisional. Standard processing also adds the `type` field that NRT lacks; the static mask is the only static-source screen NRT rows get.
+Standard data lag the present by months (Table O1: on 2026-11-15, about 2.5 months for MODIS and 3.5 for VIIRS), so the latest three to four months stay provisional. Standard processing also adds the `type` field that NRT lacks; NRT rows get the static mask, the land rule (no NRT row in a 0.05° cell more than one cell from mapped land) and the burst screen instead (`screen.py`, METHOD.md section 2).
 
 ### At the turn of a year, and when a sensor ends
 
@@ -153,12 +155,12 @@ Tests: `node scripts/brief-smoke.mjs --offline` (no network, no spend; 118 check
 ```bash
 cd pipeline
 uv run python -m harmony_pipeline.cli ml            # trains only if data/dist/ml/model.* is missing
-uv run python -m harmony_pipeline.cli ml --force    # retrain (reuses the snapshot in data/work/ml/snap if present)
+uv run python -m harmony_pipeline.cli ml --force    # retrain (takes a new snapshot when data/work/cube.parquet or the coefficients are newer)
 ```
 
-The stage is not part of `all`. It takes a one-off snapshot of the fit window and 2022-2025 from `data/work` into `data/work/ml/snap/` (because `data/work` is rewritten by later runs), trains on it, and writes `data/dist/ml/model.onnx`, `data/dist/ml/model.json` and `data/work/ml/{train_log.txt,metrics.json,run.log}`. It took 207 seconds. After a recalibration or a data refresh, delete `data/work/ml/snap` first so that the snapshot picks up the new coefficients and data. The snapshot end month is fixed in `ml_challenger.py` (2025-12). The feature list must match `web/src/lib/ml/features.ts`; the app refuses a model whose list differs. See [schema/ml.md](../schema/ml.md).
+The stage is not part of `all`. It takes a one-off snapshot of the fit window and 2022-2025 from `data/work` into `data/work/ml/snap/` (because `data/work` is rewritten by later runs), trains on it, and writes `data/dist/ml/model.onnx`, `data/dist/ml/model.json` and `data/work/ml/{train_log.txt,metrics.json,run.log}`. It took 229 seconds in the review rebuild. The stage takes a new snapshot by itself when `data/work/cube.parquet` or the coefficients are newer than the old one (deleting `data/work/ml/snap` forces one), and records the build it trained on in `model.json` (`trained_on_build`). The snapshot end month is fixed in `ml_challenger.py` (2025-12). The feature list must match `web/src/lib/ml/features.ts`; the app refuses a model whose list differs. See [schema/ml.md](../schema/ml.md).
 
-In the 2026-11-15 build the model was trained on a snapshot taken before the 2026 and NOAA-21 refresh and has not been retrained, so Table M6 of the method and the Method lab model reflect the earlier data.
+In the 2026-11-15 build the model was retrained on the final cube of the review rebuild (`trained_on_build.meta_generated` 2026-11-15T13:00:31Z), so Table M6 of the method and the Method lab model match the served record; its out-of-time production row agrees with `validation.json`.
 
 ## Web app and tests
 

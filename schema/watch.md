@@ -8,10 +8,12 @@ and writes `data/work/watch/watch-YYYY-MM.json` instead (same format; not served
 
 - Value: harmonized AFCD-M per 0.5 deg cell (L1 summed 2 x 2), the served stream of each month (MODIS `meq` before
   `default_switch_m`, calibrated VIIRS `kv` from it, with the kernel's fallback).
-- Target: the latest month whose served-stream coverage is >= 0.5 (`windows.month`) and the three months ending
-  there (`windows.three_months`, values summed).
-- Baseline: the same calendar month(s) in 2003–2022, target year excluded, years with any month below 0.5 coverage
-  excluded.
+- Target: the latest month whose served stream delivered data on >= `complete_min_coverage` of its days (meta.json;
+  0.9, the same constant the kernel uses), so the month in progress is never the target (`windows.month`), and the
+  three months ending there (`windows.three_months`, values summed). Before the 2026-11 review the rule was overpass
+  coverage >= 0.5, which made the half-covered 2026-11 (scaled x2) the target.
+- Baseline: the same calendar month(s) in 2003–2022, target year excluded, years with any month below
+  `complete_min_coverage` excluded (they are also left out of the record ranks).
 - A cell is a candidate when value >= 5 AFCD-M, empirical percentile among the baseline years >= 90 and value >=
   2 x max(baseline median, 1).
 - Candidates form 8-connected clusters (longitude wraps at 180 deg), scored by excess = sum of (value - baseline median);
@@ -28,7 +30,7 @@ and writes `data/work/watch/watch-YYYY-MM.json` instead (same format; not served
   "data_through": "2026-11-15",
   "month": "2026-10",                       // target month
   "unit": "harmonized AFCD-M …",
-  "method": { "baseline": [2003, 2022], "coverage_min": 0.5, "cell_min_afcd": 5, "cell_min_percentile": 90,
+  "method": { "baseline": [2003, 2022], "coverage_min": 0.9, "coverage_rule": "…", "cell_min_afcd": 5, "cell_min_percentile": 90,
               "cell_min_ratio": 2, "median_floor_afcd": 1, "clustering": "…", "score": "…", "top_n": 15, … },
   "caveat": "…",                            // show it with the list
   "windows": {
@@ -44,7 +46,7 @@ Window:
 {
   "months": ["2026-08", "2026-10"],         // first, last month of the window
   "provisional": true,                       // any month near-real-time (meta.months.provisional)
-  "coverage": [1.0, 1.0, 1.0],              // served-stream coverage per month
+  "coverage": [1.0, 1.0, 1.0],              // served-stream day coverage per month (days_modis / days_viirs)
   "baseline_years": 20,
   "record_years": [2001, 2026],             // covered years compared for the rank
   "candidate_cells": 2026,

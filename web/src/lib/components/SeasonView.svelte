@@ -4,6 +4,7 @@
   import { linear, linePath, bandPath, niceMax, niceTicks, tickLabel } from '../charts/scale'
   import { MONTHS_INITIAL, MONTHS_LONG, MONTHS_SHORT, fmtNum, fmtRatio, ordinal, rankFromEnds } from '../format'
   import Term from './Term.svelte'
+  import { isSparse } from '../analysisUtil'
 
   let { a }: { a: Analysis } = $props()
 
@@ -13,12 +14,18 @@
   const M = { t: 14, r: 12, b: 22, l: 40 }
 
   const curYear = $derived(a.current.year)
-  const yearsDesc = $derived([...a.calendar.years].reverse().filter((y) => y !== curYear))
+  // Comparison years follow "Years shown" (calendar settings).
+  const yearsDesc = $derived.by(() => {
+    const r = session.options.range
+    const y0 = Math.floor(r[0] / 12) + 2000, y1 = Math.floor(r[1] / 12) + 2000
+    const ys = [...a.calendar.years].reverse().filter((y) => y !== curYear && y >= y0 && y <= y1)
+    return ys.length ? ys : [...a.calendar.years].reverse().filter((y) => y !== curYear)
+  })
   const defaultCompare = $derived.by(() => {
     const f = session.focus
     const fy = f == null ? null : Math.floor(f / 12) + 2000
     if (fy != null && fy !== curYear) return fy
-    return a.records.topYears.find((t) => t.year !== curYear)?.year ?? yearsDesc[0]
+    return a.records.topYears.find((t) => t.year !== curYear && yearsDesc.includes(t.year))?.year ?? yearsDesc[0]
   })
   let compare = $state<number | null>(null)
   const cmpYear = $derived(compare ?? defaultCompare)
@@ -47,6 +54,7 @@
   const yxs = $derived(Array.from({ length: 12 }, (_, i) => yx(i + 1)))
 
   const lead = $derived.by(() => {
+    if (isSparse(a)) return `Too little fire here to say whether ${yt.year} is unusual; the charts show what was detected.`
     if (yt.ratio == null) return `${yt.year} so far: no normal to compare with for January to ${MONTHS_LONG[yt.throughMonth - 1]}.`
     const r = yt.ratio
     const word = r >= 1.5 ? 'well above' : r >= 1.15 ? 'above' : r > 0.87 ? 'close to' : r > 0.67 ? 'below' : 'well below'

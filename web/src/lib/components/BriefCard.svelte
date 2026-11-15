@@ -1,28 +1,41 @@
+<script lang="ts" module>
+  import { SvelteMap } from 'svelte/reactivity'
+  import type { Brief } from '../brief/dossier'
+  import type { RunMeta } from '../brief/client'
+
+  /**
+   * AI briefs the viewer asked for, by dossier key (area, month, options and statistics). Module level, so returning
+   * to an area and month already written shows it again without a new request.
+   */
+  const written = new SvelteMap<string, { brief: Brief; meta: RunMeta }>()
+</script>
+
 <script lang="ts">
-  import { untrack } from 'svelte'
+  // "In plain words": the rule-based brief shows at once. The AI-written brief is opt-in (it is a paid model call):
+  // it is requested only when the viewer presses "Write a fuller brief", once per area / month / options, and cached.
+  // Nothing here sends a request on load, on hot reload, on an option change or on a preset click.
   import type { Analysis } from '../kernel/types'
   import { session } from '../session.svelte'
   import { templateBrief, type BriefInput } from '../brief/template'
   import { dossierFromSession } from '../brief/fromSession'
-  import { dossierKey, type Brief, type Dossier } from '../brief/dossier'
-  import { AiClientError, streamBrief, type RunMeta } from '../brief/client'
+  import { dossierKey, type Dossier } from '../brief/dossier'
+  import { AiClientError, streamBrief } from '../brief/client'
   import { aiStatus } from '../brief/status.svelte'
   import { LEVEL_LABEL, yearOf } from '../format'
+  import { isSparse, monthStats } from '../analysisUtil'
   import AskHarmony from './AskHarmony.svelte'
   import { briefLead } from './briefLead.svelte'
 
   let { a }: { a: Analysis } = $props()
 
-  /** Wait this long after the statistics stop changing before asking the model (month scrubbing, baseline drags). */
-  const DEBOUNCE_MS = 900
-
   type Phase = 'idle' | 'loading' | 'streaming'
+  // A status probe (GET, no model call) tells whether the server can write briefs at all.
   $effect(() => { if (!session.isMock) aiStatus.ensure() })
   /** null until the one-off probe has answered. */
   const available = $derived(session.isMock ? false : (aiStatus.value?.available ?? null))
   let phase = $state<Phase>('idle')
-  /** Finished AI brief for the statistics identified by `key`. */
-  let ai = $state<{ key: string; brief: Brief; meta: RunMeta } | null>(null)
+  /** Key of the request in flight (its streamed text is shown only while that key is on screen). */
+  let pendingKey = $state('')
   /** Text received so far for the request in flight. */
   let partial = $state({ headline: '', summary: '' })
   let errorCode = $state<{ key: string; code: string } | null>(null)
@@ -34,31 +47,40 @@
       ? {
           area: session.aoi.label, areaKm2: session.aoiInfo.areaKm2, focusM: session.focus,
           firstYear: session.meta ? yearOf(session.meta.m_first) : a.calendar.years[0],
-          baseline: session.effectiveBaseline, analysis: a,
+          baseline: session.effectiveBaseline, analysis: a, dataThrough: session.meta?.data_through ?? null,
         }
       : null,
   )
   const dossier = $derived<Dossier | null>(dossierFromSession(a))
-  /** Equal statistics give an equal key, so re-analysis with identical numbers never triggers a new request. */
+  /** Equal statistics give an equal key, so re-analysis with identical numbers never asks again. */
   const key = $derived(dossier ? dossierKey(dossier) : '')
   const local = $derived(input ? templateBrief(input).join(' ') : '')
+  /** A sparse area or a month in progress has nothing for a model to add beyond the rule-based statement. */
+  const aiUseful = $derived.by(() => {
+    if (isSparse(a) || session.focus == null) return false
+    const s = monthStats(a, session.focus)
+    return !!s && !s.inProgress
+  })
 
-  const showingAi = $derived(ai != null && ai.key === key)
-  const streamingNow = $derived(phase === 'streaming' && (partial.headline.length > 0 || partial.summary.length > 0))
+  const ai = $derived(key ? written.get(key) ?? null : null)
+  const showingAi = $derived(ai != null)
+  const streamingNow = $derived(phase === 'streaming' && pendingKey === key && (partial.headline.length > 0 || partial.summary.length > 0))
   const failed = $derived(errorCode != null && errorCode.key === key ? errorCode.code : null)
   const busy = $derived(phase !== 'idle')
+  const busyHere = $derived(busy && pendingKey === key)
 
   /** What the card shows and what Copy / Read aloud use. */
   const shown = $derived.by(() => {
-    if (showingAi) return { headline: ai!.brief.headline, paras: [ai!.brief.summary], watch: ai!.brief.watch, caveat: ai!.brief.caveat, level: ai!.brief.level }
+    if (ai) return { headline: ai.brief.headline, paras: [ai.brief.summary], watch: ai.brief.watch, caveat: ai.brief.caveat, level: ai.brief.level }
     if (streamingNow) return { headline: partial.headline, paras: [partial.summary], watch: [] as string[], caveat: '', level: null }
     return { headline: '', paras: local ? [local] : [], watch: [] as string[], caveat: '', level: null }
   })
-  // Lift the AI brief's opening line into the answer card; the rule-based first sentence repeats the card, so it stays here.
+  // Lift the opening line of an AI brief the viewer asked for into the answer card. The rule-based first sentence
+  // repeats the card, so it stays here.
   $effect(() => {
-    const text = showingAi ? (ai!.brief.headline || ai!.brief.summary.split(/(?<=\.)\s/)[0] || '') : ''
+    const text = ai ? (ai.brief.headline || ai.brief.summary.split(/(?<=\.)\s/)[0] || '') : ''
     briefLead.text = text
-    briefLead.key = showingAi ? key : ''
+    briefLead.key = ai ? key : ''
   })
   $effect(() => () => { briefLead.text = ''; briefLead.key = '' })
 
@@ -69,6 +91,7 @@
   const REASONS: Record<string, string> = {
     no_key: 'no API key is configured on this server',
     bad_config: 'the server AI configuration is invalid',
+    daily_cap: 'the daily limit of AI requests for this site has been reached',
     rate_limited: 'the request limit was reached, try again in a minute',
     refused: 'the model declined the request',
     bad_output: 'the draft did not pass the checks against the statistics, even after one retry',
@@ -88,6 +111,7 @@
     ctl?.abort()
     const mine = (ctl = new AbortController())
     phase = 'loading'
+    pendingKey = k
     partial = { headline: '', summary: '' }
     try {
       const done = await streamBrief(d, {
@@ -100,31 +124,23 @@
         },
         onReset: () => { if (ctl === mine) partial = { headline: '', summary: '' } },
       })
-      if (ctl !== mine) return
-      ai = { key: k, brief: done.brief, meta: done }
-      errorCode = null
+      written.set(k, { brief: done.brief, meta: done })
+      if (errorCode?.key === k) errorCode = null
     } catch (e) {
-      if (ctl !== mine || mine.signal.aborted) return // superseded or navigated away: a newer request owns the UI
+      if (mine.signal.aborted) return // superseded or the card went away
       errorCode = { key: k, code: e instanceof AiClientError ? e.code : 'upstream_error' }
     } finally {
-      if (ctl === mine) { phase = 'idle'; partial = { headline: '', summary: '' }; ctl = null }
+      if (ctl === mine) { phase = 'idle'; pendingKey = ''; partial = { headline: '', summary: '' }; ctl = null }
     }
   }
+  // Leaving the analysis (another area) stops a request in flight; it never starts one.
+  $effect(() => () => { ctl?.abort(); ctl = null })
 
-  // Re-request when the statistics for the selected month change, after a pause; abort whatever is in flight.
-  $effect(() => {
-    const k = key
-    const d = untrack(() => dossier)
-    if (!k || !d || available !== true) return
-    if (untrack(() => ai?.key === k || errorCode?.key === k)) return
-    const timer = setTimeout(() => request(d, k, false), DEBOUNCE_MS)
-    return () => { clearTimeout(timer); ctl?.abort(); ctl = null; phase = 'idle'; partial = { headline: '', summary: '' } }
-  })
-
-  function regenerate() {
-    if (!dossier || !key || available !== true || phase !== 'idle') return
+  /** "Write a fuller brief" (first time for this key) or "Regenerate" (a fresh draft of the same statistics). */
+  function write(fresh: boolean) {
+    if (!dossier || !key || available !== true || busy || !aiUseful) return
     errorCode = null
-    request(dossier, key, true)
+    request(dossier, key, fresh)
   }
 
   async function copy() {
@@ -145,9 +161,9 @@
   <div class="head">
     <h2 id="brief-h" class="q-title">In plain words</h2>
     <span class="src" class:ai={showingAi || streamingNow}>
-      {#if showingAi}AI-written brief · {ai!.meta.model}{#if mostlyCached(ai!.meta)}{' · cached context'}{/if}
+      {#if ai}AI-written brief · {ai.meta.model}{#if mostlyCached(ai.meta)}{' · cached context'}{/if}
       {:else if streamingNow}AI-written brief · writing…
-      {:else}Rule-based brief{#if phase === 'loading'} · asking the model…{/if}{/if}
+      {:else}Rule-based brief{#if busyHere} · asking the model…{/if}{/if}
     </span>
   </div>
   <p class="sub">A brief for the duty officer, written from the numbers on this page.</p>
@@ -161,18 +177,24 @@
     {/if}
     {#if shown.caveat}<p class="caveat">{shown.caveat}</p>{/if}
   </div>
-  {#if showingAi && shown.level}<p class="small muted lvl">Level: {LEVEL_LABEL[shown.level] ?? shown.level}</p>{/if}
+  {#if ai && shown.level}<p class="small muted lvl">Level: {LEVEL_LABEL[shown.level] ?? shown.level}</p>{/if}
   {#if failed}
     <p class="small err" role="status">AI brief unavailable ({REASONS[failed] ?? 'service error'}); showing the rule-based brief instead.</p>
   {:else if available === false && !session.isMock}
     <p class="small muted">AI-written briefs are not enabled on this server; showing the rule-based brief.</p>
+  {:else if available === true && !ai && aiUseful}
+    <p class="small muted">The brief above is built from rules. A fuller brief is written by a language model from the same numbers, on request.</p>
   {/if}
   <div class="actions">
     <button class="btn" onclick={copy}>{copied ? 'Copied' : 'Copy text'}</button>
     {#if 'speechSynthesis' in globalThis}<button class="btn" onclick={speak} aria-pressed={speaking}>{speaking ? 'Stop reading' : 'Read aloud'}</button>{/if}
-    <button class="btn" onclick={regenerate} disabled={available !== true || busy || !dossier} title={available === true ? 'Ask the model to write the brief again' : 'AI-written briefs are not enabled on this server'}>
-      {busy ? 'Writing…' : 'Regenerate'}
-    </button>
+    {#if available === true && aiUseful}
+      {#if ai}
+        <button class="btn" onclick={() => write(true)} disabled={busy || !dossier} title="Ask the model to write this brief again">{busyHere ? 'Writing…' : 'Regenerate'}</button>
+      {:else}
+        <button class="btn primary" onclick={() => write(false)} disabled={busy || !dossier} aria-describedby="brief-h">{busyHere ? 'Writing…' : 'Write a fuller brief'}</button>
+      {/if}
+    {/if}
   </div>
   <p class="muted">Detections are not burned area; check local reports before acting.</p>
 

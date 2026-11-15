@@ -182,7 +182,7 @@ try {
   resetServed()
   const m1 = toM(2023, 9)
   const plan = await core.planHotspotExport({ rings, mFrom: m1, mTo: m1 }, { ...common })
-  console.log(`   plan: ${plan.files.length}/${plan.filesConsidered} files, ${plan.keptGroups}/${plan.totalGroups} row groups, est ${plan.estRows} rows (likely ~${plan.likelyRows}), est download ${mb(plan.estDownloadBytes)}, footers ${mb(plan.metaBytes)}`)
+  console.log(`   plan: ${plan.files.length}/${plan.filesConsidered} files, ${plan.keptGroups}/${plan.totalGroups} row groups, scans ${plan.estRows} rows (expect up to ~${plan.highRows}, guard ${plan.guardRows}), est download ${mb(plan.estDownloadBytes)}, footers ${mb(plan.metaBytes)}`)
   check(plan.groupsWithoutStats === 0, 'latitude/longitude row-group statistics present in every group')
   check(served === plan.metaBytes, `planning fetched only footers (${served} bytes)`)
   check(plan.keptGroups < plan.totalGroups, `row-group pruning removed groups (${plan.keptGroups} of ${plan.totalGroups} kept)`)
@@ -191,12 +191,22 @@ try {
   const b = await core.runHotspotExport(planAgain, { ack: ACK, now: () => new Date(0) })
   check((await a.blob.text()) === (await b.blob.text()), 'two runs produce byte-identical output (deterministic order)')
   const full = (await a.blob.text())
-  check(a.rows <= plan.estRows, `rows (${a.rows}) <= estimate (${plan.estRows})`)
+  check(a.rows <= plan.estRows, `rows (${a.rows}) <= rows scanned (${plan.estRows})`)
+  check(plan.lowRows === null && plan.guardRows === plan.highRows && plan.highRows <= plan.estRows, 'without activity: no low end; guard = high end <= rows scanned')
+  // With the area's monthly activity (here: the exported rows per month, standing in for the analysis' accepted counts)
+  // the low end is that activity and the high end is never below it.
+  const perMonth = new Map()
+  for (const r of parseCsv(await a.blob.text()).rows) { const k = toM(+r[2].slice(0, 4), +r[2].slice(5, 7)); perMonth.set(k, (perMonth.get(k) ?? 0) + 1) }
+  const months = Array.from({ length: 12 }, (_, i) => toM(2023, i + 1))
+  const planAct = await core.planHotspotExport({ rings, mFrom: m1, mTo: m1, activity: { months, counts: months.map((m) => perMonth.get(m) ?? 0) } }, { ...common })
+  check(planAct.lowRows === a.rows && planAct.highRows >= planAct.lowRows && planAct.highRows <= planAct.estRows, `with activity: low ${planAct.lowRows} <= high ${planAct.highRows} <= scanned ${planAct.estRows}`)
 
   console.log('\n== too-large guard and truncation ==')
   resetServed()
   const tooBig = await core.exportHotspots({ rings, mFrom: m1, mTo: m1 }, { ...common, ack: ACK, maxRows: 100 })
-  check(tooBig.kind === 'too-large' && tooBig.estimatedRows === plan.estRows && tooBig.maxRows === 100, `too-large result carries the estimate (${tooBig.estimatedRows})`)
+  // The guard compares the expected rows (guardRows), not the rows scanned: a month of a large area scans whole-year
+  // row groups, so the scan count alone refused exports that hold a few thousand rows.
+  check(tooBig.kind === 'too-large' && tooBig.estimatedRows === plan.guardRows && tooBig.maxRows === 100, `too-large result carries the expected rows (${tooBig.estimatedRows})`)
   check(served === tooBig.plan.metaBytes, `no row data downloaded before refusing (${served} bytes = footers only)`)
   const forced = await core.exportHotspots({ rings, mFrom: m1, mTo: m1 }, { ...common, ack: ACK, maxRows: 100, force: true, now: () => new Date(0) })
   const ft = parseCsv(await forced.blob.text())
@@ -213,6 +223,27 @@ try {
     await core.runHotspotExport(plan3, { ack: ACK, signal: ctl.signal, onProgress: () => ctl.abort() })
   } catch (e) { aborted = core.isAbort(e) }
   check(aborted, 'abort signal stops the run with an AbortError')
+
+  // Regression: the UI plans under one AbortController and, when the user presses Export, aborts it and runs under a
+  // new one. Files over the whole-file limit (512 KB) are read with Range requests during the run, so a buffer that
+  // kept the planning signal failed every run with "Hotspot export cancelled." and zero row-group requests.
+  console.log('\n== estimate controller aborted before the run (the UI path, files > 512 KB) ==')
+  {
+    const planCtl = new AbortController()
+    const planUi = await core.planHotspotExport({ rings, mFrom: m1, mTo: m1 }, { ...common, signal: planCtl.signal })
+    const bigFiles = planUi.files.filter((f) => f.bytes > 512 * 1024).length
+    check(bigFiles > 0, `the plan includes files over 512 KB (${bigFiles} of ${planUi.files.length})`)
+    planCtl.abort() // what ExportsPanel did on "Export": abort the estimate's controller
+    const runCtl = new AbortController()
+    resetServed()
+    let res = null, err = null
+    try {
+      res = await core.runHotspotExport(planUi, { ack: ACK, signal: runCtl.signal, now: () => new Date(0) })
+    } catch (e) { err = e }
+    check(err == null, `run after aborting the estimate's signal succeeds${err ? ` (got ${err.name}: ${err.message})` : ''}`)
+    check(res != null && res.rows > 0 && requests > 0, `run produced rows (${res?.rows ?? 0}) with ${requests} row-group requests`)
+    if (res) check((await res.blob.text()) === full, 'output equals the run with a fresh plan')
+  }
 
   console.log(`\nbytes: this test fetched at most ${mb(served)} in the last stage; see per-scenario lines above for pruning effectiveness.`)
 } finally {

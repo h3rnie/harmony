@@ -16,6 +16,15 @@ export interface FetchInit { headers?: Record<string, string>; signal?: AbortSig
 export type FetchLike = (url: string, init?: FetchInit) => Promise<Response>
 
 export const DEFAULT_MAX_ROWS = 1_000_000
+/** Hard cap on the estimated download (row groups + footers) before the export asks to be narrowed. */
+export const MAX_DOWNLOAD_BYTES = 300_000_000
+
+/** Why a plan needs confirmation before running: too many expected rows, too many bytes to fetch, or neither. */
+export function planTooLarge(plan: HotspotPlan, maxRows = DEFAULT_MAX_ROWS): 'rows' | 'bytes' | null {
+  if (plan.guardRows > maxRows) return 'rows'
+  if (plan.estDownloadBytes > MAX_DOWNLOAD_BYTES) return 'bytes'
+  return null
+}
 
 /** CSV column order. */
 export const CSV_COLUMNS = [
@@ -46,41 +55,55 @@ function throwIfAborted(signal?: AbortSignal) {
 
 export interface ByteCounter { bytes: number; requests: number }
 
+/** An AsyncBuffer that can be re-issued under another abort signal, sharing what it has already downloaded. */
+export interface SignalBuffer extends AsyncBuffer {
+  /**
+   * The same file under `signal`. The plan is built under the estimate's signal and the run under its own: a run must
+   * never inherit a signal that was aborted after planning (that cancelled every Range request of files > 512 KB).
+   */
+  withSignal(signal?: AbortSignal): SignalBuffer
+}
+
 /** AsyncBuffer over HTTP with byte accounting. Range requests; one whole-file fetch for small files or servers that ignore Range. */
-export function makeBuffer(url: string, byteLength: number, fetcher: FetchLike, counter: ByteCounter, signal?: AbortSignal): AsyncBuffer {
-  let whole: Promise<ArrayBuffer> | null = null
-  const getWhole = () => {
-    if (!whole) {
-      const p = (async () => {
+export function makeBuffer(url: string, byteLength: number, fetcher: FetchLike, counter: ByteCounter, signal?: AbortSignal): SignalBuffer {
+  // Shared by every signal view of this file, so a whole file fetched while planning is never fetched again.
+  const shared: { whole: Promise<ArrayBuffer> | null } = { whole: null }
+  const view = (sig: AbortSignal | undefined): SignalBuffer => {
+    const getWhole = () => {
+      if (!shared.whole) {
+        const p = (async () => {
+          counter.requests++
+          const res = await fetcher(url, { signal: sig })
+          if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`)
+          const buf = await res.arrayBuffer()
+          counter.bytes += buf.byteLength
+          return buf
+        })()
+        p.catch(() => { if (shared.whole === p) shared.whole = null })
+        shared.whole = p
+      }
+      return shared.whole
+    }
+    return {
+      byteLength,
+      withSignal: (s?: AbortSignal) => view(s),
+      async slice(start: number, end?: number) {
+        if (shared.whole || byteLength <= WHOLE_FILE_LIMIT) return (await getWhole()).slice(start, end)
         counter.requests++
-        const res = await fetcher(url, { signal })
+        const res = await fetcher(url, { signal: sig, headers: { Range: `bytes=${start}-${end === undefined ? '' : end - 1}` } })
         if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`)
         const buf = await res.arrayBuffer()
         counter.bytes += buf.byteLength
+        if (res.status === 200) {
+          // server ignored Range and sent everything: keep it for the remaining slices of this file
+          shared.whole = Promise.resolve(buf)
+          return buf.slice(start, end)
+        }
         return buf
-      })()
-      p.catch(() => { if (whole === p) whole = null })
-      whole = p
+      },
     }
-    return whole
   }
-  return {
-    byteLength,
-    async slice(start: number, end?: number) {
-      if (whole || byteLength <= WHOLE_FILE_LIMIT) return (await getWhole()).slice(start, end)
-      counter.requests++
-      const res = await fetcher(url, { signal, headers: { Range: `bytes=${start}-${end === undefined ? '' : end - 1}` } })
-      if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`)
-      const buf = await res.arrayBuffer()
-      counter.bytes += buf.byteLength
-      if (res.status === 200) {
-        // server ignored Range and sent everything: keep it for the remaining slices of this file
-        whole = Promise.resolve(buf)
-        return buf.slice(start, end)
-      }
-      return buf
-    },
-  }
+  return view(signal)
 }
 
 export interface PlanGroup { index: number; rowStart: number; rowEnd: number; rows: number; compressedBytes: number }
@@ -97,7 +120,8 @@ export interface PlanFile {
   /** Row groups whose lat/lon statistics were missing (read unconditionally). */
   groupsWithoutStats: number
   metadata: FileMetaData
-  buffer: AsyncBuffer
+  /** Bound to the planning signal; the run re-issues it under its own signal (`withSignal`). */
+  buffer: SignalBuffer
 }
 
 export interface HotspotRequest {
@@ -106,6 +130,13 @@ export interface HotspotRequest {
   mTo: number
   /** Display name of the area for the file header. */
   label?: string
+  /**
+   * Optional monthly activity of the area, e.g. the analysis' accepted detections per month
+   * (series.rawModisCount + series.rawViirsCount, aligned with analysis.months). Gives the low end of the estimate and
+   * the seasonal share of each year that the months requested carry. Without it the estimate assumes rows spread
+   * evenly over each row group's time range.
+   */
+  activity?: { months: number[]; counts: number[] }
 }
 
 export interface HotspotPlan {
@@ -117,10 +148,21 @@ export interface HotspotPlan {
   totalGroups: number
   keptGroups: number
   groupsWithoutStats: number
-  /** Sum of row counts of surviving row groups: an upper bound on the rows exported. */
+  /** Sum of row counts of surviving row groups: the rows scanned, a hard upper bound on the rows exported. */
   estRows: number
-  /** Heuristic expectation of the rows actually exported (statistics-based, polygon share applied). */
-  likelyRows: number
+  /**
+   * Low end of the expected rows: detections the analysis accepted inside the area in these months (the export also
+   * carries the rejected ones, so the true count is usually above it). Null without `request.activity`.
+   */
+  lowRows: number | null
+  /**
+   * High end of the expected rows: per surviving row group, rows x the share of its lat/lon statistics box inside the
+   * area's bbox x the polygon's share of the bbox x the share of that year's activity in the months requested, and at
+   * least lowRows x 1.25 (the rejected detections), clamped to estRows. An estimate, not a bound: fires cluster, so it can still be off.
+   */
+  highRows: number
+  /** What the too-large guard compares with the row limit (= highRows). */
+  guardRows: number
   /** Compressed bytes of surviving row groups plus footer bytes already fetched. */
   estDownloadBytes: number
   /** Sum of whole-file sizes of the files considered (what an unpruned download would cost). */
@@ -206,6 +248,60 @@ export function groupLikelyFraction(
     * overlapFrac(minMax(stat('acq_time_utc'), true), t0, t1)
 }
 
+/** Share of a row group's lat/lon statistics box inside the bbox (uniform assumption). */
+export function groupSpatialFraction(rg: FileMetaData['row_groups'][number], bbox: [number, number, number, number]): number {
+  const stat = (name: string) => rg.columns.find((c) => c.meta_data?.path_in_schema?.[0] === name)?.meta_data?.statistics as Stat
+  const [w, s, e, n] = bbox
+  return overlapFrac(minMax(stat('latitude'), false), s, n) * overlapFrac(minMax(stat('longitude'), false), w, e)
+}
+
+/**
+ * The file lists every detection, the analysis counts only accepted ones: measured on the story areas, rejected
+ * detections add 5-14 % (Northern California Sep 2020, Amazon Aug 2019, Gran Chaco Sep 2020), so the high end is at
+ * least the accepted count times this margin.
+ */
+const REJECTED_MARGIN = 1.25
+
+/** Average bytes of one CSV row, for the size estimate. */
+const CSV_ROW_BYTES = 135
+/**
+ * Floor on a year's seasonal share, as a fraction of the even share (months requested / months with data): the area's
+ * own season (from the analysis) can differ from the wider bbox the row groups cover, so a quiet month never estimates 0.
+ */
+const SEASON_FLOOR = 0.5
+
+const inRange = (m: number, a: number, b: number) => m >= a && m <= b
+
+/** Accepted detections in the area over the months requested (low end of the estimate); null without activity. */
+function activityIn(req: HotspotRequest): number | null {
+  const act = req.activity
+  if (!act) return null
+  let sum = 0
+  act.months.forEach((m, i) => { if (inRange(m, req.mFrom, req.mTo)) sum += Math.max(0, act.counts[i] || 0) })
+  return sum
+}
+
+/** Per file year, the share of that year's activity falling in the months requested (empty map without activity). */
+function yearShares(req: HotspotRequest): Map<number, number> {
+  const out = new Map<number, number>()
+  const act = req.activity
+  if (!act) return out
+  const per = new Map<number, { total: number; inR: number; months: number; monthsIn: number }>()
+  act.months.forEach((m, i) => {
+    const y = yearOf(m)
+    const e = per.get(y) ?? { total: 0, inR: 0, months: 0, monthsIn: 0 }
+    const c = Math.max(0, act.counts[i] || 0)
+    e.total += c; e.months++
+    if (inRange(m, req.mFrom, req.mTo)) { e.inR += c; e.monthsIn++ }
+    per.set(y, e)
+  })
+  for (const [y, e] of per) {
+    const even = e.months ? e.monthsIn / e.months : 0
+    out.set(y, e.total > 0 ? Math.max(e.inR / e.total, SEASON_FLOOR * even) : even)
+  }
+  return out
+}
+
 /** [start, end) of the inclusive month range, as epoch ms (UTC). */
 export function monthRangeMs(mFrom: number, mTo: number): [number, number] {
   return [Date.UTC(yearOf(mFrom), monthOf(mFrom) - 1, 1), Date.UTC(yearOf(mTo), monthOf(mTo), 1)]
@@ -235,6 +331,7 @@ export async function planHotspotExport(req: HotspotRequest, o: PlanOptions): Pr
   const counter: ByteCounter = { bytes: 0, requests: 0 }
   const results: (PlanFile | null)[] = new Array(refs.length).fill(null)
   const stats = { groups: 0, kept: 0, noStats: 0, likely: 0 }
+  const share = yearShares(req)
   let done = 0
   let next = 0
   const worker = async () => {
@@ -252,7 +349,8 @@ export async function planHotspotExport(req: HotspotRequest, o: PlanOptions): Pr
         const [ok, hadStats] = groupIntersects(rg, bbox, t0, t1)
         if (!hadStats) noStats++
         if (ok && rows > 0) {
-          stats.likely += rows * groupLikelyFraction(rg, bbox, t0, t1)
+          const ts = share.get(ref.year)
+          stats.likely += ts == null ? rows * groupLikelyFraction(rg, bbox, t0, t1) : rows * groupSpatialFraction(rg, bbox) * ts
           groups.push({
             index, rowStart, rowEnd: rowStart + rows, rows,
             compressedBytes: rg.columns.reduce((a, c) => a + Number(c.meta_data?.total_compressed_size ?? 0), 0),
@@ -280,15 +378,19 @@ export async function planHotspotExport(req: HotspotRequest, o: PlanOptions): Pr
   const [w, sb, e, nb] = bbox
   const bboxArea = ringsAreaKm2([[[w, sb], [e, sb], [e, nb], [w, nb], [w, sb]]])
   const polyShare = bboxArea > 0 ? Math.min(1, ringsAreaKm2(req.rings) / bboxArea) : 1
+  const low = activityIn(req)
+  const high = Math.round(Math.min(estRows, Math.max((low ?? 0) * REJECTED_MARGIN, stats.likely * polyShare)))
   return {
     request: req, bbox, files,
-    likelyRows: Math.round(stats.likely * polyShare),
+    lowRows: low == null ? null : Math.round(low),
+    highRows: high,
+    guardRows: high,
     filesConsidered: refs.length,
     totalGroups: stats.groups, keptGroups: stats.kept, groupsWithoutStats: stats.noStats,
     estRows, estDownloadBytes: groupBytes + counter.bytes,
     totalFileBytes: refs.reduce((a, r) => a + r.bytes, 0),
     metaBytes: counter.bytes,
-    estCsvBytes: Math.round(stats.likely * polyShare) * 135,
+    estCsvBytes: high * CSV_ROW_BYTES,
     counter,
   }
 }
@@ -359,7 +461,7 @@ export function csvHeader(h: HeaderInfo): string {
     '# Harmony: hotspots (individual MODIS and VIIRS active-fire detections)',
     `# Area: ${(h.label ?? 'selected area').replace(/[\r\n]+/g, ' ')}; bbox W ${f(w)}, S ${f(s)}, E ${f(e)}, N ${f(n)}; polygon area ${nf(Math.round(h.areaKm2))} km2`,
     `# Date range: ${monthIso(h.mFrom)} to ${monthIso(h.mTo)} (inclusive months, UTC)`,
-    `# Rows: ${nf(h.rows)}` + (h.truncated ? ` (truncated: the first ${nf(h.rows)} of about ${nf(h.estRows)}; narrow the area or dates for the rest)` : ''),
+    `# Rows: ${nf(h.rows)}` + (h.truncated ? ` (truncated: the first ${nf(h.rows)} of up to ${nf(h.estRows)} rows scanned; narrow the area or dates for the rest)` : ''),
     `# Generated: ${h.generatedAt}`,
     '# used_in_harmonized=false rows were excluded from the harmonized record (low confidence, non-vegetation type, or static-source mask).',
     '# acq_date and acq_time are UTC; frp in MW; brightness/bright_2 in K (MODIS ch21/ch31, VIIRS I4/I5); scan/track in km.',
@@ -411,11 +513,13 @@ export async function runHotspotExport(plan: HotspotPlan, o: RunOptions): Promis
   // One Blob per row group keeps memory flat: the browser can keep Blob data out of the JS heap.
   const readFile = async (f: PlanFile): Promise<Blob[]> => {
     const parts: Blob[] = []
+    // This run's signal, never the planning one (which the UI aborts when the run starts).
+    const file = f.buffer.withSignal(o.signal)
     for (const g of f.groups) {
       throwIfAborted(o.signal)
       if (rows >= limit) { truncated = true; break }
       const data = await parquetReadObjects({
-        file: f.buffer, metadata: f.metadata, columns: PARQUET_COLUMNS, compressors,
+        file, metadata: f.metadata, columns: PARQUET_COLUMNS, compressors,
         rowStart: g.rowStart, rowEnd: g.rowEnd,
       })
       throwIfAborted(o.signal)
@@ -478,6 +582,7 @@ export async function runHotspotExport(plan: HotspotPlan, o: RunOptions): Promis
 
 export interface HotspotTooLarge {
   kind: 'too-large'
+  /** The plan's guardRows (expected rows, high end). */
   estimatedRows: number
   maxRows: number
   plan: HotspotPlan
@@ -493,13 +598,13 @@ export interface ExportOptions extends PlanOptions {
   now?: () => Date
 }
 
-/** One-shot: plan, refuse when the estimate exceeds maxRows (unless force), otherwise export. */
+/** One-shot: plan, refuse when the estimate exceeds maxRows or the download cap (unless force), otherwise export. */
 export async function exportHotspots(
-  req: { rings: Rings; mFrom: number; mTo: number }, o: ExportOptions,
+  req: Omit<HotspotRequest, 'label'>, o: ExportOptions,
 ): Promise<HotspotExportOk | HotspotTooLarge> {
   const maxRows = o.maxRows ?? DEFAULT_MAX_ROWS
   const plan = await planHotspotExport({ ...req, label: o.label }, o)
-  if (plan.estRows > maxRows && !o.force) return { kind: 'too-large', estimatedRows: plan.estRows, maxRows, plan }
+  if (planTooLarge(plan, maxRows) && !o.force) return { kind: 'too-large', estimatedRows: plan.guardRows, maxRows, plan }
   return runHotspotExport(plan, {
     signal: o.signal, onProgress: o.onProgress, ack: o.ack, now: o.now,
     rowLimit: plan.estRows > maxRows ? maxRows : undefined,

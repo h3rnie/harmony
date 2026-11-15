@@ -128,8 +128,9 @@ impl LogRecord {
     }
 }
 
-/// Outlook for the three months after the latest month with data.
-pub fn outlook(h: &[Option<f64>], m_first: i32, baseline: [i32; 2], clim: &Climatology) -> Outlook {
+/// Outlook for the three months after the latest month with data. With `persistence = false`
+/// (a sparse area) no skill is estimated and the outlook is the baseline climatology.
+pub fn outlook(h: &[Option<f64>], m_first: i32, baseline: [i32; 2], clim: &Climatology, persistence: bool) -> Outlook {
     let rec = LogRecord {
         x: h.iter().map(|v| v.filter(|v| v.is_finite()).map(|v| v.max(0.0).ln_1p())).collect(),
         m_first,
@@ -143,7 +144,7 @@ pub fn outlook(h: &[Option<f64>], m_first: i32, baseline: [i32; 2], clim: &Clima
     let mu = rec.climatology(None);
     let a = rec.anomalies(&mu);
     let rho: Vec<f64> = (1..=LEADS as usize).map(|l| rec.rho(&a, l, None)).collect();
-    let skill = if latest.is_some() { rec.skill() } else { 0.0 };
+    let skill = if latest.is_some() && persistence { rec.skill() } else { 0.0 };
     let persist = skill > 0.0 && rho[0] > 0.0;
 
     let mut out = Outlook {
@@ -214,7 +215,7 @@ mod tests {
     fn pure_noise_gives_climatology() {
         let mut g = Lcg(7);
         let h: Vec<Option<f64>> = (0..300).map(|i| Some((seasonal(i) + 0.8 * g.normal()).exp_m1().max(0.0))).collect();
-        let o = outlook(&h, 10, [2003, 2022], &clim_from(&h, 10));
+        let o = outlook(&h, 10, [2003, 2022], &clim_from(&h, 10), true);
         assert_eq!(o.method, "climatology", "{o:?}");
         assert!(o.skill <= 0.0);
         assert_eq!(o.months, vec![310, 311, 312]);
@@ -232,20 +233,25 @@ mod tests {
                 Some((seasonal(i) + a).exp_m1().max(0.0))
             })
             .collect();
-        let o = outlook(&h, 10, [2003, 2022], &clim_from(&h, 10));
+        let o = outlook(&h, 10, [2003, 2022], &clim_from(&h, 10), true);
         assert_eq!(o.method, "anomaly-persistence", "{o:?}");
         assert!(o.skill > 0.2 && o.rho > 0.6, "{o:?}");
         for k in 0..3 {
             assert!(o.lo80[k] <= o.median[k] && o.median[k] <= o.hi80[k]);
         }
+        // A sparse area: no persistence claim, the climatology itself.
+        let c = clim_from(&h, 10);
+        let o = outlook(&h, 10, [2003, 2022], &c, false);
+        assert_eq!((o.method, o.skill), ("climatology", 0.0));
+        assert_eq!(o.median, o.climatology);
     }
 
     #[test]
     fn empty_and_tiny_records() {
         let c = clim_from(&[], 10);
-        let o = outlook(&[None, None], 10, [2003, 2022], &c);
+        let o = outlook(&[None, None], 10, [2003, 2022], &c, true);
         assert_eq!((o.method, o.months.len(), o.skill), ("climatology", 3, 0.0));
-        let o = outlook(&[Some(5.0)], 10, [2003, 2022], &clim_from(&[Some(5.0)], 10));
+        let o = outlook(&[Some(5.0)], 10, [2003, 2022], &clim_from(&[Some(5.0)], 10), true);
         assert_eq!(o.median.len(), 3);
         assert!(o.median.iter().all(|v| v.is_finite()));
     }

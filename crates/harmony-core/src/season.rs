@@ -11,6 +11,10 @@ pub struct Season {
     pub length_months: u32,
     pub concentration: f64,
     pub second_peak: Option<u32>,
+    /// A fire season can be described: the profile has activity and the area is not sparse
+    /// (the engine clears it for sparse areas, `Analysis.activity`). When false the other fields
+    /// are placeholders and must not be read as a season.
+    pub defined: bool,
 }
 
 /// Share of annual activity the season window must hold.
@@ -37,6 +41,7 @@ pub fn season(profile: &[f64; 12]) -> Season {
             length_months: 12,
             concentration: 0.0,
             second_peak: None,
+            defined: false,
         };
     }
 
@@ -72,6 +77,7 @@ pub fn season(profile: &[f64; 12]) -> Season {
         length_months: len as u32,
         concentration: held / total,
         second_peak: second.map(|k| k as u32 + 1),
+        defined: true,
     }
 }
 
@@ -108,6 +114,7 @@ mod tests {
         assert_eq!(s.peak_month, 2);
         assert_eq!(s.second_peak, Some(10));
         let z = season(&[0.0; 12]);
-        assert_eq!((z.length_months, z.concentration, z.second_peak), (12, 0.0, None));
+        assert_eq!((z.length_months, z.concentration, z.second_peak, z.defined), (12, 0.0, None, false));
+        assert!(s.defined);
     }
 }

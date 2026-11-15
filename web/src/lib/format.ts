@@ -86,14 +86,26 @@ export const LEVEL_LABEL: Record<string, string> = {
   normal: 'Near normal',
   below: 'Below normal',
   'well-below': 'Well below normal',
+  // Never shown as a level chip (see analysisUtil.hasLevel); worded for any text that names the state.
+  'in-progress': 'In progress',
+  undefined: 'Too little fire to rate',
 }
-/** Same thresholds the UI uses when it has to derive a level for a non-current month. */
-export function levelFromPercentile(p: number | null): string {
-  if (p == null) return 'normal'
-  if (p >= 97.5) return 'extreme'
-  if (p >= 90) return 'well-above'
-  if (p >= 75) return 'above'
-  if (p <= 10) return 'well-below'
-  if (p <= 25) return 'below'
+/**
+ * The kernel's level rule for a month it did not label itself: a level needs both rank and size (docs/METHOD.md).
+ * extreme = percentile >= 97.5 and ratio >= 2; well-above >= 90 and >= 1.5; above >= 75 and >= 1.2;
+ * well-below <= 10 and <= 1/1.5; below <= 25 and <= 1/1.2; otherwise normal. 'undefined' without a usable normal
+ * (median below 1 AFCD-M). Without a ratio (older callers) the percentile alone decides.
+ */
+export function levelFromPercentile(p: number | null, ratio?: number | null, median?: number | null): string {
+  if (median != null && median < 1) return 'undefined'
+  if (p == null) return 'undefined'
+  const r = ratio ?? null
+  const big = (x: number) => r == null || r >= x
+  const small = (x: number) => r == null || r <= 1 / x
+  if (p >= 97.5 && big(2)) return 'extreme'
+  if (p >= 90 && big(1.5)) return 'well-above'
+  if (p >= 75 && big(1.2)) return 'above'
+  if (p <= 10 && small(1.5)) return 'well-below'
+  if (p <= 25 && small(1.2)) return 'below'
   return 'normal'
 }

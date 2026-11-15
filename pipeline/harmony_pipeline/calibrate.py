@@ -58,6 +58,42 @@ def cf(cov: str) -> str:
     return f"(CASE WHEN {cov} >= {COV_MIN} THEN least(1.0 / {cov}, {COV_MAX_CORR}) ELSE 1.0 END)"
 
 
+def cov_union(dn: str, ft: str, fa: str, share: dict) -> str:
+    """SQL union-aware coverage of the Terra∪Aqua stream m_ta for a day|night column `dn`.
+
+    A day without Aqua loses the union cell-days Terra does not see, (1 - t_dn), not half of them; a day without
+    Terra loses (1 - a_dn). With t_dn, a_dn the shares of union cell-days seen by Terra and by Aqua (fitted where
+    both fly every day, `share` = calib.json `modis_union_share`): cov = 1 - (1 - f_aqua)(1 - t) - (1 - f_terra)(1 - a).
+    It replaces (f_terra + f_aqua) / 2, which assumed each satellite carries half the union (by day Terra sees
+    about 30 % and Aqua 73 %)."""
+    t, a = share["terra"], share["aqua"]
+    tt = f"(CASE WHEN {dn} = 1 THEN {t[1]} ELSE {t[0]} END)"
+    aa = f"(CASE WHEN {dn} = 1 THEN {a[1]} ELSE {a[0]} END)"
+    return f"greatest(1.0 - (1.0 - {fa}) * (1.0 - {tt}) - (1.0 - {ft}) * (1.0 - {aa}), 0.0)"
+
+
+def cf_union(dn: str, ft: str, fa: str, cov_modis: str, share: dict, missing=1.0) -> str:
+    """Coverage factor of m_ta: 1 / cov_union capped at COV_MAX_CORR, where the overpass coverage cov_modis
+    >= COV_MIN (the same months as before); `missing` (1.0 or NULL) below it."""
+    cu = cov_union(dn, ft, fa, share)
+    return (f"(CASE WHEN {cov_modis} >= {COV_MIN} AND {cu} > 0 THEN least(1.0 / {cu}, {COV_MAX_CORR}) "
+            f"ELSE {missing} END)")
+
+
+def modis_union_share(con) -> dict:
+    """Shares of Terra∪Aqua cell-days seen by Terra and by Aqua, [day, night], over the bridge window months in
+    which both satellites were available every day (0.5 if a share cannot be computed)."""
+    b0, b1 = ym_index(BRIDGE_START), ym_index(BRIDGE_END)
+    rows = con.execute(f"""SELECT c.dn, sum(c.m_t) / nullif(sum(c.m_ta), 0), sum(c.m_a) / nullif(sum(c.m_ta), 0)
+        FROM read_parquet('{posix(CUBE)}') c JOIN read_parquet('{posix(AVAIL_M)}') am USING (m)
+        WHERE c.m BETWEEN {b0} AND {b1} AND am.f_terra = 1 AND am.f_aqua = 1 GROUP BY 1""").fetchall()
+    sh = {"terra": [0.5, 0.5], "aqua": [0.5, 0.5]}
+    for dn, t, a in rows:
+        if t is not None and a is not None:
+            sh["terra"][int(dn)], sh["aqua"][int(dn)] = round(float(t), 4), round(float(a), 4)
+    return sh
+
+
 def sdiv(a, b):
     a, b = np.broadcast_arrays(np.asarray(a, float), np.asarray(b, float))
     return np.divide(a, b, out=np.zeros(a.shape), where=b > 0)
@@ -310,13 +346,13 @@ def l0_values_sql() -> str:
     aqua_m, vs_m = cal["aqua_start_m"], cal["viirs_start_m"]
     return f"""
     WITH c AS (
-      SELECT cu.*, sc.stratum AS s, cu.m % 12 AS moy, am.cov_modis, am.cov_terra, am.cov_viirs
+      SELECT cu.*, sc.stratum AS s, cu.m % 12 AS moy, am.cov_modis, am.cov_terra, am.cov_viirs, am.f_terra, am.f_aqua
       FROM read_parquet('{posix(CUBE)}') cu JOIN read_parquet('{posix(OUT_CELLS)}') sc USING (l0)
       JOIN read_parquet('{posix(AVAIL_M)}') am USING (m)
       WHERE cu.m BETWEEN {cal['m_first']} AND {cal['m_last']})
     SELECT c.l0, c.s, c.m, c.dn,
       CASE WHEN c.m < {aqua_m} THEN c.m_t * kc.kb * coalesce(rc.rb, 1) * {cf('c.cov_terra')}
-           ELSE c.m_ta * {cf('c.cov_modis')} END AS meq,
+           ELSE c.m_ta * {cf_union('c.dn', 'c.f_terra', 'c.f_aqua', 'c.cov_modis', cal['modis_union_share'])} END AS meq,
       CASE WHEN c.m >= {vs_m} THEN (c.ws + nf.c20 * c.w20 + nf.c21 * c.w21) * {cf('c.cov_viirs')}
            ELSE 0 END AS v,
       v * kc.k * coalesce(rc.r, 1) AS kv,
@@ -346,6 +382,9 @@ def main(force: bool = False) -> None:
     b0, b1 = ym_index(BRIDGE_START), ym_index(BRIDGE_END)
     cube = f"read_parquet('{posix(CUBE)}') c JOIN read_parquet('{posix(OUT_CELLS)}') sc USING (l0) " \
            f"JOIN read_parquet('{posix(AVAIL_M)}') am USING (m)"
+    share = modis_union_share(con)
+    cu = cov_union("c.dn", "am.f_terra", "am.f_aqua", share)
+    print(f"  Terra / Aqua share of Terra∪Aqua cell-days [day, night]: {share}")
 
     # 1. NOAA-20 / NOAA-21 -> S-NPP ------------------------------------------------------
     with timed("calibrate noaa factors"):
@@ -382,7 +421,7 @@ def main(force: bool = False) -> None:
     # 2-3. VIIRS -> MODIS ------------------------------------------------------------------
     with timed("calibrate viirs->modis"):
         d = load_rows(con, f"""SELECT c.l0, sc.stratum AS s, c.dn, c.m,
-                c.m_ta / am.cov_modis AS num, {vexpr} / am.cov_viirs AS den,
+                c.m_ta / {cu} AS num, {vexpr} / am.cov_viirs AS den,
                 c.m_a / nullif(am.f_aqua, 0) AS num_aqua
             FROM {base} WHERE c.m BETWEEN {viirs_start_m} AND {m_last}
               AND am.cov_modis >= {COV_MIN} AND am.cov_viirs >= {COV_MIN} AND am.f_aqua >= {COV_MIN}""")
@@ -395,7 +434,7 @@ def main(force: bool = False) -> None:
     # 4. Terra -> Terra+Aqua bridge ------------------------------------------------------------
     with timed("calibrate bridge"):
         d = load_rows(con, f"""SELECT c.l0, sc.stratum AS s, c.dn, c.m,
-                c.m_ta / am.cov_modis AS num, c.m_t / am.f_terra AS den
+                c.m_ta / {cu} AS num, c.m_t / am.f_terra AS den
             FROM {cube} WHERE c.m BETWEEN {b0} AND {b1} AND am.f_terra >= {COV_MIN} AND am.f_aqua >= {COV_MIN}""")
         BR = Rows(d["l0"], d["s"], d["dn"], d["m"], d["num"], d["den"])
         bfit = fit_stream(BR, nS, biome, nB, list(range(BRIDGE_START[0], BRIDGE_END[0] + 1)), TAU_GRID)
@@ -468,11 +507,18 @@ def main(force: bool = False) -> None:
                  "ci_scale": ci_scale, "interval_coverage_loyo_1deg": cover,
                  "m_first": 10, "m_last": m_last, "aqua_start_m": aqua_m, "viirs_start_m": viirs_start_m,
                  "fit_window_m": [fit0, fit1], "bridge_window_m": [b0, b1],
-                 "default_switch_m": ym_index(DEFAULT_SWITCH), "regional": is_regional()}
+                 "default_switch_m": ym_index(DEFAULT_SWITCH), "regional": is_regional(),
+                 "modis_union_share": share}
         write_json(CALIB_JSON, calib)
 
     with timed("calibrate validation"):
         validation = build_validation(con, strata, biome, biome_codes, nS, nB, A, F, fit, bfit, calib)
+        from .screen import SUMMARY as SCREEN
+        if SCREEN.exists():         # land and burst screen (screen.py): what was removed before the cube was built
+            sc = json.loads(SCREEN.read_text())
+            validation["land_screen"] = sc["land"]
+            validation["bursts"] = sc["bursts"]
+        validation["modis_union_share"] = calib["modis_union_share"]
         write_json(VALIDATION, r3(validation))
     print(f"[calibrate] total {__import__('time').time() - t_all:.1f}s")
 

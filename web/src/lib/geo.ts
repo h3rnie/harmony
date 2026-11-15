@@ -137,3 +137,62 @@ export function aoiToGeoJSON(aoi: Aoi, props: Record<string, unknown> = {}) {
     ],
   }
 }
+
+/** Kernel limit on an area's bounding box at the finest level (0.05° cells): MAX_BBOX_CELLS = 12,000,000. */
+const MAX_BBOX_DEG2 = 12_000_000 * 0.05 * 0.05
+
+export const AOI_MSG_ANTIMERIDIAN = 'Areas that cross the 180° meridian are not supported yet — split it in two.'
+export const AOI_MSG_TOO_LARGE = 'This area is too large to analyse; the Global pulse shows the whole planet.'
+
+/** True when a ring jumps across the antimeridian (or leaves −180…180), which the record's grid cannot represent. */
+export function crossesAntimeridian(rings: Rings): boolean {
+  for (const r of rings) {
+    for (let i = 0; i < r.length; i++) {
+      const x = r[i][0]
+      if (!(x >= -180 && x <= 180)) return true
+      if (i > 0 && Math.abs(x - r[i - 1][0]) > 180) return true
+    }
+  }
+  return false
+}
+
+/** Why an area cannot be analysed, in words for the viewer; null when it can. */
+export function aoiProblem(aoi: Aoi): string | null {
+  const sh = aoi.shape
+  if (sh.kind === 'bbox') {
+    if (!(sh.n > sh.s)) return 'North must be greater than south.'
+    if (!(sh.e > sh.w)) return AOI_MSG_ANTIMERIDIAN
+  }
+  if (sh.kind === 'circle') {
+    const dLon = sh.km / (111.32 * Math.max(0.01, Math.cos((Math.min(89, Math.abs(sh.lat) + sh.km / 111.32) * Math.PI) / 180)))
+    if (sh.lon - dLon < -180 || sh.lon + dLon > 180) return AOI_MSG_ANTIMERIDIAN
+  }
+  if (!aoi.rings.length || aoi.rings[0].length < 4) return 'That outline has too few points to make an area.'
+  if (crossesAntimeridian(aoi.rings)) return AOI_MSG_ANTIMERIDIAN
+  const [w, s, e, n] = ringsBbox(aoi.rings)
+  if ((e - w) * (n - s) > MAX_BBOX_DEG2) return AOI_MSG_TOO_LARGE
+  return null
+}
+
+/** Centre and radius of a drawn circle (a regular ring), so it can be shared as `c=lon,lat,km`. */
+export function circleFromRing(ring: Ring): { lon: number; lat: number; km: number } | null {
+  const pts = ring.slice(0, -1)
+  if (pts.length < 8) return null
+  // Mean on the unit sphere: robust for any latitude.
+  let x = 0, y = 0, z = 0
+  for (const [lo, la] of pts) {
+    const p = la * RAD, l = lo * RAD
+    x += Math.cos(p) * Math.cos(l); y += Math.cos(p) * Math.sin(l); z += Math.sin(p)
+  }
+  const lon = Math.atan2(y, x) / RAD, lat = Math.atan2(z, Math.hypot(x, y)) / RAD
+  const hav = (lo: number, la: number) => {
+    const dp = (la - lat) * RAD, dl = (lo - lon) * RAD
+    const h = Math.sin(dp / 2) ** 2 + Math.cos(lat * RAD) * Math.cos(la * RAD) * Math.sin(dl / 2) ** 2
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)))
+  }
+  const d = pts.map(([lo, la]) => hav(lo, la))
+  const km = d.reduce((a, b) => a + b, 0) / d.length
+  // Only a ring whose vertices are all (nearly) the same distance from the centre is a circle.
+  if (!(km > 0) || d.some((v) => Math.abs(v - km) > km * 0.06)) return null
+  return { lon, lat, km }
+}

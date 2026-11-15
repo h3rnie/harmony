@@ -22,7 +22,7 @@ import { crossSiteReason, type HeaderBag } from '../sameOrigin.ts'
 
 export type { AiEnv }
 
-/** error codes: no_key / bad_config 503 · bad_request 400 · forbidden 403 · rate_limited 429 · upstream_error / refused / bad_output 502 */
+/** error codes: no_key / bad_config / daily_cap 503 · bad_request 400 · forbidden 403 · rate_limited 429 · upstream_error / refused / bad_output 502 */
 export class AiError extends Error {
   readonly status: number
   readonly code: string
@@ -70,14 +70,19 @@ export interface RunHooks {
   fresh?: boolean
   /** One-line, secret-free dev log. */
   log?: (line: string) => void
+  /**
+   * Called once per request that will reach a model (after the response cache and the per-process rate limit, before
+   * the first provider call). A deployment uses it for its shared daily cap; throw an AiError to refuse.
+   */
+  admit?: (kind: 'brief' | 'ask') => Promise<void>
 }
 
 /**
  * Call first on every AI route (the status GET included): refuses cross-site browser requests with 403 forbidden
  * (see sameOrigin.ts). The JSON content type required on POST stays as a second line of defence.
  */
-export function assertSameOrigin(headers: HeaderBag): void {
-  const why = crossSiteReason(headers)
+export function assertSameOrigin(headers: HeaderBag, allowedOrigins: readonly string[] = []): void {
+  const why = crossSiteReason(headers, allowedOrigins)
   if (why) throw new AiError(403, 'forbidden', why)
 }
 
@@ -273,6 +278,7 @@ export async function getBrief(body: unknown, env: AiEnv, hooks: RunHooks = {}):
   if (hit) { totals.cacheHits++; return { ...hit, cached: true, ms: Date.now() - started } }
 
   takeRateSlot('brief', started)
+  await hooks.admit?.('brief')
   const streamer = new FieldStreamer(['headline', 'summary'], (f, t) => hooks.onDelta?.(f, t))
   const reset = () => { streamer.reset(); hooks.onReset?.() }
   const context = buildContext(canon)
@@ -329,6 +335,7 @@ export async function getAnswer(body: unknown, env: AiEnv, hooks: RunHooks = {})
   if (hit) { totals.cacheHits++; return { ...hit, cached: true, ms: Date.now() - started } }
 
   takeRateSlot('ask', started)
+  await hooks.admit?.('ask')
   const context = buildContext(canon)
   const g = await generate(
     cfg,

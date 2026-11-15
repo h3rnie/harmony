@@ -23,6 +23,15 @@ the contract's index `m = (year-2000)*12 + month-1`. Floats are rounded to 4 dec
 | `k_by_biome` | {biome: {name, k_day, k_night}} | V-weighted mean VIIRS→MODIS factor |
 | `noaa_scale` | [{s, dn, c20, c21, level20, level21, reject20, reject21}] | NOAA-20 / NOAA-21 → S-NPP factors per stratum × dn; `level*` = level used (`stratum_dn`, `biome_dn`, `global_dn`; `as_noaa20` = no NOAA-21 overlap, c20 reused); `reject*` = why the stratum level was not used (`min_sum`, `month_share`, `range`; null if it was) |
 | `noaa_scale_guard` | {min_sum, max_month_share, range, note} | the guard a stratum or biome NOAA factor must pass: both sums ≥ `min_sum`, no single month > `max_month_share` of either sum, factor inside `range` (else the next level is used) |
+| `modis_union_share` | {terra: [d, n], aqua: [d, n]} | share of Terra∪Aqua cell-days seen by Terra and by Aqua (2003–2011 months with both satellites every day); the union-aware MODIS coverage uses them (docs/METHOD.md section 4) |
+| `land_screen` | object | the near-real-time land rule (`screen.py`): `rule`, `source`, `buffer_cells`, `buffer_deg`, `water_cells_with_detections`, `nrt_rows_excluded`, `nrt_rows_excluded_by_satellite_month` [{satellite, month, rows}], `sp_candidate_rows_in_water_cells_kept` |
+| `bursts` | object | the burst screen: `rule`, `action`, `k`, `min_suspect`, `by_satellite` {sat: {days, median_suspect, p99_suspect, threshold}}, `flagged` [Burst], `standard_quality_top` (the three highest science-quality satellite-days per satellite, report only), `n_flagged`, `n_excluded_days`, `rows_excluded`, `rows_excluded_beyond_land_rule` |
+
+**Burst** = `{ satellite, date (UTC), quality (nrt | sp), detections (candidate detections that day), suspect,
+water, fire_free_land_unconfirmed, fire_free_land, share_suspect, satellite_median, threshold, robust_z,
+action: "excluded" | "reported" }`. Suspect = candidate detections in water cells, plus those in historically
+fire-free land cells that no other satellite confirms; near-real-time burst days are excluded from `used`,
+science-quality ones only reported.
 
 ## Types
 **Scales** = `{ "stratum_month": Block, "cell1deg_month": Block }`. A unit is one stratum (stratum scale) or one

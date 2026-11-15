@@ -10,16 +10,16 @@ Documents: [method](docs/METHOD.md) · [architecture](docs/ARCHITECTURE.md) · [
 
 ## Results that matter
 
-All figures are from the 2026-11-15 global build and are read from `data/dist/validation.json` (tables and caveats in [docs/METHOD.md](docs/METHOD.md), Tables M1 to M11). The record uses 658,009,224 FIRMS detections (2000-11 to 2026-11-15); 535,670,069 of them pass the filters.
+All figures are from the 2026-11-15 global build and are read from `data/dist/validation.json` (tables and caveats in [docs/METHOD.md](docs/METHOD.md), Tables M1 to M11). The record uses 658,009,224 FIRMS detections (2000-11 to 2026-11-15); 535,642,631 of them pass the filters (535,670,069 before the review rebuild of the same day removed 27,438 near-real-time detections over water and on burst days).
 
 | Question | Result |
 | --- | --- |
-| Is the seam gone? | The VIIRS-to-MODIS ratio of raw detection counts is 3.8 to 4.1 in 2012-2017, 7.1 in 2018 (NOAA-20 joins), 8.1 to 8.3 in 2019-2022 and 11.7 to 12.9 in 2023-2025 (NOAA-21 joins). After calibration the same ratio is 0.98 to 1.03 in 2013-2024. A Pettitt change-point test at the 2023-01 switch finds a step of +2.53 in log units (a factor of 12.6, p < 0.0001) in raw counts and none in the harmonized series (p = 0.17; the detected change month is 2025-02, step -0.12). At the start of VIIRS (2012-02): raw +1.37 (p < 0.0001), harmonized p = 0.14. On the fused record the same tests give p = 0.12 at the start of VIIRS and p = 0.063 in the window around the 2023-01 switch (Table M4b). |
-| How far have Terra and Aqua drifted? | Measured against VIIRS, which keeps its overpass. By 2025 Terra detects 58 % of the expected number by day (95 % interval 54 to 63 %) and 135 % at night; Aqua at night detects 83 %; Terra and Aqua combined detect 90 % by day and 120 % at night. The mean local overpass time of Terra detections had moved 1.1 hours earlier and Aqua's 1.1 hours later. In the placebo years 2012-2019 the combined ratio varies by 1.4 % (day) and 2.5 % (night), RMS. This is the change in MODIS relative to VIIRS; it cannot tell a moving overpass from a real change in when fires burn. |
-| How accurate is the VIIRS-to-MODIS calibration on years it has not seen? | Leave-one-year-out, 2012-2021, against observed MODIS: at stratum-month scale r = 0.988 and log-RMSE 0.458 (one global ratio: r = 0.981, log-RMSE 0.607); at 1-degree cell-month scale r = 0.944 and log-RMSE 0.601 (one global ratio: 0.928 and 0.680). NOAA-21, which enters no fit, is within +0.5 % (2023) and +0.4 % (2024) of observed MODIS and within 0.6 % of drift-corrected MODIS in 2023-2025. |
-| Do the uncertainty bands cover? | Intervals are split-conformal, calibrated per biome group and activity size. Held out in time (frozen calibration, 2022-2024, against observed MODIS) and pooled over the three supports (1-degree cells, 5-degree blocks, strata), the nominal 80 % and 95 % intervals cover 0.76 and 0.93 of unit-months with 5 or more cell-days, and 0.79 and 0.95 of all unit-months. They fall a few points short of nominal out of sample; by size class the 80 % coverage is 0.71 to 0.81. |
+| Is the seam gone? | The VIIRS-to-MODIS ratio of raw detection counts is 3.8 to 4.1 in 2012-2017, 7.1 in 2018 (NOAA-20 joins), 8.1 to 8.3 in 2019-2022 and 11.7 to 12.9 in 2023-2025 (NOAA-21 joins). After calibration the same ratio is 0.98 to 1.03 in 2013-2024. A Pettitt change-point test at the 2023-01 switch finds a step of +2.53 in log units (a factor of 12.6, p < 0.0001) in raw counts and none in the harmonized series (p = 0.15; the detected change month is 2025-02, step -0.12). At the start of VIIRS (2012-02): raw +1.37 (p < 0.0001), harmonized p = 0.14. On the fused record the same tests give p = 0.11 at the start of VIIRS and p = 0.059 in the window around the 2023-01 switch (Table M4b). |
+| How far have Terra and Aqua drifted? | Measured against VIIRS, which keeps its overpass. By 2025 Terra detects 58 % of the expected number by day (95 % interval 53 to 63 %) and 135 % at night; Aqua at night detects 83 %; Terra and Aqua combined detect 90 % by day and 120 % at night. The mean local overpass time of Terra detections had moved 1.1 hours earlier and Aqua's 1.1 hours later. In the placebo years 2012-2019 the combined ratio varies by 1.4 % (day) and 2.5 % (night), RMS. This is the change in MODIS relative to VIIRS; it cannot tell a moving overpass from a real change in when fires burn. |
+| How accurate is the VIIRS-to-MODIS calibration on years it has not seen? | Leave-one-year-out, 2012-2021, against observed MODIS: at stratum-month scale r = 0.988 and log-RMSE 0.458 (one global ratio: r = 0.981, log-RMSE 0.607); at 1-degree cell-month scale r = 0.944 and log-RMSE 0.600 (one global ratio: 0.928 and 0.680). NOAA-21, which enters no fit, is within +0.5 % (2023) and +0.3 % (2024) of observed MODIS and within 0.6 % of drift-corrected MODIS in 2023-2025. |
+| Do the uncertainty bands cover? | Intervals are split-conformal, calibrated per biome group and activity size. Held out in time (frozen calibration, 2022-2024, against observed MODIS) and pooled over the three supports (1-degree cells, 5-degree blocks, strata), the nominal 80 % and 95 % intervals cover 0.76 and 0.93 of unit-months with 5 or more cell-days, and 0.79 and 0.94 of all unit-months. They fall a few points short of nominal out of sample; by size class the 80 % coverage is 0.71 to 0.80. |
 
-Two results that do not favour the method. Precision-weighted fusion of MODIS and VIIRS is the default record, but against an independent reference (Terra) a plain equal-weight mean does about as well (1-degree log-RMSE 0.888 for equal weights, 0.898 for the fusion; Aqua alone 0.949, VIIRS alone 0.933): the gain of fusion over a plain average is not demonstrated. And one global ratio agrees slightly better than the stratified model on the sign of anomalies at stratum scale (0.899 against 0.892).
+Two results that do not favour the method. Precision-weighted fusion of MODIS and VIIRS is the default record, but against an independent reference (Terra) a plain equal-weight mean does about as well (1-degree log-RMSE 0.888 for equal weights, 0.898 for the fusion; Aqua alone 0.949, VIIRS alone 0.932): the gain of fusion over a plain average is not demonstrated. And one global ratio agrees slightly better than the stratified model on the sign of anomalies at stratum scale (0.898 against 0.892).
 
 ## Run it
 
@@ -27,12 +27,13 @@ The app needs the pipeline output in `data/dist/`; `data/` is not in git. Withou
 
 ```bash
 cp .env.example .env.local        # optional keys: FIRMS_MAP_KEY, ANTHROPIC_API_KEY; .env.local is git-ignored
-bash scripts/build-wasm.sh        # Rust kernel -> web/src/lib/kernel/pkg/ (git-ignored)
 pnpm --dir web install
 pnpm --dir web dev                # http://localhost:5173, serves data/dist at /data and the /api routes
 ```
 
-Prerequisites and how to build the data are in [Setup](#setup) and [Rebuilding the data](#rebuilding-the-data).
+No Rust is needed to run the web app: the built WASM kernel is committed in `web/src/lib/kernel/pkg/`. Rebuild it with `bash scripts/build-wasm.sh` only after changing `crates/`; `node scripts/check-wasm.mjs` fails when the committed kernel was built from different Rust sources.
+
+Prerequisites and how to build the data are in [Setup](#setup) and [Rebuilding the data](#rebuilding-the-data). Hosting (Vercel for the app and its `/api` functions, Cloudflare R2 for the data) is described in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## What you can do
 
@@ -55,7 +56,7 @@ The first six items are what the challenge asks for. The rest go beyond it. The 
 | Analog years | The three earlier years whose year to date looks most like this one, with a hindcast skill and an explicit warning when they are not informative. |
 | Listen | The record as sound: the monthly series, the seam (raw counts jump in pitch in 2012, the harmonized record does not) or one year against its normal, each with a text transcript. |
 | Right now | Near-real-time detections for the area over the last 24 hours, 48 hours or 7 days from a server proxy, and a daily pace in the record's own unit against the normal pace for the month. Needs a FIRMS key on the server. |
-| Global pulse | A WebGPU globe (canvas fallback) with four modes: Activity and Anomaly play the harmonized record month by month; Fire clock (the month when each place normally burns most, with second seasons) and Trend (2001-2025 across the hand-over, with significance) are fixed pictures. A watch overlay marks the current unusual clusters. |
+| Global pulse | A WebGPU globe (canvas fallback) with four modes: Activity and Anomaly play the harmonized record month by month; Fire clock (the month when each place normally burns most, with second seasons) and Trend (2003-2025, the complete years, across the hand-over, with significance) are fixed pictures. A watch overlay marks the current unusual clusters. |
 | Watchlist | "Where is fire unusual this month?": the most unusual clusters of 0.5-degree cells for the latest month and the last three months, each opening as an area in the app. |
 | Outlook | One to three months ahead from the seasonal cycle and decaying persistence of the anomaly, with a leave-one-year-out skill measure. When it does not beat climatology the app shows climatology. |
 | Brief and Ask Harmony | A plain-language reading of the statistics for the area, written by Claude from the computed numbers only (a rule-based brief is used without a key), and follow-up questions on the same numbers. Figures in the text are checked against the statistics. Anthropic is the primary provider; an OpenRouter adapter is the second. |
@@ -122,9 +123,9 @@ An offline Python pipeline turns the FIRMS files into a static pyramid of Parque
 | --- | --- |
 | `pipeline/` | Python 3.13 pipeline (uv, DuckDB): one module per stage, parameters in `config.py` |
 | `crates/harmony-core/`, `crates/harmony-wasm/` | Rust analysis kernel (fusion, drift correction, conformal bounds, statistics, analogs, outlook) and its WebAssembly wrapper |
-| `web/` | Vite, Svelte 5 and TypeScript app; `web/server/` holds the three server routes |
+| `web/` | Vite, Svelte 5 and TypeScript app; `web/server/` holds the server routes, `web/api/` the Vercel functions that wrap them, `web/vercel.ts` the hosting configuration |
 | `schema/` | The interfaces between the parts: data contract, validation, ML and watchlist schemas |
-| `scripts/` | WASM build script and the smoke tests |
+| `scripts/` | WASM build and check scripts, the R2 data upload tool, and the smoke tests |
 | `docs/` | Method, architecture, operations, brand notes, UX audit, original design |
 
 ## Setup
@@ -134,12 +135,12 @@ An offline Python pipeline turns the FIRMS files into a static pyramid of Parque
 Prerequisites:
 
 - Node 24 or newer and pnpm.
-- Rust (stable) with the `wasm32-unknown-unknown` target, and `wasm-bindgen-cli` 0.2.130 (the version is pinned in `crates/harmony-wasm/Cargo.toml`).
+- Only to change the analysis kernel: Rust (stable) with the `wasm32-unknown-unknown` target, and `wasm-bindgen-cli` 0.2.130 (the version is pinned in `crates/harmony-wasm/Cargo.toml`). The web app builds from git without them.
 - [uv](https://docs.astral.sh/uv/) (it installs Python 3.13 for the pipeline).
 - A free FIRMS map key from https://firms.modaps.eosdis.nasa.gov/api/map_key/ (needed for the API top-up and the live view).
 - Optional: an Anthropic API key for the brief and Ask Harmony (an OpenRouter key works as the alternative provider). Without a key the app uses the rule-based brief and hides Ask.
 
-Environment variables are listed in `.env.example`. Without the WASM build the app falls back to the demo mode as well. For a production build, `pnpm --dir web build` then `pnpm --dir web preview` (the preview server also serves `/data` and the `/api` routes).
+Environment variables are listed in `.env.example`. For a production build, `pnpm --dir web build` then `pnpm --dir web preview` (the preview server also serves `/data` and the `/api` routes).
 
 ## Rebuilding the data
 
@@ -149,28 +150,29 @@ From `pipeline/`. Stage details and the top-up routine are in [docs/OPERATIONS.m
 cd pipeline
 uv run python -m harmony_pipeline.cli fetch-country   # FIRMS country-year zips (9.8 GB)
 uv run python -m harmony_pipeline.cli fetch-api       # 2026 and NOAA-21 from the area API (needs FIRMS_MAP_KEY)
-uv run python -m harmony_pipeline.cli all             # normalize, availability, static_mask, afcd, strata, calibrate, harmonize, tiles, points, overview, watch, verify
+uv run python -m harmony_pipeline.cli all             # normalize, availability, static_mask, screen, afcd, strata, calibrate, harmonize, tiles, points, overview, watch, verify
 uv run python -m harmony_pipeline.cli ml              # optional: ML challenger (not part of `all`)
 ```
 
 Measured on the 2026-11-15 global build (12-thread machine, DuckDB limited to 12 GB), in seconds, from the stage logs:
 
-| Stage | First full run, all years | Refresh run (2026 and NOAA-21 added; only changed sensor-years re-read) |
-| --- | --- | --- |
-| normalize | 4,933 | 295 |
-| availability | 8 | 3 |
-| static_mask | 111 | 24 |
-| afcd (cell-day cube) | 764 | 217 |
-| strata | 268 | 45 |
-| calibrate | 104 | 87 |
-| harmonize | not in that run | 29 |
-| tiles | 422 | 69 |
-| points archive | 3,286 | 1,701 |
-| overview / watch | 0 / not in that run | 10 / 2 |
-| verify | 137 | 10 |
-| ml (separate stage) | 207 | not re-run |
+| Stage | First full run, all years | Refresh run (2026 and NOAA-21 added; only changed sensor-years re-read) | Review rebuild (`--force` from availability; points for 2026 only) |
+| --- | --- | --- | --- |
+| normalize | 4,933 | 295 | not re-run |
+| availability | 8 | 3 | 3 |
+| static_mask | 111 | 24 | not re-run |
+| screen (land and burst screen) | not in that run | not in that run | 385 |
+| afcd (cell-day cube) | 764 | 217 | 218 |
+| strata | 268 | 45 | 46 |
+| calibrate | 104 | 87 | 72 |
+| harmonize | not in that run | 29 | 24 |
+| tiles | 422 | 69 | 56 |
+| points archive | 3,286 | 1,701 | 34 (2026 only) |
+| overview / watch | 0 / not in that run | 10 / 2 | 11 / 2 |
+| verify | 137 | 10 | 16 |
+| ml (separate stage) | 207 | not re-run | 229 |
 
-A full build from the downloads takes about 2.8 hours on this machine; a top-up about 40 minutes, most of it the points archive. Disk used: 19.4 GB of raw downloads (9.8 GB country zips, 8.9 GB API files, 0.4 GB RESOLVE, 0.4 GB country CSVs), 14.7 GB of normalized points and 11.9 GB of output. Plan for 60 GB free.
+A full build from the downloads takes about 2.9 hours on this machine (the screen stage adds about 6 minutes); a top-up about 40 minutes, most of it the points archive. Disk used: 19.4 GB of raw downloads (9.8 GB country zips, 8.9 GB API files, 0.4 GB RESOLVE, 0.4 GB country CSVs), 14.7 GB of normalized points and 11.9 GB of output. Plan for 60 GB free.
 
 ## Tests and checks
 
@@ -178,7 +180,7 @@ Each command in the first six rows was run on 2026-11-15 and passed.
 
 | Command | What it checks | Result | Needs |
 | --- | --- | --- | --- |
-| `cargo test -p harmony-core` (or `cargo test --workspace`) | Kernel unit tests: polygon coverage against brute force, zonal sums, fusion limits and hand-computed fusion, conformal bounds, drift correction only when fused, the units lens, partial months, analogs, statistics, outlook, and timing guards | 44 passed | Rust |
+| `cargo test -p harmony-core` (or `cargo test --workspace`) | Kernel unit tests: polygon coverage against brute force, zonal sums, fusion limits and hand-computed fusion, conformal bounds and the zero-month floor, drift correction only when fused, lens invariance of every rank statistic, partial and in-progress months, levels from rank and ratio, sparse areas, analogs, statistics, outlook, and timing guards | 49 passed | Rust |
 | `node scripts/kernel-smoke.mjs` (after `bash scripts/build-wasm.sh`) | The built WASM kernel on a synthetic tile: output shapes and values, fused bands, analogs, lens, and timings | passed | built kernel |
 | `node scripts/sound-test.mjs` | Sonification mapping and transcripts, run directly in Node | 37 checks passed | Node |
 | `node scripts/live-smoke.mjs --unit` | Live proxy: validation, snapping, cache, in-flight de-duplication, usage guard, key redaction, same-origin checks; and the pace computation | 63 checks passed | Node 24 |
@@ -204,9 +206,11 @@ The `live-smoke --url` and `brief-smoke --url` modes make real FIRMS and model c
 - **Areas crossing the antimeridian** are not supported in the interface or in the live route.
 - **Weakest strata.** Tundra and boreal strata have the largest stratum-month errors (log-RMSE 1.36 and 1.20); cells outside any ecoregion are poorly calibrated.
 - **No cropland stratum** yet (planned, not built).
-- **The newest month is half a month.** 2026-11 runs to the 15th: VIIRS coverage 0.50 (just at the 0.5 threshold, so it is coverage-corrected and enters statistics), MODIS 0.48 (left out of the fusion for that month). Its near-real-time values will move when the rest of the month and the standard data arrive. (The first 2026-11-15 build treated FIRMS `URT` rows as standard and dropped the other NOAA-20 and NOAA-21 near-real-time rows of 2026-11; fixed in the rebuild.)
+- **The newest month is half a month, and is shown as in progress.** 2026-11 runs to the 15th (VIIRS 15 of 30 days, MODIS 15 of 30). A month enters statistics only when its serving stream delivered data on at least 0.9 of its days, so 2026-11 is drawn and flagged but never ranked or labelled, and October 2026 is the current month. (Before the review rebuild of 2026-11-15 the threshold was 0.5, so the half month was scaled x2 and described: "most active November in 27 years". The first 2026-11-15 build also treated FIRMS `URT` rows as standard; fixed.)
+- **Near-real-time screening is new and rule-based.** Near-real-time rows carry no fire type, so the pipeline drops them over open water (more than one 0.05° cell from mapped land) and drops the unconfirmed detections of satellite-days that burst far above that satellite's history (the NOAA-20 overpass of 2026-10-25 put about 10,000 detections on the Arafura Sea). Standard-quality rows are only scanned and reported.
+- **Sparse areas.** Where the record holds less than 10 AFCD-M a year, or MODIS saw nothing before 2012 and VIIRS sees a little, the app does not state a trend, a season, analogs or an outlook: there, a rise across 2012 is the change of sensor.
 - **Ending sensors.** S-NPP delivered its last data on 2026-11-02 and MODIS is expected to end around 2027. The record then rests on NOAA-20 and NOAA-21.
-- **The ML challenger is not current.** It was trained on a snapshot of the data taken before the 2026 and NOAA-21 refresh, and Table M6 of the method was not recomputed.
+- **The early record rests on Terra alone.** 2001 and 2002 are high in Terra's own counts (2001 is the highest year globally); the Terra-to-Terra+Aqua bridge itself is not the cause, but the excess cannot be cross-checked (METHOD.md section 8).
 
 ## AI in the application
 

@@ -143,6 +143,13 @@ pub struct MonthsMeta {
     /// Bitmask 1 S-NPP, 2 NOAA-20, 4 NOAA-21.
     #[serde(default)]
     pub viirs_sats: Vec<Option<f64>>,
+    /// Fraction of the month's days on which at least one MODIS satellite delivered data (2026-11
+    /// builds on). Absent: `cov_modis` is used instead.
+    #[serde(default)]
+    pub days_modis: Vec<Option<f64>>,
+    /// Same for VIIRS (equal to `cov_viirs`, which is already a day fraction).
+    #[serde(default)]
+    pub days_viirs: Vec<Option<f64>>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -160,6 +167,10 @@ pub struct Meta {
     pub strata: Vec<StratumMeta>,
     #[serde(default = "one")]
     pub ci_scale: f64,
+    /// Day coverage from which a month drives statistics (`complete_min_coverage`); the pipeline
+    /// writes the same constant (`config.COV_COMPLETE`). Absent: [`COMPLETE_COVERAGE`].
+    #[serde(default = "complete_default", rename = "complete_min_coverage")]
+    pub complete_min: f64,
     #[serde(default, rename = "fit_window_m")]
     fit_window_raw: Value,
     #[serde(default, rename = "fusion")]
@@ -179,13 +190,22 @@ pub struct Meta {
     pub conformal: Option<Conformal>,
 }
 
-/// Coverage from which a month counts as complete enough for statistics. The pipeline
-/// (`calibrate.py`) scales a month by 1/coverage only from this threshold and leaves it raw
-/// below, so a month under it (typically the month in progress) reads low.
+/// Coverage from which a stream is coverage-corrected and used in the fusion. The pipeline
+/// (`calibrate.py`, `COV_MIN`) scales a month by 1/coverage (at most ×2) only from this threshold
+/// and leaves it raw below; in fused mode a stream below it is dropped when the other one reaches it.
 pub const MIN_COVERAGE: f64 = 0.5;
+
+/// Default day coverage from which a month drives statistics (`meta.complete_min_coverage`,
+/// pipeline `config.COV_COMPLETE`). A month whose serving stream(s) delivered data on fewer of
+/// its days is "in progress" (or degraded): drawn, flagged partial, never ranked or labelled.
+pub const COMPLETE_COVERAGE: f64 = 0.9;
 
 fn one() -> f64 {
     1.0
+}
+
+fn complete_default() -> f64 {
+    COMPLETE_COVERAGE
 }
 
 /// Value of a per-month array; an absent array means "no information" and yields `default`.
@@ -326,6 +346,9 @@ impl Meta {
         if !(meta.ci_scale.is_finite() && meta.ci_scale > 0.0) {
             meta.ci_scale = 1.0;
         }
+        if !(meta.complete_min.is_finite() && (0.0..=1.0).contains(&meta.complete_min)) {
+            meta.complete_min = COMPLETE_COVERAGE;
+        }
         for s in &mut meta.strata {
             s.biome = int(&s.biome_raw).unwrap_or(0);
             s.err = parse_err(&s.err_raw);
@@ -381,6 +404,25 @@ impl Meta {
     /// Calibrated VIIRS coverage of month `m` is at least [`MIN_COVERAGE`].
     pub fn viirs_full(&self, m: i32) -> bool {
         self.viirs_ok(m) && month_value(&self.months.cov_viirs, m, 1.0) >= MIN_COVERAGE
+    }
+
+    /// Fraction of the days of month `m` on which MODIS delivered data (`months.days_modis`,
+    /// falling back to `cov_modis`); 0 without coverage.
+    pub fn modis_days(&self, m: i32) -> f64 {
+        if !self.modis_ok(m) {
+            return 0.0;
+        }
+        let a = if self.months.days_modis.is_empty() { &self.months.cov_modis } else { &self.months.days_modis };
+        month_value(a, m, 1.0).clamp(0.0, 1.0)
+    }
+
+    /// Same for calibrated VIIRS (`months.days_viirs`, falling back to `cov_viirs`).
+    pub fn viirs_days(&self, m: i32) -> f64 {
+        if !self.viirs_ok(m) {
+            return 0.0;
+        }
+        let a = if self.months.days_viirs.is_empty() { &self.months.cov_viirs } else { &self.months.days_viirs };
+        month_value(a, m, 1.0).clamp(0.0, 1.0)
     }
 
     pub fn provisional(&self, m: i32) -> bool {

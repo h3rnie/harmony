@@ -66,7 +66,8 @@ def cube_year(con, year: int, files: list, m_last: int, out) -> None:
 
 def main(force: bool = False) -> None:
     files = sorted(POINTS_DIR.glob("*/*.parquet"))
-    deps = [MASK, AVAIL]
+    from .screen import EXCLUDED, WATER
+    deps = [MASK, AVAIL, WATER, EXCLUDED]
     if not force and fresh(OUT, files + deps):
         print("[afcd] up to date")
         return

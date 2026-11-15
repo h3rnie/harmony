@@ -111,7 +111,11 @@ def build_meta(con, cal: dict) -> dict:
             "cov_viirs": [round(float(x), 4) for x in am.cov_viirs],
             "provisional": [int(x > 0) for x in am.nrt_rows],
             "viirs_sats": [int(x) for x in am.viirs_sats],
+            "days_modis": [round(float(x), 4) for x in am.days_modis],
+            "days_viirs": [round(float(x), 4) for x in am.days_viirs],
         },
+        # A month drives statistics only when its serving stream(s) delivered data on >= this share of its days.
+        "complete_min_coverage": C.COV_COMPLETE,
         "strata": st,
         "ci_scale": round(cal["ci_scale"], 4),    # legacy: used only when the harmonization fields are absent
         "method": {
@@ -126,6 +130,9 @@ def build_meta(con, cal: dict) -> dict:
             "availability": "regional: operating period minus known outages" if is_regional()
                             else f"global: count > {C.AVAIL_FRACTION} x centred {C.AVAIL_WINDOW}-day median",
             "coverage_correction": {"min_cov": C.COV_MIN, "max_factor": C.COV_MAX_CORR},
+            "completeness": f"a month enters statistics when its serving stream(s) delivered data on >= "
+                            f"{C.COV_COMPLETE} of its days (months.days_modis / days_viirs); below that it is "
+                            "drawn and flagged partial (in progress)",
             "viirs_stream": "per-day mean over available VIIRS satellites, NOAA-20/21 scaled to S-NPP per stratum x dn",
             "calibration": "ratio of sums (quasi-Poisson, log link, log V offset) per stratum x dn x month-of-year "
                            "with fallback stratum x dn -> biome x dn -> global x dn",

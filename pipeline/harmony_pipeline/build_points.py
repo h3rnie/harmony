@@ -9,6 +9,7 @@ One UTC year is processed at a time (all sensors) to bound memory.
 """
 from __future__ import annotations
 
+import json
 import shutil
 
 from .common import connect, fresh, posix, timed, write_json
@@ -21,15 +22,26 @@ COLS = ("latitude, longitude, acq_time_utc, satellite, instrument, confidence, f
         "brightness, bright_2, scan, track, version, used")
 
 
-def main(force: bool = False) -> None:
+def main(force: bool = False, years: list[int] | None = None) -> None:
+    """Rebuild the archive; with `years`, only those UTC years (other years' files and index entries are kept)."""
+    from .screen import EXCLUDED, WATER
     files = sorted(POINTS_DIR.glob("*/*.parquet"))
-    if not force and fresh(INDEX, files + [MASK]):
+    if not years and not force and fresh(INDEX, files + [MASK, WATER, EXCLUDED]):
         print("[points] up to date")
         return
-    shutil.rmtree(OUT_DIR, ignore_errors=True)
     con = connect()
     index: dict[str, dict[str, list[int]]] = {}
-    for year in sorted({f.stem for f in files}):
+    todo = sorted({f.stem for f in files})
+    if years:
+        todo = [y for y in todo if int(y) in set(years)]
+        if INDEX.exists():
+            index = {k: {y: v for y, v in t.items() if y not in todo} for k, t in json.loads(INDEX.read_text()).items()}
+        for y in todo:
+            for p in OUT_DIR.glob(f"*/{y}.parquet"):
+                p.unlink()
+    else:
+        shutil.rmtree(OUT_DIR, ignore_errors=True)
+    for year in todo:
         src = "[" + ",".join(f"'{posix(f)}'" for f in files if f.stem == year) + "]"
         with timed(f"points {year}"):
             con.execute(f"""CREATE OR REPLACE TEMP TABLE p AS

@@ -129,6 +129,9 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
+/* The scrollbar's space is always reserved, so content that grows past the fold cannot change the page width, which
+   would re-trigger every width-bound chart (the ResizeObserver loop) and shift the layout. */
+html { scrollbar-gutter: stable; }
 body { min-height: 100vh; background: var(--bg); }
 
 h1, h2, h3, h4 { margin: 0; font-weight: 600; letter-spacing: -0.01em; line-height: 1.2; }

@@ -16,6 +16,9 @@ pub struct Trend {
     pub tau: f64,
     pub p_value: f64,
     pub direction: &'static str,
+    /// The area is too sparse for a trend to mean anything (`Analysis.activity.sparse`): the
+    /// numbers are kept for reference but `direction` is forced to `none`.
+    pub suppressed: bool,
 }
 
 /// Trend of `y` over `years` (at least 3 points, else a neutral result).
@@ -42,6 +45,7 @@ pub fn trend(years: &[i32], y: &[f64]) -> Trend {
         tau: 0.0,
         p_value: 1.0,
         direction: "none",
+        suppressed: false,
     };
     if n < 3 || y[..n].iter().any(|v| !v.is_finite()) {
         return neutral;
@@ -113,6 +117,7 @@ pub fn trend(years: &[i32], y: &[f64]) -> Trend {
         tau,
         p_value,
         direction,
+        suppressed: false,
     }
 }
 

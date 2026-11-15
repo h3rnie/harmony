@@ -68,7 +68,7 @@ export const GLOSSARY: Record<TermId, GlossaryEntry> = {
   },
   seam: {
     term: 'The 2012 seam',
-    text: 'In 2012 the finer VIIRS sensor joined. Raw counts jump about fivefold because it sees more small fires, not because more burned.',
+    text: 'In 2012 the finer VIIRS sensor joined. Raw detection counts jump because it sees more small fires, not because more burned: about 4 times the MODIS count with one VIIRS satellite (2012–2017), about 8 times with two (2018–2022) and 12 to 14 times with three (from 2023).',
   },
   hearing: {
     term: 'Hearing the record',

@@ -136,6 +136,28 @@ pub fn analogs(mo: &Monthly) -> Option<Analogs> {
     })
 }
 
+impl Analogs {
+    /// Re-expresses the unit-bearing fields (`restTotal`, `restMedian`) in the units of `mo`
+    /// (the lensed record) for the same target, candidates and analog years; every other field
+    /// (selection, distances, ratios, skill) stays as computed on the MODIS-equivalent record.
+    pub fn rescale_units(&mut self, mo: &Monthly) {
+        let k = self.through_month as usize;
+        if k >= 12 {
+            return;
+        }
+        let rest = |y: i32| (k..12).map(|j| mo.stat_at(month_index(y, j)).unwrap_or(0.0)).sum::<f64>();
+        let cands: Vec<i32> = (year_of(mo.m_first)..self.year)
+            .filter(|&y| (0..12).all(|j| mo.stat_at(month_index(y, j)).is_some()))
+            .collect();
+        self.rest_median = median(&sorted(cands.iter().map(|&y| rest(y))));
+        for t in &mut self.top {
+            if t.rest_total.is_some() {
+                t.rest_total = Some(rest(t.year));
+            }
+        }
+    }
+}
+
 fn hindcast_skill(cands: &[(i32, [f64; 12])], rests: &[f64], k: usize) -> Option<f64> {
     let (mut sse, mut sst, mut n) = (0.0, 0.0, 0usize);
     for (c, (_, vc)) in cands.iter().enumerate() {
@@ -197,6 +219,7 @@ mod tests {
             madj: h.clone(),
             provisional: vec![false; n],
             partial: vec![false; n],
+            coverage: vec![1.0; n],
             modis_full: vec![true; n],
             viirs_full: vec![false; n],
             conformal: false,

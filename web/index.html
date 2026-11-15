@@ -27,16 +27,7 @@
     <meta name="twitter:description" content="Twenty-six years of MODIS and VIIRS fire detections, harmonized into one consistent monthly record for any area on Earth." />
     <meta name="twitter:image" content="https://harmony.hernie.me/og.png" />
     <meta name="twitter:image:alt" content="Harmony mission patch beside the wordmark and the tagline Two satellites. One fire record." />
-    <script>
-      // Apply the theme before first paint (no flash).
-      (function () {
-        var p = null
-        try { p = localStorage.getItem('harmony-theme') } catch (e) {}
-        var t = p === 'dark' || p === 'light' ? p : (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
-        document.documentElement.dataset.theme = t
-        document.documentElement.style.colorScheme = t
-      })()
-    </script>
+    <script src="/theme-init.js"></script>
   </head>
   <body>
     <div id="app"></div>
